@@ -115,6 +115,35 @@ class CreditorDebtHelper():
                 0, disposable_earning, "ERROR",
                 f"Exception in _minimum_wage_threshold_compare: {str(e)}"
             )
+        
+    def _general_ftb_debt_logic(self, disposable_earning, config_data):
+        """
+        Calculate the amount of disposable earnings that can be garnished for creditor debt
+        using the general formula (used by multiple states).
+        """
+        try:
+            lower_threshold_amount =float(
+                config_data[EC.LOWER_THRESHOLD_AMOUNT])
+            upper_threshold_amount = float(
+                config_data[EC.UPPER_THRESHOLD_AMOUNT])
+            upper_threshold_percent = float(
+                config_data[EC.UPPER_THRESHOLD_PERCENT]) / 100
+            de_range_lower_to_upper_threshold_percent = float(
+                config_data[EC.DE_RANGE_LOWER_TO_UPPER_THRESHOLD_PERCENT]) / 100
+            if disposable_earning <= lower_threshold_amount:
+                return UtilityClass.build_response(0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+            elif lower_threshold_amount < disposable_earning <= upper_threshold_amount:
+                withholding_amount = (disposable_earning - lower_threshold_amount) * de_range_lower_to_upper_threshold_percent
+                return UtilityClass.build_response(withholding_amount, disposable_earning,
+                                                    CM.DE_GT_LOWER_LT_UPPER, f"({CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}) * {de_range_lower_to_upper_threshold_percent*100}%")
+            elif disposable_earning > upper_threshold_amount:
+                withholding_amount = upper_threshold_percent * disposable_earning
+                return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+        except Exception as e:
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"Exception in _general_debt_logic: {str(e)}"
+            )
 
 class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
     """
@@ -244,6 +273,7 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_maine: {str(e)}"
             )
+        
 
     def cal_missouri(self, disposable_earning, filing_status, config_data):
         """
@@ -257,7 +287,7 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             filing_status_percent = float(
                 config_data[EC.FILING_STATUS_PERCENT]) / 100
 
-            if filing_status == FilingStatusFields.HEAD_OF_HOUSEHOLD:
+            if filing_status == FS.HEAD_OF_HOUSEHOLD:
                 if disposable_earning <= lower_threshold_amount:
                     return UtilityClass.build_response(0, disposable_earning,
                                                        CM.DE_LE_LOWER,
@@ -293,7 +323,7 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             filing_status_percent = float(
                 config_data[EC.FILING_STATUS_PERCENT]) / 100
 
-            if filing_status == FilingStatusFields.HEAD_OF_HOUSEHOLD:
+            if filing_status == FS.HEAD_OF_HOUSEHOLD:
                 if disposable_earning <= lower_threshold_amount:
                     withholding_amt = UtilityClass.build_response(
                         0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
