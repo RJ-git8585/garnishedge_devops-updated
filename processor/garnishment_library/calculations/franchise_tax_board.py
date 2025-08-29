@@ -1,5 +1,5 @@
 from processor.garnishment_library.calculations.creditor_debt import CreditorDebtHelper, UtilityClass
-from User_app.constants import (
+from user_app.constants import (
     StateList as ST,
     CalculationFields as CF,
     PayrollTaxesFields as PT,
@@ -11,7 +11,7 @@ from User_app.constants import (
     GarnishmentTypeFields as GT,
     FilingStatusFields
 )
-from processor.garnishment_library.helper import StateAbbreviations
+from processor.garnishment_library.utils import StateAbbreviations
 from processor.garnishment_library.calculations import ChildSupportHelper
 from rest_framework.response import Response
 from rest_framework import status
@@ -85,7 +85,6 @@ class FranchaiseTaxBoard(StateWiseFTBStateTaxLevyFormulas):
             mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
             disposable_earning = cs_helper.calculate_de(gross_pay, mandatory_deductions)
             config_data=self._exempt_amt_config_data(config_data, state, pay_period,garn_start_date,ftb_type, is_consumer_debt=None, non_consumer_debt=None)
-            print("adstgrfuyopuiadfjpog",self.cal_california(ftb_type, config_data ,disposable_earning))
             return self.cal_california(ftb_type, config_data, disposable_earning)
             
         except Exception as e:

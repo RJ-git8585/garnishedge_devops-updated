@@ -2,16 +2,18 @@ from datetime import datetime, date
 from django.db import transaction
 import logging
 import traceback as t
-from processor.models import (state_tax_levy_applied_rule,ExemptConfig,WithholdingLimit,WithholdingRules,creditor_debt_applied_rule,state_tax_levy_config, state_tax_levy_exempt_amt_config, creditor_debt_applied_rule,AddExemptions,StdExemptions,ThresholdAmount,state_tax_levy_applied_rule, state_tax_levy_exempt_amt_config, state_tax_levy_config)
-from User_app.models import ( employee_detail, 
-    employee_batch_data, garnishment_batch_data, payroll_taxes_batch_data
+from processor.models import (StateTaxLevyAppliedRule,ExemptConfig,WithholdingLimit,WithholdingRules,CreditorDebtAppliedRule,StateTaxLevyConfig, StateTaxLevyExemptAmtConfig, CreditorDebtAppliedRule,AddExemptions,StdExemptions,ThresholdAmount,StateTaxLevyAppliedRule, StateTaxLevyExemptAmtConfig, StateTaxLevyConfig)
+from user_app.models import ( EmployeeDetail, 
+    EmployeeBatchData, GarnishmentBatchData, PayrollBatchData
 )
 from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerializer, StdExemptionSerializer,
-    StateTaxLevyConfigSerializers, StateTaxLevyExemptAmtConfigSerializers,WithholdingRulesSerializer
+    StateTaxLevyConfigSerializers, StateTaxLevyExemptAmtConfigSerializers
 )
-from User_app.serializers import EmployeeDetailsSerializer
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator, FranchaiseTaxBoard, CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
-from User_app.constants import (
+from user_app.serializers import EmployeeDetailSerializer
+
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,
+                    GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
+from user_app.constants import (
     EmployeeFields as EE,
     GarnishmentTypeFields as GT,
     GarnishmentTypeResponse as GR,
@@ -20,15 +22,12 @@ from User_app.constants import (
     CalculationResponseFields as CR,
     CalculationMessages as CM,
     CommonConstants,
-    BatchDetail
 )
 from typing import Dict, Set, List, Any
-
-
 logger = logging.getLogger(__name__)
 
-INSUFFICIENT_PAY = "Garnishment cannot be deducted due to insufficient pay"
 
+INSUFFICIENT_PAY = "Garnishment cannot be deducted due to insufficient pay"
 
 class CalculationDataView:
     """
@@ -47,7 +46,7 @@ class CalculationDataView:
         try:
             if GT.STATE_TAX_LEVY in garnishment_types:
                 try:
-                    queryset = state_tax_levy_exempt_amt_config.objects.all()
+                    queryset = StateTaxLevyExemptAmtConfig.objects.all()
                     serializer = StateTaxLevyExemptAmtConfigSerializers(queryset, many=True)
                     config_data[GT.STATE_TAX_LEVY] = serializer.data
                     loaded_types.append(GT.STATE_TAX_LEVY)
@@ -79,22 +78,6 @@ class CalculationDataView:
                     loaded_types.append(GT.FEDERAL_TAX_LEVY)
                 except Exception as e:
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
-            
-            if "franchise_tax_board" in garnishment_types:
-                try:
-                    queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=6)
-
-                    config_ids = queryset.values_list("id", flat=True)
-
-                    # Get ThresholdAmount records linked to those configs
-                    threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
-
-                    serializer = ThresholdAmountSerializer(threshold_qs, many=True)
-                    config_data["franchise_tax_board"] = serializer.data
-
-                    loaded_types.append("franchise_tax_board")
-                except Exception as e:
-                    logger.error(f"Error loading {"franchise_tax_board"} config: {e}")
 
 
             if GT.CHILD_SUPPORT in garnishment_types:
@@ -111,7 +94,23 @@ class CalculationDataView:
                 # except Exception as e:
                 #     logger.error(f"Error loading {GT.CHILD_SUPPORT} config: {e}")
 
-            logger.info(f"Successfully loaded config for types: {loaded_types}")
+            if "franchise_tax_board" in garnishment_types:
+                try:
+                    queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=6)
+
+                    config_ids = queryset.values_list("id", flat=True)
+
+                    # Get ThresholdAmount records linked to those configs
+                    threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
+
+                    serializer = ThresholdAmountSerializer(threshold_qs, many=True)
+                    config_data["franchise_tax_board"] = serializer.data
+
+                    loaded_types.append("franchise_tax_board")
+
+                    logger.info(f"Successfully loaded config for types: {loaded_types}")
+                except Exception as e:
+                    logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
             
         except Exception as e:
             logger.error(f"Critical error preloading config data: {e}", exc_info=True)
@@ -134,10 +133,10 @@ class CalculationDataView:
         Returns serialized data or None if not found.
         """
         try:
-            obj = employee_detail.objects.get(ee_id=employee_id)
-            serializer = EmployeeDetailsSerializer(obj)
+            obj = EmployeeDetail.objects.get(ee_id=employee_id)
+            serializer = EmployeeDetailSerializer(obj)
             return serializer.data
-        except employee_detail.DoesNotExist:
+        except EmployeeDetail.DoesNotExist:
             return None
         except Exception as e:
             logger.error(
@@ -189,8 +188,6 @@ class CalculationDataView:
             logger.error(
                 f"Error calculating garnishment fees for {employee_id}: {e}")
             return f"Error calculating garnishment fees: {e}"
-
-
 
 
     def get_rounded_garnishment_fee(self, work_state, record, withholding_amt):
@@ -354,10 +351,9 @@ class CalculationDataView:
         """
         try:
             work_state = record.get(EE.WORK_STATE)
-            payroll_taxes = record.get(PT.PAYROLL_TAXES)
             result = StudentLoanCalculator().calculate(record)
             total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(payroll_taxes)
+                work_state).calculate_md(record)
             loan_amt = result["student_loan_amt"]
 
             if len(loan_amt) == 1:
@@ -388,12 +384,11 @@ class CalculationDataView:
         """
         try:
             state_tax_view = StateTaxLevyCalculator()
-            payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
             result = state_tax_view.calculate(
                 record, config_data[GT.STATE_TAX_LEVY])
             total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(payroll_taxes)
+                work_state).calculate_md(record)
             if result == CommonConstants.NOT_FOUND:
                 return None
             if isinstance(result, dict) and result.get(CR.WITHHOLDING_AMT, 0) <= 0:
@@ -433,7 +428,6 @@ class CalculationDataView:
         """
         try:
             creditor_debt_calculator = CreditorDebtCalculator()
-            payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
             result = creditor_debt_calculator.calculate(
                 record, config_data[GT.CREDITOR_DEBT])
@@ -444,7 +438,7 @@ class CalculationDataView:
             elif result == CommonConstants.NOT_PERMITTED:
                 return CommonConstants.NOT_PERMITTED
             total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(payroll_taxes)
+                work_state).calculate_md(record)
             if result[CR.WITHHOLDING_AMT] <= 0:
                 return self._handle_insufficient_pay_garnishment(
                     record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
@@ -483,13 +477,12 @@ class CalculationDataView:
                 return CommonConstants.NOT_PERMITTED
             total_mandatory_deduction_val = ChildSupport(
                 work_state).calculate_md(payroll_taxes)
-            print("total_mandatory_deduction_val", total_mandatory_deduction_val)
             if result[CR.WITHHOLDING_AMT] <= 0:
                 return self._handle_insufficient_pay_garnishment(
                     record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
             else:
                 record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
-                    {GT.Franchise_Tax_Board: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
+                    {GT.FRANCHISE_TAX_BOARD: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
                 record[CR.DISPOSABLE_EARNING] = round(
                     result[CR.DISPOSABLE_EARNING], 2)
                 record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
@@ -549,7 +542,7 @@ class CalculationDataView:
                     if original_garnishment:
                         enhanced_type_data = {
                             'type': garnishment_type,
-                            'data': []
+                            'cases': []
                         }
                         
                         original_cases = original_garnishment.get('data', [])
@@ -582,78 +575,19 @@ class CalculationDataView:
                                 remaining_balance = max(0, total_required - case_total_withheld)
                                 
                                 enhanced_case.update({
-                                    'garnishment_amount': round(garnishment_amount, 2),
+                                    'withholding_amount': round(garnishment_amount, 2),
                                     'arrear_amount': round(arrear_amount, 2),
                                     'arrear_withheld': round(arrear_withheld, 2),
                                     'remaining_balance': round(remaining_balance, 2),
                                     'calculation_status': type_result["calculation_status"]
                                 })
-                                enhanced_type_data['data'].append(enhanced_case)
+                                enhanced_type_data['cases'].append(enhanced_case)
                                 type_total_withheld += case_total_withheld
                             
                             total_withheld += type_total_withheld
-                            
-                            # Add type summary for child support
-                            enhanced_type_data['type_summary'] = {
-                                'total_cases': len(enhanced_type_data['data']),
-                                'status': type_result.get('status', 'processed'),
-                                'total_withheld': round(type_total_withheld, 2)
-                            }
-                            
-                            # FIXED: Add child support data to enhanced_garnishment_data
-                            enhanced_garnishment_data.append(enhanced_type_data)
                         
                         # Handle other garnishment types (student loan, creditor debt, etc.)
-                        elif garnishment_type == 'student_default_loan':
-                            student_result = type_result.get('student_loan_amt', {})
-                            withholding_amount = type_result.get('withholding_amt', 0)
-                            status = type_result.get('status', 'processed')
-                            
-                            # Calculate per case amounts
-                            total_cases = len(original_cases)
-                            per_case_withholding = withholding_amount / total_cases if total_cases > 0 else 0
-                            
-                            type_total_withheld = 0.0
-                            
-                            for i, original_case in enumerate(original_cases):
-                                enhanced_case = original_case.copy()
-                                student_loan_amt = f"student_loan_amt{i+1}"
-
-                                # Get individual amounts from calculation result
-                                garnishment_amount = student_result.get(student_loan_amt, 0)
-                                
-                                # Get ordered amount (required amount)
-                                ordered_amount = enhanced_case.get('ordered_amount', 0)
-                                
-                                # Calculate actual withholding for this case
-                                case_withholding = per_case_withholding if status != 'skipped_due_to_limit' else 0
-                                
-                                # Calculate remaining balance
-                                remaining_balance = max(0, ordered_amount - garnishment_amount)
-
-                                enhanced_case.update({
-                                    'garnishment_amount': round(garnishment_amount, 2),
-                                    'remaining_balance': round(remaining_balance, 2),
-                                    'calculation_status': type_result["calculation_status"],
-                                    CR.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
-                                    CR.WITHHOLDING_BASIS: type_result.get(CR.WITHHOLDING_BASIS, CM.NA),
-                                    CR.WITHHOLDING_CAP: type_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                                })
-                                enhanced_type_data['data'].append(enhanced_case)
-                                type_total_withheld += garnishment_amount
-                            
-                            total_withheld += type_total_withheld
-                        
-                            # Add type summary
-                            enhanced_type_data['type_summary'] = {
-                                'total_cases': len(enhanced_type_data['data']),
-                                'status': type_result.get('status', 'processed'),
-                                'total_withheld': round(type_total_withheld, 2)  # FIXED: Use type_total_withheld instead of total_withheld
-                            }
-                            
-                            enhanced_garnishment_data.append(enhanced_type_data)
-                        
-                        elif garnishment_type == 'creditor_debt':
+                        else:
                             withholding_amount = type_result.get('withholding_amt', 0)
                             status = type_result.get('status', 'processed')
                             
@@ -676,33 +610,34 @@ class CalculationDataView:
                                 remaining_balance = max(0, ordered_amount - case_withholding)
 
                                 enhanced_case.update({
-                                    'garnishment_amount': round(case_withholding, 2),
+                                    'withholding_amount': round(case_withholding, 2),
                                     'remaining_balance': round(remaining_balance, 2),
                                     'calculation_status': type_result["calculation_status"],
-                                    CR.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
-                                    CR.WITHHOLDING_BASIS: type_result.get(CR.WITHHOLDING_BASIS,CM.NA),
-                                    CR.WITHHOLDING_CAP: type_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                                    CR.WITHHOLDING_LIMIT_RULE : CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                                    CR.WITHHOLDING_BASIS : type_result.get(CR.WITHHOLDING_BASIS, CM.NA),
+                                    CR.WITHHOLDING_CAP : type_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                                    
                                 })
-                                enhanced_type_data['data'].append(enhanced_case)
+                                enhanced_type_data['cases'].append(enhanced_case)
                                 type_total_withheld += case_withholding
                             
                             total_withheld += type_total_withheld
-
-                            # Add type summary
-                            enhanced_type_data['type_summary'] = {
-                                'total_cases': len(enhanced_type_data['data']),
-                                'status': type_result.get('status', 'processed'),
-                                'total_withheld': round(type_total_withheld, 2)  # FIXED: Use type_total_withheld instead of total_withheld
-                            }
-                            
-                            enhanced_garnishment_data.append(enhanced_type_data)
+                        
+                        # Add type summary
+                        enhanced_type_data['type_summary'] = {
+                            'total_cases': len(enhanced_type_data['cases']),
+                            'status': type_result.get('status', 'processed'),
+                            'total_withheld': round(type_total_withheld if garnishment_type == 'child_support' or garnishment_type in ['student default loan', 'creditor debt'] else type_result.get('garnishment_amount', type_result.get('withholding_amt', 0)), 2)
+                        }
+                        
+                        enhanced_garnishment_data.append(enhanced_type_data)
             
             # Update the record with enhanced garnishment data
             enhanced_record[EE.GARNISHMENT_DATA] = enhanced_garnishment_data
             
             # Add calculation summary
             enhanced_record['calculation_summary'] = {
-                'twenty_five_percent_of_de': round(result[GT.CHILD_SUPPORT]["twenty_five_percent_of_de"], 2),
+                'twenty_five_percent_of_de':round(result[GT.CHILD_SUPPORT]["twenty_five_percent_of_de"], 2),
                 'disposable_earnings': round(result[GT.CHILD_SUPPORT]["de"], 2),
                 'allowable_disposable_earnings': round(result[GT.CHILD_SUPPORT]['ade'], 2),
                 'total_mandatory_deduction': round(total_mandatory_deduction_val, 2),
@@ -710,9 +645,11 @@ class CalculationDataView:
             
             # Add employer deduction information
             enhanced_record[CR.ER_DEDUCTION] = {
-                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(work_state,enhanced_record, total_withheld)
+                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
+                    work_state, enhanced_record, total_withheld
+                )
             }
-
+    
             return enhanced_record
             
         except Exception as e:
@@ -782,7 +719,10 @@ class CalculationDataView:
                 f"Unexpected error during garnishment calculation for employee {case_info.get(EE.EMPLOYEE_ID)}: {e}")
             return {
                 "error": f"Unexpected error during garnishment calculation for employee {case_info.get(EE.EMPLOYEE_ID)}: {str(e)}"
-            }   
+            }
+
+    def process_and_store_case(self, case_info, batch_id, config_data):
+        try:
             with transaction.atomic():
                 ee_id = case_info.get(EE.EMPLOYEE_ID)
                 state = StateAbbreviations(case_info.get(
@@ -812,7 +752,7 @@ class CalculationDataView:
                             
                             if garnishment_type == GT.STATE_TAX_LEVY.lower():
                                 try:
-                                    rule = state_tax_levy_config.objects.get(
+                                    rule = StateTaxLevyConfig.objects.get(
                                         state__iexact=state)
 
                                     serializer_data = StateTaxLevyConfigSerializers(
@@ -824,9 +764,9 @@ class CalculationDataView:
                                         EE.PAY_PERIOD: pay_period
                                     })
                                     serializer_data.pop('id', None)
-                                    state_tax_levy_applied_rule.objects.update_or_create(
+                                    StateTaxLevyAppliedRule.objects.update_or_create(
                                         case_id=case_id, defaults=serializer_data)
-                                except state_tax_levy_config.DoesNotExist:
+                                except StateTaxLevyConfig.DoesNotExist:
                                     pass
 
                             elif garnishment_type == GT.CREDITOR_DEBT.lower():
@@ -837,11 +777,9 @@ class CalculationDataView:
                                     CR.WITHHOLDING_CAP: withholding_cap,
                                     EE.PAY_PERIOD: pay_period
                                 }
-                                creditor_debt_applied_rule.objects.update_or_create(
+                                CreditorDebtAppliedRule.objects.update_or_create(
                                     case_id=case_id, defaults=data)
 
-                # Store or update Employee Data
-                # Get case_id from the first available case in garnishment_data
                 first_case_id = 0
                 if case_info.get("garnishment_data"):
                     first_group = case_info.get("garnishment_data", [{}])[0]
@@ -864,7 +802,7 @@ class CalculationDataView:
                     EE.ARREARS_GREATER_THAN_12_WEEKS: case_info.get(EE.ARREARS_GREATER_THAN_12_WEEKS),
                     EE.NO_OF_DEPENDENT_EXEMPTION: case_info.get(EE.NO_OF_DEPENDENT_EXEMPTION),
                 }
-                employee_batch_data.objects.update_or_create(
+                EmployeeBatchData.objects.update_or_create(
                     ee_id=ee_id, defaults=employee_defaults)
 
                 # Store or update Payroll Taxes for each case
@@ -890,18 +828,18 @@ class CalculationDataView:
                 }
 
                 # Store payroll tax data (one record per employee, using first case_id)
-                payroll_taxes_batch_data.objects.update_or_create(
+                PayrollBatchData.objects.update_or_create(
                     case_id=first_case_id, defaults={**payroll_defaults, "ee_id": ee_id})
 
                 # Deduplicate and prepare Garnishment Data
                 unique_garnishments_to_create = {}
                 for garnishment_group in case_info.get(CA.GARNISHMENT_DATA, []):
                     garnishment_type = garnishment_group.get(
-                        EE.GARNISHMENT_TYPE, garnishment_group.get("type", ""))  # Handle both field names
+                        EE.GARNISHMENT_TYPE, garnishment_group.get("type", ""))  
                     for garnishment in garnishment_group.get("data", []):
                         case_id_garnish = garnishment.get(EE.CASE_ID)
                         if case_id_garnish:
-                            unique_garnishments_to_create[case_id_garnish] = garnishment_batch_data(
+                            unique_garnishments_to_create[case_id_garnish] = GarnishmentBatchData(
                                 case_id=case_id_garnish,
                                 garnishment_type=garnishment_type,
                                 ordered_amount=garnishment.get(CA.ORDERED_AMOUNT),
@@ -914,7 +852,7 @@ class CalculationDataView:
                             )
 
                 if unique_garnishments_to_create:
-                    garnishment_batch_data.objects.bulk_create(
+                    GarnishmentBatchData.objects.bulk_create(
                         unique_garnishments_to_create.values(),
                         update_conflicts=True,
                         unique_fields=["case_id"],
@@ -985,4 +923,4 @@ class CalculationDataView:
             if garnishment_type in full_config_data:
                 filtered_config[garnishment_type] = full_config_data[garnishment_type]
                     
-        return filtered_config
+        return filtered_config        
