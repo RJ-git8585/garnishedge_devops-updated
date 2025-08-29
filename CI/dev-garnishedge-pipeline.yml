@@ -1,0 +1,140 @@
+trigger:
+- master
+
+variables:
+- group: ge-api-variable-group-dev  # Contains DJANGO_SECRET_KEY and possibly ACR credentials
+
+stages:
+# ----------------
+# Test Stage (Optional - Currently Commented Out)
+# ----------------
+# - stage: Test
+#   displayName: "Run Unit Tests"
+#   jobs:
+#     - job: RunTests
+#       displayName: "Test Python Application"
+#       pool:
+#         vmImage: "ubuntu-latest"
+#       steps:
+#         - checkout: self
+#
+#         - task: UsePythonVersion@0
+#           inputs:
+#             versionSpec: "3.12"
+#             addToPath: true
+#
+#         - script: |
+#             python -m venv venv
+#             source venv/bin/activate
+#             pip install -r requirements.txt
+#             pip install pytest pytest-cov
+#           displayName: "Install dependencies"
+#           env:
+#             DJANGO_SECRET_KEY: $(DJANGO_SECRET_KEY)
+#
+#         - script: |
+#             source venv/bin/activate
+#             pytest --cov=. --cov-report=xml --cov-report=term-missing -v
+#           displayName: "Run pytest with coverage"
+#           env:
+#             PYTHONPATH: $(Build.SourcesDirectory)
+#             DJANGO_SECRET_KEY: $(DJANGO_SECRET_KEY)
+#
+#         - script: |
+#             bash <(curl -s https://codecov.io/bash) -f ./coverage.xml -F unittests
+#           displayName: "Upload coverage to Codecov"
+#           condition: succeeded()
+#           env:
+#             DJANGO_SECRET_KEY: $(DJANGO_SECRET_KEY)
+
+# ----------------
+# Build Stage
+# ----------------
+- stage: Build
+  displayName: "Build Artifact"
+  jobs:
+    - job: BuildPythonApp
+      pool:
+        vmImage: "ubuntu-latest"
+
+      steps:
+        - checkout: self
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: "3.12"
+            addToPath: true
+
+        - script: |
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          displayName: "Install dependencies"
+          env:
+            DJANGO_SECRET_KEY: $(DJANGO_SECRET_KEY)
+
+        - task: CopyFiles@2
+          displayName: "Prepare deployment package"
+          inputs:
+            SourceFolder: "$(Build.SourcesDirectory)"
+            Contents: |
+              **/*
+              !venv/**
+              !.git/**
+              !.github/**
+              !tests/**
+              !.pytest_cache/**
+              !__pycache__/**
+              !*.pyc
+              !coverage.xml
+              !.coverage
+            TargetFolder: "$(Build.ArtifactStagingDirectory)"
+
+        - publish: "$(Build.ArtifactStagingDirectory)"
+          artifact: "python-app"
+
+# ----------------
+# Package Stage (Using docker buildx with BuildKit)
+# ----------------
+- stage: Package
+  displayName: "Package Django App into Docker"
+  dependsOn: Build
+  jobs:
+    - job: PackageDockerImage
+      displayName: "Build & Push Docker Image"
+      pool:
+        vmImage: "ubuntu-latest"
+
+      steps:
+        - download: current
+          artifact: python-app
+
+        - script: |
+            echo "Enabling Docker Buildx..."
+            docker buildx create --use
+          displayName: "Setup Docker Buildx"
+
+        - script: |
+            echo "Logging in to Azure Container Registry..."
+            echo $(AZURE_CONTAINER_REGISTRY_PASSWORD) | docker login $(AZURE_CONTAINER_REGISTRY_NAME).azurecr.io \
+              --username $(AZURE_CONTAINER_REGISTRY_USERNAME) --password-stdin
+          displayName: "Login to ACR"
+
+        - script: |
+            echo "Building and pushing Docker image with Buildx..."
+            cd $(Pipeline.Workspace)/python-app
+
+            docker buildx build \
+              --file Dockerfile \
+              --platform linux/amd64 \
+              --tag $(AZURE_CONTAINER_REGISTRY_NAME).azurecr.io/garnishedge:$(Build.BuildId) \
+              --push .
+
+            docker buildx build \
+              --file Dockerfile \
+              --platform linux/amd64 \
+              --tag $(AZURE_CONTAINER_REGISTRY_NAME).azurecr.io/garnishedge:latest \
+              --push .
+          displayName: "Build & Push Docker Image"
+          env:
+            DOCKER_BUILDKIT: 1

@@ -1,0 +1,55 @@
+{
+    "CCPA_Rules": {
+        "Mandatory_deductions": ["FIT" ,"SST" ,"MT", "ST" , "LT"]
+      },
+
+      "States": [
+        {
+          "State": "California",
+          "Mandatory_deductions": ["FIT" , "SST" , "MT" , "CaliforniaSDI"]
+        },
+        {
+          "State": "Colorado",
+          "Mandatory_deductions": "(FIT + SST + MT + FAMLI)"
+        },
+        {
+          "State": "Connecticut",
+          "Mandatory_deductions": "(FIT + SST + MT + Medical insurance pretax + Union dues)"
+        },
+        {
+          "State": "Delaware",
+          "Mandatory_deductions": "(FIT + SST + MT + Delaware State tax + Wilmington tax + Union dues)"
+        },
+        {
+          "State": "Illinois",
+          "Mandatory_deductions": "(FIT + SST + MT + Illinois State Tax)",
+          "Notes": "Union dues are deducted from Allowable Disposable Earnings"
+        },
+        {
+          "State": "Louisiana",
+          "Mandatory_deductions": "(FIT + SST + MT + Louisiana State tax + Medical insurance pretax + Life insurance)"
+        },
+        {
+          "State": "Maine",
+          "Mandatory_deductions": "(FIT + SST + MT + Maine State Tax)"
+        },
+        {
+          "State": "Montana",
+          "Mandatory_deductions": "(FIT + SST + MT + Union dues)"
+        },
+        {
+          "State": "New Mexico",
+          "Mandatory_deductions": "(FIT + SST + MT + New Mexico state tax + Workers compensation + Union dues)"
+        },
+        {
+          "State": "Texas",
+          "Mandatory_deductions": "(FIT + SST + MT + Union dues + Medical insurance pretax)"
+        },
+        {
+          "State": "Washington",
+          "Mandatory_deductions": "(FIT + SST + MT + Industrial insurance + Required union dues)"
+        }
+      ]
+    }
+  
+  

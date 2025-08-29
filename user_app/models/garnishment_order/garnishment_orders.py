@@ -1,0 +1,42 @@
+from django.db import models
+
+class GarnishmentOrder(models.Model):
+    case_id = models.CharField(max_length=255, unique=True)
+    employee = models.ForeignKey(
+        'user_app.EmployeeDetail', on_delete=models.CASCADE, related_name="garnishments")
+    employer = models.ForeignKey('user_app.EmployerProfile', on_delete=models.SET_NULL,
+                                 null=True, blank=True, related_name="garnishments")
+    work_state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="work_garnishments")
+    issuing_state = models.ForeignKey(
+        'processor.State', on_delete=models.CASCADE, related_name="garnishments")
+    
+    garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE,db_index=True)
+    is_consumer_debt = models.BooleanField(default=False)
+
+    issued_date = models.DateField(blank=True, null=True)
+    received_date = models.DateField(blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
+    stop_date = models.DateField(blank=True, null=True)
+    
+    ordered_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    arrear_gt_12_weeks = models.BooleanField(default=False)
+
+    fein = models.CharField(max_length=254)
+    garnishing_authority = models.CharField(max_length=255)  
+    withholding_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    
+    arrear_greater_than_12_weeks = models.BooleanField(
+        default=False, blank=False)
+    arrear_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['case_id']),
+        ]
+        db_table = "garnishment_order"
+
+

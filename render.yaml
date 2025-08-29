@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: my-django-app
+    env: python
+    buildCommand: |
+      chmod +x install_odbc.sh
+      ./install_odbc.sh
+      pip install -r requirements.txt
+      python manage.py collectstatic --no-input
+    startCommand: gunicorn GarnishEdge_Project.wsgi:application
+    runtime: python3.12.3  
+    envVars:
+      - key: DEBUG
+        value: 'False'
+      - key: DB_USER
+        value: garnish-dev@garnish-dev1
+      - key: DB_PASSWORD
+        value: G@rnish-D3v
+      - key: DB_HOST
+        value: garnish-dev1.database.windows.net
+      - key: DB_NAME
+        value: garnishment-db
+      - key: DB_PORT
+        value: 1433
