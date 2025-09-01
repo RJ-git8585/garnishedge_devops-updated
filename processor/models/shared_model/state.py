@@ -8,3 +8,6 @@ class State(models.Model):
     class Meta:
         db_table="state"
         verbose_name ="state"
+
+    def __str__(self):
+        return f"{self.state} ({self.state_code})"

@@ -21,21 +21,14 @@ class GarFeesRulesEngine:
             f'Rule_{i}': getattr(self, f'Rule_{i}', self.undefined_rule) for i in range(1, 27)
         }
 
-    def _load_rules(self) -> List[Dict[str, Any]]:
+    def _load_rules(self,garn_fees) -> List[Dict[str, Any]]:
         """
         Loads and caches all garnishment fee rules from the database.
         """
-        if self._rules_data is None:
-            try:
-                data = GarnishmentFees.objects.all()
-                self._rules_data = GarnishmentFeesSerializer(
-                    data, many=True).data
-            except Exception as e:
-                logger.error(f"Failed to load garnishment fee rules: {e}")
-                self._rules_data = []
-        return self._rules_data
+        
+        return garn_fees
 
-    def _get_filtered_rule(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _get_filtered_rule(self, record: Dict[str, Any],garn_fees:List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         Filters rules based on state, pay period, and garnishment type.
         """
@@ -48,7 +41,7 @@ class GarFeesRulesEngine:
 
             if self._filtered_rules is None:
                 self._filtered_rules = [
-                    item for item in self._load_rules()
+                    item for item in self._load_rules(garn_fees)
                     if item.get("state", "").strip().lower() == self.work_state
                     and item.get("pay_period", "").strip().lower() == pay_period
                     and item.get("type", "").strip().lower() == garn_type
@@ -58,20 +51,20 @@ class GarFeesRulesEngine:
             logger.error(f"Error filtering rules: {e}")
             return None
 
-    def find_rule(self, record: Dict[str, Any]) -> Optional[str]:
+    def find_rule(self, record: Dict[str, Any],garn_fees:List[Dict[str, Any]]) -> Optional[str]:
         """
         Finds the rule name for the given record.
         """
-        item = self._get_filtered_rule(record)
-        return item.get("rules") if item else None
+        item = self._get_filtered_rule(record,garn_fees)
+        return item.get("rule") if item else None
 
-    def get_payable_name(self, rule_name: str) -> Optional[str]:
+    def get_payable_name(self, rule_name: str,garn_fees:List[Dict[str, Any]]) -> Optional[str]:
         """
         Returns the 'payable_by' field for a given rule name.
         """
         try:
-            for item in self._load_rules():
-                if item.get("rules", "").strip().title() == rule_name:
+            for item in self._load_rules(garn_fees):
+                if item.get("rule", "").strip().title() == rule_name:
                     return item.get("payable_by")
         except Exception as e:
             logger.error(
@@ -88,11 +81,11 @@ class GarFeesRulesEngine:
             logger.error(f"Error calculating rule: {e}")
             return 0.0
 
-    def apply_rule(self, record: Dict[str, Any], withhold_amt: float) -> Any:
+    def apply_rule(self, record: Dict[str, Any], withhold_amt: float,garn_fees) -> Any:
         """
         Applies the appropriate rule to the record.
         """
-        rule_name = self.find_rule(record)
+        rule_name = self.find_rule(record,garn_fees)
         if not rule_name:
             logger.warning("No rule found for the given record.")
             return "No applicable rule found"

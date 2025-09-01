@@ -193,8 +193,6 @@ class ChildSupportHelper:
         
 
 
-    
-
     def calculate_each_child_support_amt(self, support_amounts):
         """
         Returns a dictionary of each child support amount keyed by order.
@@ -226,7 +224,6 @@ class ChildSupportHelper:
                 f"Error calculating each arrears amount: {str(e)}")
         
 
-
 class SingleChild(ChildSupportHelper):
     """
     Handles calculation for a single child support order.
@@ -244,9 +241,7 @@ class SingleChild(ChildSupportHelper):
             supports_2nd_family = record.get(EmployeeFields.SUPPORT_SECOND_FAMILY)
             arrears_12ws = record.get(EmployeeFields.ARREARS_GREATER_THAN_12_WEEKS)
             garnishment_data = record.get('garnishment_data', [])
-
-            print("garnishment_data",garnishment_data)
-            print("new dhfhh",self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT))
+            
             # Calculate intermediate values
             gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = self.calculate_md(payroll_taxes)

@@ -16,6 +16,14 @@ class Client(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['client_id']),
+        ]
+
+        db_table = "client"
+
+
     def save(self, *args, **kwargs):
         if self.tax_id and len(self.tax_id) != 64:
             self.tax_id = HashValue.hash_value(self.tax_id)

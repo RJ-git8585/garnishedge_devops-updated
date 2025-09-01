@@ -4,8 +4,6 @@ class GarnishmentOrder(models.Model):
     case_id = models.CharField(max_length=255, unique=True)
     employee = models.ForeignKey(
         'user_app.EmployeeDetail', on_delete=models.CASCADE, related_name="garnishments")
-    employer = models.ForeignKey('user_app.EmployerProfile', on_delete=models.SET_NULL,
-                                 null=True, blank=True, related_name="garnishments")
     work_state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="work_garnishments")
     issuing_state = models.ForeignKey(
         'processor.State', on_delete=models.CASCADE, related_name="garnishments")
@@ -17,13 +15,22 @@ class GarnishmentOrder(models.Model):
     received_date = models.DateField(blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
     stop_date = models.DateField(blank=True, null=True)
-    
+    deduction_code = models.CharField(max_length=255)  
     ordered_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     arrear_gt_12_weeks = models.BooleanField(default=False)
 
     fein = models.CharField(max_length=254)
     garnishing_authority = models.CharField(max_length=255)  
     withholding_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    
+    garnishment_fees = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    payee = models.CharField(max_length=255)
+    override_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    override_start_date = models.DateField(blank=True, null=True)
+    override_stop_date = models.DateField(blank=True, null=True)
+    paid_till_date = models.DateField(blank=True, null=True)
     
     arrear_greater_than_12_weeks = models.BooleanField(
         default=False, blank=False)

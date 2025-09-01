@@ -65,7 +65,7 @@ class PriorityOrderSerializer(serializers.ModelSerializer):
 class ThresholdAmountCoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = ThresholdAmount
-        exclude = ("config",)  # config will come from ExemptConfig
+        exclude = ("config",)  
     
 
 class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
@@ -108,13 +108,6 @@ class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
             instance.thresholdamount_set.all(), many=True
         ).data
         return rep
-
-
-class ThresholdAmountSerializer(serializers.ModelSerializer):
-    """Minimal serializer for ThresholdAmount (used for nested response)."""
-    class Meta:
-        model = ThresholdAmount
-        fields = ["id", "amount"]  # adjust fields of ThresholdAmount as per your model
 
 
 class ThresholdConditionSerializer(serializers.ModelSerializer):

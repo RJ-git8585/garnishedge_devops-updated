@@ -13,13 +13,10 @@ from user_app.constants import (
 
 )
 from decimal import Decimal
-from decimal import Decimal
 import traceback as t 
 from processor.models import PriorityOrders
 from processor.serializers import PriorityOrderSerializer
 
-
-logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +38,6 @@ class InsufficientDataError(GarnishmentError):
     """Error for when required data is missing from the input record."""
     pass
 
-
 class MultipleGarnishmentPriorityOrder:
     
     # --- Constants for Readability and Maintenance ---
@@ -49,20 +45,21 @@ class MultipleGarnishmentPriorityOrder:
     CCPA_LIMIT_PERCENTAGE = 0.25
     
     _CALCULATOR_FACTORIES = {
-        GT.CHILD_SUPPORT: lambda record, config_data=None: MultipleGarnishmentPriorityHelper().child_support_helper(record),
-        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record, config_data=config_data.get(GT.FEDERAL_TAX_LEVY)),
-        GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None: StudentLoanCalculator().calculate(record),
-        GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY)),
-        GT.CREDITOR_DEBT: lambda record, config_data=None: CreditorDebtCalculator().calculate(record, config_data=config_data.get(GT.CREDITOR_DEBT)),
+        GT.CHILD_SUPPORT: lambda record, config_data=None,garn_fees=None: MultipleGarnishmentPriorityHelper().child_support_helper(record),
+        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None,garn_fees=None: FederalTax().calculate(record, config_data.get(GT.FEDERAL_TAX_LEVY),garn_fees),
+        GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None,garn_fees=None: StudentLoanCalculator().calculate(record,garn_fees),
+        GT.STATE_TAX_LEVY: lambda record, config_data=None,garn_fees=None: StateTaxLevyCalculator().calculate(record,config_data.get(GT.STATE_TAX_LEVY),garn_fees),
+        GT.CREDITOR_DEBT: lambda record, config_data=None,garn_fees=None: CreditorDebtCalculator().calculate(record, config_data.get(GT.CREDITOR_DEBT),garn_fees),
     }
 
-    def __init__(self, record: Dict[str, Any],config_data :Dict[str,Any]):
+    def __init__(self, record: Dict[str, Any],config_data :Dict[str,Any],garn_fees:Dict[str,Any]):
 
         if not isinstance(record, dict):
             raise InsufficientDataError("Input 'record' must be a dictionary.")
             
         self.record = record
         self.config_data=config_data
+        self.garn_fees =garn_fees
         self.work_state = self.record.get(EE.WORK_STATE)
         
         if not self.work_state:
@@ -104,7 +101,7 @@ class MultipleGarnishmentPriorityOrder:
         if not factory:
             return None
         
-        return lambda: factory(self.record,self.config_data)
+        return lambda: factory(self.record,self.config_data,self.garn_fees)
 
     def _prepare_calculation_inputs(self) -> Dict[str, Any]:
 

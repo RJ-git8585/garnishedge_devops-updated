@@ -23,6 +23,7 @@ from typing import Dict, Set, List, Any
 
 logger = logging.getLogger(__name__)
 
+
 class PostCalculationView(APIView):
     """Handles Garnishment Calculation API Requests with Multi-Type Support"""
 
@@ -57,13 +58,17 @@ class PostCalculationView(APIView):
 
             logger.info(f"Processing batch {batch_id} with garnishment types: {all_garnishment_types}")
 
-            # Step 2: Preload configuration data for all required types
+            #Step 2: Preload garnishment fees for all types
+            gar_fees= calculation_service.preload_garnishment_fees()
+
+            # Step 3: Preload configuration data for all required types
             full_config_data = calculation_service.preload_config_data(all_garnishment_types)
+            
             
             if not full_config_data:
                 logger.warning(f"No configuration data loaded for types: {all_garnishment_types}")
 
-            # Step 3: Process each case with appropriate configuration
+            # Step 4: Process each case with appropriate configuration
             with ThreadPoolExecutor(max_workers=100) as executor:
                 future_to_case = {}
                 
@@ -87,10 +92,12 @@ class PostCalculationView(APIView):
                         case_info, 
                         batch_id, 
                         case_config
+
+                        
                     )
                     future_to_case[future] = case_info
 
-                # Step 4: Collect results
+                # Step 5: Collect results
                 for future in as_completed(future_to_case):
                     case_info_original = future_to_case[future]
                     ee_id_for_log = case_info_original.get(EE.EMPLOYEE_ID, "N/A")
@@ -110,6 +117,8 @@ class PostCalculationView(APIView):
                             logger.warning(f"No result returned for employee {ee_id_for_log}")
                             
                     except Exception as e:
+                        import traceback as t
+                        print(t.print_exc())
                         error_message = f"Error processing garnishment for employee {ee_id_for_log}: {str(e)}"
                         logger.error(error_message, exc_info=True)
                         
@@ -126,7 +135,7 @@ class PostCalculationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Step 5: Prepare response
+        # Step 6: Prepare response
         error_count = sum(1 for item in output if "error" in item)
         success_count = len(output) - error_count
 

@@ -2,11 +2,11 @@ from datetime import datetime, date
 from django.db import transaction
 import logging
 import traceback as t
-from processor.models import (StateTaxLevyAppliedRule,ExemptConfig,WithholdingLimit,WithholdingRules,CreditorDebtAppliedRule,StateTaxLevyConfig, StateTaxLevyExemptAmtConfig, CreditorDebtAppliedRule,AddExemptions,StdExemptions,ThresholdAmount,StateTaxLevyAppliedRule, StateTaxLevyExemptAmtConfig, StateTaxLevyConfig)
+from processor.models import (StateTaxLevyAppliedRule,GarnishmentFees,ExemptConfig,WithholdingLimit,WithholdingRules,CreditorDebtAppliedRule,StateTaxLevyConfig, StateTaxLevyExemptAmtConfig, CreditorDebtAppliedRule,AddExemptions,StdExemptions,ThresholdAmount,StateTaxLevyAppliedRule, StateTaxLevyExemptAmtConfig, StateTaxLevyConfig)
 from user_app.models import ( EmployeeDetail, 
     EmployeeBatchData, GarnishmentBatchData, PayrollBatchData
 )
-from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerializer, StdExemptionSerializer,
+from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerializer, StdExemptionSerializer,GarnishmentFeesSerializer,
     StateTaxLevyConfigSerializers, StateTaxLevyExemptAmtConfigSerializers
 )
 from user_app.serializers import EmployeeDetailSerializer
@@ -116,6 +116,24 @@ class CalculationDataView:
             logger.error(f"Critical error preloading config data: {e}", exc_info=True)
             
         return config_data
+    
+    def preload_garnishment_fees(self) -> list:
+        """
+        Preloads garnishment fee configurations from the DB once.
+        """
+        try:
+            fees = (
+            GarnishmentFees.objects
+            .select_related("state", "garnishment_type", "pay_period", "rule")
+            .all()
+            .order_by("-created_at")
+        )
+            serializer = GarnishmentFeesSerializer(fees, many=True)
+            logger.info("Successfully loaded garnishment fee config")
+            return serializer.data
+        except Exception as e:
+            logger.error(f"Error loading garnishment fees: {e}", exc_info=True)
+            return []
 
 
     def validate_fields(self, record, required_fields):
@@ -190,13 +208,13 @@ class CalculationDataView:
             return f"Error calculating garnishment fees: {e}"
 
 
-    def get_rounded_garnishment_fee(self, work_state, record, withholding_amt):
+    def get_rounded_garnishment_fee(self, work_state, record, withholding_amt,garn_fees=None):
         """
         Applies garnishment fee rule and rounds the result if it is numeric.
         """
         try:
             fee = GarFeesRulesEngine(work_state).apply_rule(
-                record, withholding_amt)
+                record, withholding_amt,garn_fees)
             if isinstance(fee, (int, float)):
                 return round(fee, 2)
             return fee
@@ -204,7 +222,7 @@ class CalculationDataView:
             logger.error(f"Error rounding garnishment fee: {e}")
             return f"Error calculating garnishment fee: {e}"
 
-    def calculate_garnishment(self, garnishment_type, record, config_data):
+    def calculate_garnishment(self, garnishment_type, record, config_data,garn_fees=None):
         """
         Handles garnishment calculations based on type.
         """
@@ -254,7 +272,7 @@ class CalculationDataView:
         if missing_fields:
             return {"error": f"Missing fields in record: {', '.join(missing_fields)}"}
         try:
-            return rule["calculate"](record, config_data)
+            return rule["calculate"](record, config_data,garn_fees)
         except Exception as e:
             logger.error(f"Error in {garnishment_type} calculation: {e}")
             return {"error": f"Error calculating {garnishment_type}: {e}"}
@@ -275,7 +293,7 @@ class CalculationDataView:
         record[CR.WITHHOLDING_CAP] = CM.NA
         return record
 
-    def calculate_child_support(self, record, config_data=None):
+    def calculate_child_support(self, record, config_data=None,garn_fees=None):
         """
         Calculate child support garnishment.
         """
@@ -307,7 +325,7 @@ class CalculationDataView:
                         {CR.ARREAR: [{CR.WITHHOLDING_ARREAR: amt}
                                      for amt in arrear_amount_data.values()]}
                     ],
-                    CR.ER_DEDUCTION: {CR.GARNISHMENT_FEES: self.get_garnishment_fees(record, total_withhold_amt)},
+                    CR.ER_DEDUCTION: {CR.GARNISHMENT_FEES: self.get_garnishment_fees(record, total_withhold_amt,garn_fees)},
                     CR.DISPOSABLE_EARNING: round(de, 2),
                     CR.ALLOWABLE_DISPOSABLE_EARNING: round(ade, 2),
                     CR.TOTAL_MANDATORY_DEDUCTION: round(mde, 2),
@@ -320,7 +338,7 @@ class CalculationDataView:
             logger.error(f"Error calculating child support: {e}")
             return {"error": f"Error calculating child support: {e}"}
 
-    def calculate_federal_tax(self, record, config_data):
+    def calculate_federal_tax(self, record, config_data,garn_fees=None):
         """
         Calculate federal tax garnishment.
         """
@@ -337,7 +355,7 @@ class CalculationDataView:
                 record[CR.AGENCY] = [
                     {CR.WITHHOLDING_AMT: [{GR.FEDERAL_TAX_LEVY: result}]}]
             record[CR.ER_DEDUCTION] = {
-                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(work_state, record, result)}
+                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(work_state, record, result,garn_fees)}
             record[CR.WITHHOLDING_BASIS] = CM.NA
             record[CR.WITHHOLDING_CAP] = CM.NA
             return record
@@ -345,7 +363,7 @@ class CalculationDataView:
             logger.error(f"Error calculating federal tax: {e}")
             return {"error": f"Error calculating federal tax: {e}"}
 
-    def calculate_student_loan(self, record, config_data=None):
+    def calculate_student_loan(self, record, config_data=None,garn_fees=None):
         """
         Calculate student loan garnishment.
         """
@@ -367,7 +385,7 @@ class CalculationDataView:
             total_student_loan_amt = 0 if any(isinstance(
                 val, str) for val in loan_amt.values()) else sum(loan_amt.values())
             record[CR.ER_DEDUCTION] = {CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                work_state, record, total_student_loan_amt)}
+                work_state, record, total_student_loan_amt,garn_fees)}
             record[CR.WITHHOLDING_BASIS] = CM.NA
             record[CR.WITHHOLDING_CAP] = CM.NA
             record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
@@ -378,7 +396,7 @@ class CalculationDataView:
             logger.error(f"Error calculating student loan: {e}")
             return {"error": f"Error calculating student loan: {e}"}
 
-    def calculate_state_tax_levy(self, record, config_data=None):
+    def calculate_state_tax_levy(self, record, config_data=None,garn_fees=None):
         """
         Calculate state tax levy garnishment.
         """
@@ -406,7 +424,7 @@ class CalculationDataView:
                 }]
                 record[CR.ER_DEDUCTION] = {
                     CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                        work_state, record, result[CR.WITHHOLDING_AMT]
+                        work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
                     )
                 }
                 
@@ -422,7 +440,7 @@ class CalculationDataView:
             logger.error(f"Error calculating state tax levy: {e}")
             return {"error": f"Error calculating state tax levy: {e}"}
 
-    def calculate_creditor_debt(self, record, config_data=None):
+    def calculate_creditor_debt(self, record, config_data=None,garn_fees=None):
         """
         Calculate creditor debt garnishment.
         """
@@ -450,7 +468,7 @@ class CalculationDataView:
                 record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
                     total_mandatory_deduction_val, 2)
                 record[CR.ER_DEDUCTION] = {CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, record, result[CR.WITHHOLDING_AMT])}
+                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees)}
                 record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
                 record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
                 record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
@@ -459,7 +477,7 @@ class CalculationDataView:
             logger.error(f"Error calculating creditor debt: {e}")
             return {"error": f"Error calculating creditor debt: {e}"}
         
-    def calculate_franchise_tax_board(self, record, config_data=None):
+    def calculate_franchise_tax_board(self, record, config_data=None,garn_fees=None):
         """
         Calculate creditor debt garnishment.
         """
@@ -489,7 +507,7 @@ class CalculationDataView:
                     total_mandatory_deduction_val, 2)
                 record[CR.ER_DEDUCTION] = {
                     CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, record, result[CR.WITHHOLDING_AMT]
+                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
                     )}
                 record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
                 record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
@@ -500,7 +518,7 @@ class CalculationDataView:
             return {"error": f"Error calculating franchise tax board: {e}"}
         
 
-    def calculate_multiple_garnishment(self, record, config_data=None):
+    def calculate_multiple_garnishment(self, record, config_data=None,garn_fees=None):
         """
         Calculate multiple garnishment and merge results with input record.
         """
@@ -509,7 +527,7 @@ class CalculationDataView:
             enhanced_record = record.copy()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             
-            multiple_garnishment = MultipleGarnishmentPriorityOrder(record, config_data)
+            multiple_garnishment = MultipleGarnishmentPriorityOrder(record, config_data,garn_fees)
             work_state = record.get(EE.WORK_STATE)
             result = multiple_garnishment.calculate()
             
@@ -646,7 +664,7 @@ class CalculationDataView:
             # Add employer deduction information
             enhanced_record[CR.ER_DEDUCTION] = {
                 CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, enhanced_record, total_withheld
+                    work_state, enhanced_record, total_withheld,garn_fees
                 )
             }
     
@@ -660,7 +678,7 @@ class CalculationDataView:
             enhanced_record['error'] = f"Error calculating multiple garnishment: {e}"
             return enhanced_record
                 
-    def calculate_garnishment_wrapper(self, record, config_data):
+    def calculate_garnishment_wrapper(self, record, config_data,garn_fees=None):
             """
             Wrapper function for parallel processing of garnishment calculations.
             """
@@ -671,7 +689,7 @@ class CalculationDataView:
                 garnishment_type = garnishment_data[0].get(
                     EE.GARNISHMENT_TYPE, "").strip().lower()
                 result = self.calculate_garnishment(
-                    garnishment_type, record, config_data)
+                    garnishment_type, record, config_data,garn_fees)
                 if result is None:
                     return CommonConstants.NOT_FOUND
                 elif result == CommonConstants.NOT_PERMITTED:
@@ -682,7 +700,7 @@ class CalculationDataView:
                 logger.error(f"Error in garnishment wrapper: {e}")
                 return {"error": f"Error in garnishment wrapper: {e}"}
 
-    def calculate_garnishment_result(self, case_info,batch_id, config_data):
+    def calculate_garnishment_result(self, case_info,batch_id, config_data,garn_fees=None):
         """
         Calculates garnishment result for a single case.
         """
@@ -692,10 +710,10 @@ class CalculationDataView:
             ee_id = case_info.get(EE.EMPLOYEE_ID)
             is_multiple_garnishment_type=case_info.get("is_multiple_garnishment_type")
             if is_multiple_garnishment_type ==True:
-                calculated_result=self.calculate_multiple_garnishment(case_info, config_data=config_data)
+                calculated_result=self.calculate_multiple_garnishment(case_info,config_data,garn_fees)
             else:
                 calculated_result = self.calculate_garnishment_wrapper(
-                case_info, config_data)
+                case_info, config_data,garn_fees)
             if isinstance(calculated_result, dict) and 'error' in calculated_result:
                 return {
                     "error": calculated_result["error"],
@@ -721,7 +739,7 @@ class CalculationDataView:
                 "error": f"Unexpected error during garnishment calculation for employee {case_info.get(EE.EMPLOYEE_ID)}: {str(e)}"
             }
 
-    def process_and_store_case(self, case_info, batch_id, config_data):
+    def process_and_store_case(self, case_info, batch_id, config_data,garn_fees=None):
         try:
             with transaction.atomic():
                 ee_id = case_info.get(EE.EMPLOYEE_ID)
@@ -730,7 +748,7 @@ class CalculationDataView:
                 pay_period = case_info.get(EE.PAY_PERIOD).title()
 
                 result = self.calculate_garnishment_result(
-                    case_info, batch_id, config_data)
+                    case_info, batch_id, config_data,garn_fees=None)
 
                 withholding_basis = result.get(CR.WITHHOLDING_BASIS)
                 withholding_cap = result.get(CR.WITHHOLDING_CAP)
