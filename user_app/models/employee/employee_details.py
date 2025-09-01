@@ -3,6 +3,9 @@ from user_app.utils import HashValue
 
 class EmployeeDetail(models.Model):
     ee_id = models.CharField(max_length=255, unique=True)
+    first_name = models.CharField(max_length=255)
+    middle_name = models.CharField(max_length=255, null=True, blank=True)
+    last_name = models.CharField(max_length=255, null=True, blank=True)
     client = models.ForeignKey('user_app.Client', on_delete=models.CASCADE, related_name="employees")
     ssn = models.CharField(max_length=64)
     age = models.IntegerField()

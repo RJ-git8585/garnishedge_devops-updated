@@ -49,6 +49,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         model = EmployeeDetail
         fields = [
             "id", "ee_id", "client",
+            "first_name", "middle_name", "last_name",
             "ssn", "age", "is_blind",
             "home_state", "work_state",
             "gender", "number_of_exemptions",

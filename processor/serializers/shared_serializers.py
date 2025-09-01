@@ -28,8 +28,11 @@ class ExemptConfigSerializer(serializers.ModelSerializer):
             'debt_type', 'is_filing_status', 'wage_basis',
             'wage_amount', 'percent_limit', 'state', 'pay_period'
         ]
+
+
 class ThresholdAmountSerializer(serializers.ModelSerializer):
     debt_type = serializers.CharField(source='config.debt_type', read_only=True)
+    ftb_type = serializers.CharField(source='config.ftb_type', read_only=True)
     is_filing_status = serializers.BooleanField(source='config.is_filing_status', read_only=True)
     wage_amount = serializers.FloatField(source='config.wage_amount', read_only=True)
     percent_limit = serializers.IntegerField(source='config.percent_limit', allow_null=True, read_only=True)
@@ -40,7 +43,7 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
     class Meta:
         model = ThresholdAmount
         fields = [
-            'id',
+            'id','ftb_type',
             'debt_type', 'is_filing_status', 'wage_amount', 'percent_limit',
             'state', 'pay_period', 'lower_threshold_amount', 'lower_threshold_percent1', 'lower_threshold_percent2',
             'mid_threshold_amount', 'mid_threshold_percent',
@@ -48,7 +51,7 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
             'de_range_lower_to_upper_threshold_percent',
             'de_range_lower_to_mid_threshold_percent',
             'de_range_mid_to_upper_threshold_percent',
-            'filing_status_percent','start_gt_5dec24','exempt_amt'
+            'filing_status_percent','start_gt_5dec24','exempt_amt',
         ]
 
 class PriorityOrderSerializer(serializers.ModelSerializer):
