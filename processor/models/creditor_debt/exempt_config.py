@@ -3,11 +3,11 @@ from .rule import CreditorDebtRule
 
 
 class CreditorDebtExemptAmtConfig(models.Model):
-    state_config = models.ForeignKey(
-        CreditorDebtRule,
-        on_delete=models.CASCADE,
-        related_name="creditor_debt_exempt_amounts"
-    )
+    # state_config = models.ForeignKey(
+    #     CreditorDebtRule,
+    #     on_delete=models.CASCADE,
+    #     related_name="creditor_debt_exempt_amounts"
+    # )
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, db_index=True)
     pay_period  = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE,db_index=True)
     minimum_hourly_wage_basis = models.CharField(
