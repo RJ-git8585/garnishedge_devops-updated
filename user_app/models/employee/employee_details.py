@@ -21,8 +21,6 @@ class EmployeeDetail(models.Model):
     support_second_family = models.BooleanField(default=False)
     spouse_age = models.IntegerField(null=True, blank=True)
     is_spouse_blind = models.BooleanField(null=True, blank=True)
-    record_import = models.DateTimeField(auto_now_add=True)
-    record_updated = models.DateTimeField(auto_now=True)  
     garnishment_fees_status = models.BooleanField(default=False)
     garnishment_fees_suspended_till = models.DateField(null=True, blank=True) 
     number_of_active_garnishment = models.IntegerField()

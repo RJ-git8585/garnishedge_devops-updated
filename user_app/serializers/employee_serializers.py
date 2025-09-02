@@ -57,7 +57,6 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             "marital_status", "number_of_student_default_loan",
             "number_of_dependent_child", "support_second_family",
             "spouse_age", "is_spouse_blind",
-            "record_import", "record_updated",
             "garnishment_fees_status", "garnishment_fees_suspended_till",
             "number_of_active_garnishment", "is_active",
             "created_at", "updated_at",
