@@ -53,6 +53,7 @@ class CreditorDebtHelper():
                             and (i.get("debt_type") is None or i.get("debt_type").lower() == debt_type or not i.get("debt_type")) 
                             and (i.get("start_gt_5dec24") is None or i.get("start_gt_5dec24") == garn_start_date)
                             and (i.get("home_state") is None or i.get("home_state").lower() == home_state.lower())
+                            and i.get("ftb_type" ) == ftb_type
                         ),
                         None
                     )
@@ -122,6 +123,7 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
+            print("config_data", config_data)
             lower_threshold_amount =float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
@@ -140,6 +142,9 @@ class CreditorDebtHelper():
                 withholding_amount = upper_threshold_percent * disposable_earning
                 return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
+            import traceback as t
+            t.print_exc()
+
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"

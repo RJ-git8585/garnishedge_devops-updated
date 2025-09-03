@@ -3,6 +3,9 @@ from user_app.utils import HashValue
 
 class EmployeeDetail(models.Model):
     ee_id = models.CharField(max_length=255, unique=True)
+    first_name = models.CharField(max_length=255)
+    middle_name = models.CharField(max_length=255, null=True, blank=True)
+    last_name = models.CharField(max_length=255, null=True, blank=True)
     client = models.ForeignKey('user_app.Client', on_delete=models.CASCADE, related_name="employees")
     ssn = models.CharField(max_length=64)
     age = models.IntegerField()
@@ -18,8 +21,6 @@ class EmployeeDetail(models.Model):
     support_second_family = models.BooleanField(default=False)
     spouse_age = models.IntegerField(null=True, blank=True)
     is_spouse_blind = models.BooleanField(null=True, blank=True)
-    record_import = models.DateTimeField(auto_now_add=True)
-    record_updated = models.DateTimeField(auto_now=True)  
     garnishment_fees_status = models.BooleanField(default=False)
     garnishment_fees_suspended_till = models.DateField(null=True, blank=True) 
     number_of_active_garnishment = models.IntegerField()
