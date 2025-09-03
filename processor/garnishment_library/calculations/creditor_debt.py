@@ -592,7 +592,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
 
         except Exception as e:
             import traceback as t
-            # print("dddd",t.print_exc())
+            print("dddd",t.print_exc())
             return Response(
                 {
                     "error": f"Exception in CreditorDebtCalculator.calculate: {str(e)}",

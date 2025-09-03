@@ -59,7 +59,7 @@ class PostCalculationView(APIView):
             logger.info(f"Processing batch {batch_id} with garnishment types: {all_garnishment_types}")
 
             #Step 2: Preload garnishment fees for all types
-            gar_fees= calculation_service.preload_garnishment_fees()
+            # gar_fees= calculation_service.preload_garnishment_fees()
 
             # Step 3: Preload configuration data for all required types
             full_config_data = calculation_service.preload_config_data(all_garnishment_types)
@@ -88,7 +88,7 @@ class PostCalculationView(APIView):
                     
                     # Submit case for processing
                     future = executor.submit(
-                        calculation_service.process_and_store_case, 
+                        calculation_service.calculate_garnishment_result, 
                         case_info, 
                         batch_id, 
                         case_config

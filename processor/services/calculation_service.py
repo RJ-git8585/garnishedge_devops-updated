@@ -117,23 +117,23 @@ class CalculationDataView:
             
         return config_data
     
-    def preload_garnishment_fees(self) -> list:
-        """
-        Preloads garnishment fee configurations from the DB once.
-        """
-        try:
-            fees = (
-            GarnishmentFees.objects
-            .select_related("state", "garnishment_type", "pay_period", "rule")
-            .all()
-            .order_by("-created_at")
-        )
-            serializer = GarnishmentFeesSerializer(fees, many=True)
-            logger.info("Successfully loaded garnishment fee config")
-            return serializer.data
-        except Exception as e:
-            logger.error(f"Error loading garnishment fees: {e}", exc_info=True)
-            return []
+    # def preload_garnishment_fees(self) -> list:
+    #     """
+    #     Preloads garnishment fee configurations from the DB once.
+    #     """
+    #     try:
+    #         fees = (
+    #         GarnishmentFees.objects
+    #         .select_related("state", "garnishment_type", "pay_period", "rule")
+    #         .all()
+    #         .order_by("-created_at")
+    #     )
+    #         serializer = GarnishmentFeesSerializer(fees, many=True)
+    #         logger.info("Successfully loaded garnishment fee config")
+    #         return serializer.data
+    #     except Exception as e:
+    #         logger.error(f"Error loading garnishment fees: {e}", exc_info=True)
+    #         return []
 
 
     def validate_fields(self, record, required_fields):
@@ -231,7 +231,7 @@ class CalculationDataView:
             GT.CHILD_SUPPORT: {
                 "fields": [
                     EE.ARREARS_GREATER_THAN_12_WEEKS, EE.SUPPORT_SECOND_FAMILY,
-                    CA.GROSS_PAY, PT.PAYROLL_TAXES
+                    CA.GROSS_PAY, PT.PAYROLL_TAXES,EE.HOME_STATE
                 ],
                 "calculate": self.calculate_child_support
 
@@ -474,6 +474,7 @@ class CalculationDataView:
                 record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
                 return record
         except Exception as e:
+            print("trace",t.print_exc())
             logger.error(f"Error calculating creditor debt: {e}")
             return {"error": f"Error calculating creditor debt: {e}"}
         
@@ -527,7 +528,7 @@ class CalculationDataView:
             enhanced_record = record.copy()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             
-            multiple_garnishment = MultipleGarnishmentPriorityOrder(record, config_data,garn_fees)
+            multiple_garnishment = MultipleGarnishmentPriorityOrder(record, config_data)
             work_state = record.get(EE.WORK_STATE)
             result = multiple_garnishment.calculate()
             
@@ -748,7 +749,7 @@ class CalculationDataView:
                 pay_period = case_info.get(EE.PAY_PERIOD).title()
 
                 result = self.calculate_garnishment_result(
-                    case_info, batch_id, config_data,garn_fees=None)
+                    case_info, batch_id, config_data,garn_fees)
 
                 withholding_basis = result.get(CR.WITHHOLDING_BASIS)
                 withholding_cap = result.get(CR.WITHHOLDING_CAP)
