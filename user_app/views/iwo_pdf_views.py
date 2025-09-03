@@ -339,6 +339,7 @@ class ConvertExcelToJsonView(APIView):
                 output_json["cases"].append({
                     EE.EMPLOYEE_ID: ee_id,
                     EE.WORK_STATE: first_row.get(EE.WORK_STATE, "").strip(),
+                    EE.HOME_STATE: first_row.get(EE.HOME_STATE, "").strip(),
                     EE.NO_OF_EXEMPTION_INCLUDING_SELF: first_row.get(EE.NO_OF_EXEMPTION_INCLUDING_SELF),
                     EE.IS_MULTIPLE_GARNISHMENT: first_row.get(EE.IS_MULTIPLE_GARNISHMENT),
                     EE.NO_OF_STUDENT_DEFAULT_LOAN: first_row.get(EE.NO_OF_STUDENT_DEFAULT_LOAN),

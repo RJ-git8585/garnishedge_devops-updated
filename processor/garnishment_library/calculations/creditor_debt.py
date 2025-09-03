@@ -123,7 +123,6 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
-            print("config_data", config_data)
             lower_threshold_amount =float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
