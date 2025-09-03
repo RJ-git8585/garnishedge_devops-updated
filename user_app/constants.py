@@ -22,6 +22,7 @@ class GarnishmentTypeFields:
     STATE_TAX_LEVY = 'state_tax_levy'
     CREDITOR_DEBT = 'creditor_debt'
     FRANCHISE_TAX_BOARD ='franchise_tax_board'
+    FTB_TYPE = 'ftb_type'
 
 
 class GarnishmentTypeResponse:

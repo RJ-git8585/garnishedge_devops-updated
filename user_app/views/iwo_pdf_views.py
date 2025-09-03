@@ -181,6 +181,7 @@ class ConvertExcelToJsonView(APIView):
                 lambda x: '_'.join(str(i)
                                    for i in x) if isinstance(x, tuple) else x
             ).str.lower().str.strip()
+            # garnishment_df[GT.FTB_TYPE] = garnishemnr
             
 
 
@@ -217,7 +218,7 @@ class ConvertExcelToJsonView(APIView):
                 'arrears_greater_than_12_weeks': EE.ARREARS_GREATER_THAN_12_WEEKS,
                 'workstate': EE.WORK_STATE,  'homestate': EE.HOME_STATE,
                 'no.ofexemptionsincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF, 'no.ofexemptionincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF,
-                'garntype': EE.GARNISHMENT_TYPE,
+                'garntype': EE.GARNISHMENT_TYPE, 'ftbtype' : GT.FTB_TYPE,
                 'arrearamount': CA.ARREAR_AMOUNT, 'arrear$': CA.ARREAR_AMOUNT,
                 'no. ofdependentchild(underthe ageof16)': EE.NO_OF_DEPENDENT_CHILD,
                 'isblind': EE.IS_BLIND, 'age': EE.AGE, 'spouseage': EE.SPOUSE_AGE,
@@ -237,6 +238,11 @@ class ConvertExcelToJsonView(APIView):
             garnishment_df.rename(columns=garnishment_column_map, inplace=True)
             payroll_df.rename(columns=payroll_column_map, inplace=True)
 
+            if 'ismultiplegarnishment' not in garnishment_df.columns:
+                garnishment_df['ismultiplegarnishment'] = False
+            else:
+                garnishment_df["is_multiple_garnishment_type"] = garnishment_df["is_multiple_garnishment_type"].fillna(0).astype(int).astype(bool)
+
             # # Strip 'case_id' fields before merging
             garnishment_df[EE.CASE_ID] = garnishment_df[EE.CASE_ID].str.strip()
             payroll_df[EE.CASE_ID] = payroll_df[EE.CASE_ID].str.strip()
@@ -251,12 +257,13 @@ class ConvertExcelToJsonView(APIView):
                 lambda col: col.dt.strftime('%m-%d-%Y'))
             
             # Merge on both employee ID and case ID
-            merged_df = pd.merge(payroll_df,
-                    garnishment_df,
-                    on=[EE.EMPLOYEE_ID, EE.CASE_ID],
-                    how='left',
-                    suffixes=('', '_garnishment')  
-                )
+            merged_df = pd.merge(
+                payroll_df,
+                garnishment_df,
+                on=[EE.EMPLOYEE_ID, EE.CASE_ID],
+                how='inner',  
+                suffixes=('', '_garnishment')
+            )
 
             # Clean specific columns
             if EE.FILING_STATUS in merged_df.columns and merged_df[EE.FILING_STATUS].notna().any():
@@ -274,6 +281,9 @@ class ConvertExcelToJsonView(APIView):
             )
 
             merged_df[EE.GARNISHMENT_TYPE] = merged_df[EE.GARNISHMENT_TYPE].str.strip().str.replace(' ', '_')
+            
+            merged_df[GT.FTB_TYPE] = merged_df[GT.FTB_TYPE].str.strip().str.lower().str.replace(' ', '_')
+
 
             # Generate dynamic batch ID
             batch_id = f"B{int(time.time() % 1000):03d}{random.choice(string.ascii_uppercase)}"
@@ -364,6 +374,7 @@ class ConvertExcelToJsonView(APIView):
                     EE.SUPPORT_SECOND_FAMILY: first_row.get(EE.SUPPORT_SECOND_FAMILY),
                     EE.NO_OF_DEPENDENT_CHILD: first_row.get(EE.NO_OF_DEPENDENT_CHILD, 0),
                     EE.ARREARS_GREATER_THAN_12_WEEKS: first_row.get(EE.ARREARS_GREATER_THAN_12_WEEKS),
+                    GT.FTB_TYPE : first_row.get(GT.FTB_TYPE, "None"),
                     EE.GARNISHMENT_DATA: garnishment_data,
                     EE.GARNISHMENT_ORDERS: garnishment_orders
                 })
