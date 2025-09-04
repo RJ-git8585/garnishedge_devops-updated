@@ -303,7 +303,7 @@ class CalculationMessages:
 
 
 class JSONPath:
-    DISPOSABLE_EARNING_RULES = 'configuration files/child support tables/disposable earning rules.json'
+    DISPOSABLE_EARNING_RULES = 'configuration_files/child_support_tables/disposable_earning_rules.json'
     MARRIED_FILING_JOINT_RETURN = 'configuration files/federal tables/married_filing_joint_return.json'
     ADDITIONAL_EXEMPT_AMOUNT = 'configuration files/federal tables/additional_exempt_amount.json'
     WITHHOLDING_RULES = 'configuration files/child support tables/withholding_rules.json'

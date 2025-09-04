@@ -214,12 +214,11 @@ class CalculationDataView:
         """
         try:
             fee = GarFeesRulesEngine(work_state).apply_rule(
-                record, withholding_amt,garn_fees)
+                record, withholding_amt)
             if isinstance(fee, (int, float)):
                 return round(fee, 2)
             return fee
         except Exception as e:
-            print("rrr",t.print_exc())
             logger.error(f"Error rounding garnishment fee: {e}")
             return f"Error calculating garnishment fee: {e}"
 
@@ -232,7 +231,7 @@ class CalculationDataView:
             GT.CHILD_SUPPORT: {
                 "fields": [
                     EE.ARREARS_GREATER_THAN_12_WEEKS, EE.SUPPORT_SECOND_FAMILY,
-                    CA.GROSS_PAY, PT.PAYROLL_TAXES,EE.HOME_STATE
+                    CA.GROSS_PAY, PT.PAYROLL_TAXES
                 ],
                 "calculate": self.calculate_child_support
 
@@ -336,7 +335,6 @@ class CalculationDataView:
                 })
             return record
         except Exception as e:
-            print("rr",t.print_exc())
             logger.error(f"Error calculating child support: {e}")
             return {"error": f"Error calculating child support: {e}"}
 
@@ -375,11 +373,18 @@ class CalculationDataView:
             total_mandatory_deduction_val = ChildSupport(
                 work_state).calculate_md(record)
             loan_amt = result["student_loan_amt"]
+            print("result",result)
+
 
             if len(loan_amt) == 1:
-                record[CR.AGENCY] = [{
-                    CR.WITHHOLDING_AMT: [
-                        {GR.STUDENT_DEFAULT_LOAN: loan_amt.values()}]}]
+                if isinstance(loan_amt, (int, float,list,dict)):
+                    record[CR.AGENCY] = [{
+                        CR.WITHHOLDING_AMT: [
+                            {GR.STUDENT_DEFAULT_LOAN: loan_amt.values()}]}]
+                else:
+                    record[CR.AGENCY] = [{
+                        CR.WITHHOLDING_AMT: [
+                            {GR.STUDENT_DEFAULT_LOAN: loan_amt}]}]
             else:
                 record[CR.AGENCY] = [{
                     CR.WITHHOLDING_AMT: [{GR.STUDENT_DEFAULT_LOAN: amt}
@@ -392,9 +397,11 @@ class CalculationDataView:
             record[CR.WITHHOLDING_CAP] = CM.NA
             record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
                     total_mandatory_deduction_val, 2)
-            record[CR.DISPOSABLE_EARNING] = result[CR.DISPOSABLE_EARNING]
+            record[CR.DISPOSABLE_EARNING] = result["disposable_earning"]
             return record
         except Exception as e:
+            import traceback as t
+            print("eee",t.print_exc())
             logger.error(f"Error calculating student loan: {e}")
             return {"error": f"Error calculating student loan: {e}"}
 
@@ -476,7 +483,6 @@ class CalculationDataView:
                 record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
                 return record
         except Exception as e:
-            print("trace",t.print_exc())
             logger.error(f"Error calculating creditor debt: {e}")
             return {"error": f"Error calculating creditor debt: {e}"}
         
@@ -674,7 +680,6 @@ class CalculationDataView:
             return enhanced_record
             
         except Exception as e:
-
             import traceback as t
             logger.error(f"Error calculating multiple garnishment: {e}")
             enhanced_record = record.copy()

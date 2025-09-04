@@ -88,9 +88,11 @@ class FranchaiseTaxBoard(StateWiseFTBStateTaxLevyFormulas):
             return self.cal_california(ftb_type, config_data, disposable_earning)
             
         except Exception as e:
+            import traceback as t
+            print(t.print_exc())
             return Response(
                 {
-                    "error": "Exception in calculating ftb for California: "
+                    "error": f"Exception in calculating ftb for California: {e} "
                 }
             )
         
