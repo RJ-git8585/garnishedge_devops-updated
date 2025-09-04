@@ -10,9 +10,6 @@ class ExemptRule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['state'])
-        ]
         db_table = "exempt_rule"
         verbose_name = "exempt_rule"
 

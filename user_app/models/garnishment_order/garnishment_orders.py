@@ -1,7 +1,7 @@
 from django.db import models
 
 class GarnishmentOrder(models.Model):
-    case_id = models.CharField(max_length=255, unique=True)
+    case_id = models.CharField(max_length=255, unique=True,db_index=True)
     employee = models.ForeignKey(
         'user_app.EmployeeDetail', on_delete=models.CASCADE, related_name="garnishments")
     work_state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="work_garnishments")
@@ -41,9 +41,6 @@ class GarnishmentOrder(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['case_id']),
-        ]
         db_table = "garnishment_order"
 
 

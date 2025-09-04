@@ -12,10 +12,6 @@ class PEO(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['peo_id']),
-        ]
-
         db_table = "peo"
 
     def save(self, *args, **kwargs):
@@ -23,8 +19,6 @@ class PEO(models.Model):
             self.tax_id = HashValue.hash_value(self.tax_id)
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return self.name
 
 
 

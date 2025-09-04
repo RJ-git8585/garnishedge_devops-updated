@@ -7,7 +7,7 @@ class GarnishmentSuspension(models.Model):
     Represents a temporary halt of garnishment for a specific order.
     """
     order = models.ForeignKey(
-        GarnishmentOrder, on_delete=models.CASCADE, related_name="suspensions"
+        GarnishmentOrder, on_delete=models.CASCADE, related_name="suspensions",db_index=True
     )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
@@ -20,7 +20,6 @@ class GarnishmentSuspension(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["order"]),
             models.Index(fields=["start_date", "end_date"]),
         ]
         db_table = "garnishment_suspension"

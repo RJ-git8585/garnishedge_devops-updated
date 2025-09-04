@@ -9,8 +9,5 @@ class StateTaxLevyRuleEditPermission(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['state'])
-        ]
         db_table = "state_tax_levy_rule_edit_permission"
         verbose_name ="state_tax_levy_rule_edit_permission"

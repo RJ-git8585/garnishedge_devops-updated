@@ -3,7 +3,7 @@ from django.db import models
 
 class Payroll(models.Model):
     state = models.ForeignKey("processor.State", on_delete=models.CASCADE, related_name="payrolls")
-    ee_id = models.ForeignKey("user_app.EmployeeDetail", on_delete=models.CASCADE, related_name="payrolls")
+    ee_id = models.ForeignKey("user_app.EmployeeDetail", on_delete=models.CASCADE, related_name="payrolls",db_index=True)
     payroll_date = models.DateField()
     pay_date = models.DateField()
     gross_pay = models.DecimalField(
@@ -34,7 +34,5 @@ class Payroll(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['ee_id'])
-        ]
+
         db_table = "payroll"

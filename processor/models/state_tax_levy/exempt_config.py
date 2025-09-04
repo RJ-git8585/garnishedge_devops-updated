@@ -26,7 +26,6 @@ class StateTaxLevyExemptAmtConfig(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['state']),
             models.Index(fields=['pay_period', 'state']),
         ]
         db_table = "state_tax_levy_exempt_amt_config"

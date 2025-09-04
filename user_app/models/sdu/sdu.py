@@ -17,8 +17,4 @@ class SDU(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=["state_id"]),
-            models.Index(fields=["order"]),
-        ]
         db_table = "sdu"

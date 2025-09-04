@@ -7,8 +7,8 @@ class GarnishmentBatchData(models.Model):
         on_delete=models.CASCADE,
         related_name='garnishment_data'
     )
-    ee_id = models.CharField(max_length=255)
-    case_id = models.CharField(max_length=255, unique=True)
+    ee_id = models.CharField(max_length=255,db_index=True)
+    case_id = models.CharField(max_length=255, unique=True,db_index=True)
     garnishment_type = models.CharField(max_length=255)
     ordered_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
@@ -27,7 +27,6 @@ class GarnishmentBatchData(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['ee_id']),
             models.Index(fields=['ee_id', 'case_id']),
         ]
         db_table = "garnishment_batch_data"

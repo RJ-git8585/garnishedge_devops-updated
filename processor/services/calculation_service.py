@@ -183,7 +183,7 @@ class CalculationDataView:
                 f"Malformed suspension date for employee {record[EE.EMPLOYEE_ID]}: {e}")
             return True
 
-    def get_garnishment_fees(self, record, total_withhold_amt):
+    def get_garnishment_fees(self, record, total_withhold_amt,garn_fees=None):
         """
         Calculates garnishment fees based on employee data and suspension status.
         """
@@ -219,6 +219,7 @@ class CalculationDataView:
                 return round(fee, 2)
             return fee
         except Exception as e:
+            print("rrr",t.print_exc())
             logger.error(f"Error rounding garnishment fee: {e}")
             return f"Error calculating garnishment fee: {e}"
 
@@ -335,6 +336,7 @@ class CalculationDataView:
                 })
             return record
         except Exception as e:
+            print("rr",t.print_exc())
             logger.error(f"Error calculating child support: {e}")
             return {"error": f"Error calculating child support: {e}"}
 
@@ -672,6 +674,7 @@ class CalculationDataView:
             return enhanced_record
             
         except Exception as e:
+
             import traceback as t
             logger.error(f"Error calculating multiple garnishment: {e}")
             enhanced_record = record.copy()

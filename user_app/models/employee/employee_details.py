@@ -2,7 +2,7 @@ from django.db import models
 from user_app.utils import HashValue
 
 class EmployeeDetail(models.Model):
-    ee_id = models.CharField(max_length=255, unique=True)
+    ee_id = models.CharField(max_length=255, unique=True,db_index=True)
     first_name = models.CharField(max_length=255)
     middle_name = models.CharField(max_length=255, null=True, blank=True)
     last_name = models.CharField(max_length=255, null=True, blank=True)
@@ -29,13 +29,8 @@ class EmployeeDetail(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=['ee_id'])
-        ]
         db_table = "employee_detail"
 
-    def __str__(self):
-        return f"{self.home_state} {self.work_state} ({self.ssn})"
 
     # def save(self, *args, **kwargs):
     #     if self.ssn and len(self.ssn) != 64:  
