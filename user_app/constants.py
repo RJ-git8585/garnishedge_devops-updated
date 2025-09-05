@@ -66,6 +66,9 @@ class PayrollTaxesFields:
 
 class EmployeeFields:
     EMPLOYEE_ID = 'ee_id'
+    FIRST_NAME = 'first_name'
+    MIDDLE_NAME = 'middle_name'
+    LAST_NAME = 'last_name'
     STATE = 'state'
     CASE_ID = 'case_id'
     WORK_STATE = 'work_state'

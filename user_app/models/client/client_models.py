@@ -11,6 +11,7 @@ class Client(models.Model):
     legal_name = models.CharField(max_length=255)
     dba = models.CharField(max_length=255)
     industry_type = models.CharField(max_length=100)
+    service_type =  models.CharField(max_length=255, blank=True, null=True)
     tax_id = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

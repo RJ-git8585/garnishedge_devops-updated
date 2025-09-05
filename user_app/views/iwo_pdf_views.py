@@ -282,7 +282,10 @@ class ConvertExcelToJsonView(APIView):
 
             merged_df[EE.GARNISHMENT_TYPE] = merged_df[EE.GARNISHMENT_TYPE].str.strip().str.replace(' ', '_')
             
-            merged_df[GT.FTB_TYPE] = merged_df[GT.FTB_TYPE].str.strip().str.lower().str.replace(' ', '_')
+            if GT.FTB_TYPE in merged_df.columns:
+                 merged_df[GT.FTB_TYPE] = (merged_df[GT.FTB_TYPE].fillna('').astype(str).str.strip().str.lower().str.replace(' ', '_').replace('', None))
+            else:
+                merged_df[GT.FTB_TYPE] = None
 
 
             # Generate dynamic batch ID
