@@ -16,7 +16,7 @@ class ChildSupportHelper:
 
     def __init__(self, work_state):
         self.de_rules_file = os.path.join(
-            settings.BASE_DIR, 'User_app', JSONPath.DISPOSABLE_EARNING_RULES
+            settings.BASE_DIR, 'user_app', JSONPath.DISPOSABLE_EARNING_RULES
         )
         self.work_state = StateAbbreviations(
             work_state
