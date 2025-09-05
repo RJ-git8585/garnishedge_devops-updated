@@ -10,7 +10,7 @@ app_name = 'order'
 urlpatterns = [
 
     path('details/', GarnishmentOrderAPI.as_view(), name='garnishment-order-list-create'),
-    path('details/<int:id>/', GarnishmentOrderDetailAPI.as_view(), name='garnishment-order-detail'),
+    path('details/<int:pk>/', GarnishmentOrderDetailAPI.as_view(), name='garnishment-order-detail'),
 
     # CRUD for the garnishment order
     path('order-details/', GarnishmentOrderDetails.as_view(), name='order_details'),
