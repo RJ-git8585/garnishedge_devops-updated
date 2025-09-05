@@ -109,7 +109,7 @@ class ChildSupportHelper:
             raise ValueError(
                 f"Error calculating disposable earnings: {str(e)}")
 
-    def calculate_wl(self, employee_id, supports_2nd_family, arrears_12ws, disposable_earnings, garnishment_data):
+    def calculate_wl(self, employee_id, supports_2nd_family, arrears_12ws, disposable_earnings, garnishment_data,issuing_state):
         """
         Calculates the withholding limit (WL) for the employee based on state rules from the DB.
         Args:
@@ -140,6 +140,9 @@ class ChildSupportHelper:
                 order_gt_one = None
 
             supports_2nd_family = None if int(rule_number) == 2 or int(rule_number) == 3 else supports_2nd_family
+
+            work_states = "missouri" if self.work_state=="missouri" else None
+            issuing_state = "missouri" if issuing_state=="missouri" else None
             
             return WLIdentifier().find_wl_value(
                 work_state=self.work_state,
@@ -147,7 +150,9 @@ class ChildSupportHelper:
                 supports_2nd_family=supports_2nd_family,
                 arrears_of_more_than_12_weeks=arrears_12w_n,
                 de_gt_145=de_gt_145,
-                order_gt_one=order_gt_one
+                order_gt_one=order_gt_one,
+                issuing_state=issuing_state,
+                work_states=work_states
             )
 
         except Exception as e:
@@ -237,6 +242,7 @@ class SingleChild(ChildSupportHelper):
             commission_and_bonus = record.get(CalculationFields.COMMISSION_AND_BONUS, 0)
             non_accountable_allowances = record.get(CalculationFields.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PayrollTaxesFields.PAYROLL_TAXES)
+            issuing_state = record.get(EmployeeFields.ISSUING_STATE)
             employee_id = record.get(EmployeeFields.EMPLOYEE_ID)
             supports_2nd_family = record.get(EmployeeFields.SUPPORT_SECOND_FAMILY)
             arrears_12ws = record.get(EmployeeFields.ARREARS_GREATER_THAN_12_WEEKS)
@@ -246,12 +252,9 @@ class SingleChild(ChildSupportHelper):
             gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = self.calculate_md(payroll_taxes)
             de = self.calculate_de(gross_pay, mandatory_deductions)
-            withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data)
+            withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
             ade = self.calculate_ade(withholding_limit, de)
-
-
             
-
             # Get support amounts
             child_amt = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)[0]
             arrear_amt = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)[0]
@@ -287,12 +290,13 @@ class MultipleChild(ChildSupportHelper):
             supports_2nd_family = record.get(EmployeeFields.SUPPORT_SECOND_FAMILY)
             arrears_12ws = record.get(EmployeeFields.ARREARS_GREATER_THAN_12_WEEKS)
             garnishment_data = record.get('garnishment_data')
+            issuing_state = record.get(EmployeeFields.ISSUING_STATE)
 
             # Calculate intermediate values
             gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = self.calculate_md(payroll_taxes)
             de = self.calculate_de(gross_pay, mandatory_deductions)
-            withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data)
+            withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
             ade = self.calculate_ade(withholding_limit, de)
 
             # Get support amounts ONCE - avoid redundant calculations

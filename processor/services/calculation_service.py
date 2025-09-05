@@ -105,14 +105,13 @@ class CalculationDataView:
 
                     serializer = ThresholdAmountSerializer(threshold_qs, many=True)
                     config_data["franchise_tax_board"] = serializer.data
-
                     loaded_types.append("franchise_tax_board")
-
                     logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
             
         except Exception as e:
+            print(t.print_exc())
             logger.error(f"Critical error preloading config data: {e}", exc_info=True)
             
         return config_data

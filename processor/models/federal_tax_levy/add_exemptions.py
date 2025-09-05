@@ -1,6 +1,7 @@
 from django.db import models
 
 class AddExemptions(models.Model):
+    add_id = models.AutoField(primary_key=True)
     year = models.ForeignKey("processor.IRSPublication", on_delete=models.CASCADE,db_index=True)
     fs = models.ForeignKey("processor.FedFilingStatus", on_delete=models.CASCADE,db_index=True)
     num_exemptions = models.PositiveIntegerField()

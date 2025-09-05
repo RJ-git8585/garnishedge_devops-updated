@@ -107,7 +107,7 @@ class EmployeeFields:
     GARNISHMENT_FEES_SUSPENDED_TILL = 'garnishment_fees_suspended_till'
     IS_MULTIPLE_GARNISHMENT ='is_multiple_garnishment_type'
     GARNISHMENT_ORDERS ="garnishment_orders"
-
+    ISSUING_STATE ="issuing_state"
 
 class ChildSupportFields:
     PRORATE = "prorate"

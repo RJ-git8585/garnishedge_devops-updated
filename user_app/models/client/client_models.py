@@ -4,7 +4,7 @@ from user_app.utils import HashValue
 from processor.models.shared_model.state import State
 
 class Client(models.Model):
-    client_id = models.CharField(max_length=50, unique=True,db_index=True)
+    client_id = models.CharField(max_length=50, unique=True)
     peo = models.ForeignKey(PEO, on_delete=models.CASCADE, related_name="clients")
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="clients")
     pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE, related_name="clients")
@@ -17,6 +17,10 @@ class Client(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        indexes = [
+            models.Index(fields=['client_id']),
+        ]
+
         db_table = "client"
 
 

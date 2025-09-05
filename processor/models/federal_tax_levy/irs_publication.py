@@ -5,6 +5,10 @@ class IRSPublication(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    
     class Meta:
         db_table = "irs_publication_1494"
         verbose_name = "irs_publication_1494"
+
+    def __str__(self):
+        return str(self.year)

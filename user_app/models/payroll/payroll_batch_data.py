@@ -7,8 +7,8 @@ class PayrollBatchData(models.Model):
         on_delete=models.CASCADE,
         related_name='payroll_data'
     )
-    ee_id = models.CharField(max_length=255, unique=True,db_index=True)
-    case_id = models.CharField(max_length=255, unique=True,db_index=True)
+    ee_id = models.CharField(max_length=255, unique=True)
+    case_id = models.CharField(max_length=255, unique=True)
     wages = models.DecimalField(max_digits=10, decimal_places=2)
     commission_and_bonus = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
@@ -49,6 +49,7 @@ class PayrollBatchData(models.Model):
 
     class Meta:
         indexes = [
+            models.Index(fields=['case_id']),
             models.Index(fields=['ee_id', 'case_id']),
         ]
 

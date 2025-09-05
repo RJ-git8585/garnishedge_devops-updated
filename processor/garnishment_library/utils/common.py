@@ -115,7 +115,7 @@ class WLIdentifier:
             raise RuntimeError(f"Error retrieving rule for state '{work_state}': {e}")
         
 
-    def find_wl_value(self, work_state, employee_id, supports_2nd_family, arrears_of_more_than_12_weeks, de_gt_145, order_gt_one):
+    def find_wl_value(self, work_state, employee_id, supports_2nd_family, arrears_of_more_than_12_weeks, de_gt_145, order_gt_one,issuing_state,work_states):
         """
         Finds the withholding limit (WL) value based on state rule and employee attributes.
         """
@@ -126,9 +126,10 @@ class WLIdentifier:
                 "rule": int(rule_obj.rule), 
                 "supports_2nd_family": supports_2nd_family,
                 "arrears_of_more_than_12_weeks": arrears_of_more_than_12_weeks,
-                "number_of_orders": None, 
-                "weekly_de_code": None, 
-                
+                "number_of_orders": order_gt_one, 
+                "weekly_de_code": de_gt_145, 
+                "issuing_state": issuing_state,
+                "work_state":work_states
             }
 
             if order_gt_one:
@@ -136,7 +137,6 @@ class WLIdentifier:
             if de_gt_145:
                 filters["weekly_de_code"] = de_gt_145
 
-            # print("limitssss",limitsss)
 
             limit = WithholdingLimit.objects.filter(**filters).first()
             
