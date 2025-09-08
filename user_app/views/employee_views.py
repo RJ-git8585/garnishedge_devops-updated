@@ -561,7 +561,7 @@ class EmployeeDetailAPI(APIView):
         Get paginated list of active employees.
         """
         try:
-            employees = EmployeeDetail.objects.filter(is_active=True).order_by("-created_at")
+            employees = EmployeeDetail.objects.all().order_by("-created_at")
             result = PaginationHelper.paginate_queryset(
                 employees, request, EmployeeDetailSerializer
             )
