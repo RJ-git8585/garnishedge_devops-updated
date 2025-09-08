@@ -569,7 +569,7 @@ class EmployeeDetailAPI(APIView):
                 message="Employees fetched successfully",
                 data=result,
                 status_code=status.HTTP_200_OK
-            )
+            )  
         except Exception as e:
             return ResponseHelper.error_response(
                 message="Failed to fetch employees",
@@ -618,7 +618,7 @@ class EmployeeDetailByIdAPI(APIView):
 
     def get_object(self, pk):
         try:
-            return EmployeeDetail.objects.get(pk=pk, is_active=True)
+            return EmployeeDetail.objects.get(pk=pk)
         except EmployeeDetail.DoesNotExist:
             return None
 
