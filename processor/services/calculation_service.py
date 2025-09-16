@@ -11,7 +11,7 @@ from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerial
 )
 from user_app.serializers import EmployeeDetailSerializer
 
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,WithholdingProcessor,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
 from user_app.constants import (
     EmployeeFields as EE,
@@ -94,7 +94,7 @@ class CalculationDataView:
                 # except Exception as e:
                 #     logger.error(f"Error loading {GT.CHILD_SUPPORT} config: {e}")
 
-            if "franchise_tax_board" in garnishment_types:
+            if GT.FRANCHISE_TAX_BOARD in garnishment_types:
                 try:
                     queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=6)
 
@@ -109,30 +109,29 @@ class CalculationDataView:
                     logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
+
             
         except Exception as e:
-            print(t.print_exc())
-            logger.error(f"Critical error preloading config data: {e}", exc_info=True)
-            
+            logger.error(f"Critical error preloading config data: {e}", exc_info=True) 
         return config_data
     
-    # def preload_garnishment_fees(self) -> list:
-    #     """
-    #     Preloads garnishment fee configurations from the DB once.
-    #     """
-    #     try:
-    #         fees = (
-    #         GarnishmentFees.objects
-    #         .select_related("state", "garnishment_type", "pay_period", "rule")
-    #         .all()
-    #         .order_by("-created_at")
-    #     )
-    #         serializer = GarnishmentFeesSerializer(fees, many=True)
-    #         logger.info("Successfully loaded garnishment fee config")
-    #         return serializer.data
-    #     except Exception as e:
-    #         logger.error(f"Error loading garnishment fees: {e}", exc_info=True)
-    #         return []
+    def preload_garnishment_fees(self) -> list:
+        """
+        Preloads garnishment fee configurations from the DB once.
+        """
+        try:
+            fees = (
+            GarnishmentFees.objects
+            .select_related("state", "garnishment_type", "pay_period", "rule")
+            .all()
+            .order_by("-created_at")
+        )
+            serializer = GarnishmentFeesSerializer(fees, many=True)
+            logger.info("Successfully loaded garnishment fee config")
+            return serializer.data
+        except Exception as e:
+            logger.error(f"Error loading garnishment fees: {e}", exc_info=True)
+            return []
 
 
     def validate_fields(self, record, required_fields):
@@ -255,12 +254,19 @@ class CalculationDataView:
                 ],
                 "calculate": self.calculate_creditor_debt
             },
-            "franchise_tax_board": {
+            GT.FRANCHISE_TAX_BOARD: {
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
                 "calculate": self.calculate_franchise_tax_board
             },
+            GT.CHILD_SUPPORT_PRIORITY: {
+                "fields": [
+                    EE.ARREARS_GREATER_THAN_12_WEEKS, EE.SUPPORT_SECOND_FAMILY,
+                    CA.GROSS_PAY, PT.PAYROLL_TAXES
+                ],
+                "calculate": self.calculate_child_support_priority
+            }
 
         }
         rule = garnishment_rules.get(garnishment_type_lower)
@@ -526,6 +532,23 @@ class CalculationDataView:
             return {"error": f"Error calculating franchise tax board: {e}"}
         
 
+    def calculate_child_support_priority(self, record, config_data=None,garn_fees=None):
+        """
+        Calculate creditor debt garnishment.
+        """
+        try:
+            child_support_priority = WithholdingProcessor()
+            payroll_taxes = record.get(PT.PAYROLL_TAXES)
+            work_state = record.get(EE.WORK_STATE)
+            result = child_support_priority.calculate(
+                record)
+            return result
+        except Exception as e:
+            print(t.print_exc())
+            logger.error(f"Error calculating franchise tax board: {e}")
+            return {"error": f"Error calculating franchise tax board: {e}"}
+
+
     def calculate_multiple_garnishment(self, record, config_data=None,garn_fees=None):
         """
         Calculate multiple garnishment and merge results with input record.
@@ -675,11 +698,9 @@ class CalculationDataView:
                     work_state, enhanced_record, total_withheld,garn_fees
                 )
             }
-    
             return enhanced_record
             
         except Exception as e:
-            import traceback as t
             logger.error(f"Error calculating multiple garnishment: {e}")
             enhanced_record = record.copy()
             enhanced_record['calculation_status'] = 'error'

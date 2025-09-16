@@ -65,6 +65,7 @@ class PriorityOrderSerializer(serializers.ModelSerializer):
         ]
 
 
+
 class ThresholdAmountCoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = ThresholdAmount
@@ -133,8 +134,8 @@ class ThresholdConditionSerializer(serializers.ModelSerializer):
         model = ThresholdCondition
         fields = [
             "id",
-            "threshold_id",  # for POST/PUT
-            "threshold",     # for GET
+            "threshold_id",  
+            "threshold",     
             "multiplier_lt",
             "condition_expression_lt",
             "multiplier_mid",

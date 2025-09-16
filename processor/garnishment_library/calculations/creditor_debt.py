@@ -34,7 +34,7 @@ class CreditorDebtHelper():
         elif filed_date < date:
             return False
         
-    def _exempt_amt_config_data(self,config_data, state, pay_period,garn_start_date, is_consumer_debt=None, non_consumer_debt=None,home_state=None):
+    def _exempt_amt_config_data(self,config_data, state, pay_period,garn_start_date, is_consumer_debt=None, non_consumer_debt=None,home_state=None,ftb_type=None):
             """
             Helper to fetch the correct config for the state, pay period, and optionally debt type.
             """

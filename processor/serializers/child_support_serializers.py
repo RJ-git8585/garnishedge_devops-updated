@@ -29,6 +29,18 @@ class WithholdingLimitSerializer(serializers.ModelSerializer):
             'weekly_de_code'
         ]
 
+
+class PriorityDeductionSerializer(serializers.ModelSerializer):
+    state = serializers.CharField(source='state.state', read_only=True)         
+    type = serializers.CharField(source='deduction_type.type', read_only=True) 
+
+    class Meta:
+        model = ChildSupportPriority
+        fields = [
+            'priority_order',  'type', 'state'
+        ]
+
+
 class WithholdingRulesWithLimitsSerializer(serializers.ModelSerializer):
     state = serializers.CharField(source='state.state', read_only=True)
     withholding_limits = WithholdingLimitSerializer(many=True, read_only=True)

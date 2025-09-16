@@ -51,6 +51,7 @@ class DataValidationError(GarnishmentError):
 
 
 
+
 class MultipleGarnishmentPriorityHelper:
     """
     Class to determine the priority order of multiple garnishments based on state rules.
@@ -267,7 +268,8 @@ class MultipleGarnishmentPriorityHelper:
             result={}
             
             # Extract and validate data
-            state_name = record.get(EE.WORK_STATE).strip().upper()
+            state_name = record.get(EE.WORK_STATE).strip().lower()
+            issuing_state = record.get(EE.ISSUING_STATE).strip().lower()
             wages = self._validate_numeric_input(record.get(CF.WAGES, 0), "wages")
             commission_and_bonus = self._validate_numeric_input(record.get(CF.COMMISSION_AND_BONUS, 0), "commission_and_bonus")
             pay_period = record.get(EE.PAY_PERIOD.lower()).strip().lower()
@@ -295,7 +297,7 @@ class MultipleGarnishmentPriorityHelper:
                 gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
                 mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
                 disposable_earnings = cs_helper.calculate_de(gross_pay, mandatory_deductions)
-                withholding_limit = cs_helper.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, disposable_earnings, garnishment_data)
+                withholding_limit = cs_helper.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, disposable_earnings, garnishment_data,issuing_state)
                 ade = cs_helper.calculate_ade(withholding_limit, disposable_earnings)
                 de_twenty_five_percent = (disposable_earnings*.25)
 
@@ -438,4 +440,6 @@ class MultipleGarnishmentPriorityHelper:
             import traceback as t
             # print(t.print_exc())
             raise CalculationError(f"Error calculating prorated amounts: {e}")
+        
+
         

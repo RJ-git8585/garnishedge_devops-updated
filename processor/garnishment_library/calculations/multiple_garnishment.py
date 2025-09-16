@@ -38,6 +38,7 @@ class InsufficientDataError(GarnishmentError):
     """Error for when required data is missing from the input record."""
     pass
 
+
 class MultipleGarnishmentPriorityOrder:
     
     # --- Constants for Readability and Maintenance ---
@@ -46,10 +47,10 @@ class MultipleGarnishmentPriorityOrder:
     
     _CALCULATOR_FACTORIES = {
         GT.CHILD_SUPPORT: lambda record, config_data=None: MultipleGarnishmentPriorityHelper().child_support_helper(record),
-        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record, config_data.get(GT.FEDERAL_TAX_LEVY)),
+        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record, config_data=config_data.get(GT.FEDERAL_TAX_LEVY)),
         GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None: StudentLoanCalculator().calculate(record),
-        GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record,config_data.get(GT.STATE_TAX_LEVY)),
-        GT.CREDITOR_DEBT: lambda record, config_data=None: CreditorDebtCalculator().calculate(record, config_data.get(GT.CREDITOR_DEBT)),
+        GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY)),
+        GT.CREDITOR_DEBT: lambda record, config_data=None: CreditorDebtCalculator().calculate(record, config_data=config_data.get(GT.CREDITOR_DEBT)),
     }
 
     def __init__(self, record: Dict[str, Any],config_data :Dict[str,Any]):
@@ -78,7 +79,7 @@ class MultipleGarnishmentPriorityOrder:
             
             pri_order_qs = PriorityOrders.objects.select_related('state', 'garnishment_type').filter(
                 state__state__iexact=work_state_name
-            )
+            ).order_by('priority_order')
             
             if not pri_order_qs.exists():
                 logger.warning(f"No priority order found for state: {self.work_state}")
@@ -141,6 +142,8 @@ class MultipleGarnishmentPriorityOrder:
                 # Skip non-numeric values silently
                 pass
         return total
+
+
 
     def calculate(self) -> Dict[str, Any]:
 
@@ -210,6 +213,7 @@ class MultipleGarnishmentPriorityOrder:
                 processed_result = {}
 
                 if g_type == GT.CHILD_SUPPORT:
+                    #processed_result = self.mg_helper.distribute_child_support_amount(result, available_for_garnishment)
                     processed_result= self.finance._convert_result_structure(result)
                     processed_result["ade"]=result["ade"]
                     processed_result["de"]=result["de"]
@@ -259,11 +263,12 @@ class MultipleGarnishmentPriorityOrder:
 
 
                 garnishment_results[g_type] = processed_result
+                # available_for_garnishment -= amount_withheld
                 calculated_count += 1
 
             except Exception as e:
                 import traceback as t
-                # print(t.print_exc())
+                print(t.print_exc())
                 logger.exception(f"Error calculating garnishment '{g_type}' for state '{self.work_state}'.")
                 garnishment_results[g_type] = {"withholding_amt": 0, "calculation_status": "calculation_error", "error_details": str(e)}
 
