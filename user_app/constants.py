@@ -23,6 +23,7 @@ class GarnishmentTypeFields:
     CREDITOR_DEBT = 'creditor_debt'
     FRANCHISE_TAX_BOARD ='franchise_tax_board'
     FTB_TYPE = 'ftb_type'
+    BANKRUPTCY_AMOUNT = 'bankruptcy_amount'
 
 
 class GarnishmentTypeResponse:
@@ -291,6 +292,8 @@ class GarnishmentConstants:
 
 class CalculationMessages:
     DE_LE_LOWER = "Disposable Earning <= Lower Threshold Amount"
+    DE_BANKRUPTCY_LE_LOWER = "Available For Bankruptcy <= Lower Threshold Amount"
+    DE_BANKRUPTCY_LE_UPPER = ""
     DE_GT_LOWER = "Disposable Earning > Lower Threshold Amount"
     DE_GT_LOWER_LT_UPPER = "Lower Threshold Amount <= Disposable Earning <= Upper Threshold Amount"
     DE_GT_UPPER = "Disposable Earning > Upper Threshold Amount"
