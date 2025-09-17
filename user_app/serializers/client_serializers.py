@@ -60,6 +60,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "legal_name",
             "dba",
             "industry_type",
+            "service_type",
             "tax_id",
             "is_active",
             "created_at",

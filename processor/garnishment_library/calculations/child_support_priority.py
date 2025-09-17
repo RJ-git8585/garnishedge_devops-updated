@@ -107,8 +107,6 @@ class EmployeeRecord:
     
     # Additional deduction types from DeductionType enum
     house_payment: Decimal = Decimal("0")
-    remaining_child_support_arrears: Decimal = Decimal("0")
-    remaining_spousal_support_arrears: Decimal = Decimal("0")
     
     # Additional priority types to match DeductionType enum
     medical_support_arrears: Decimal = Decimal("0")
@@ -439,7 +437,7 @@ class WithholdingProcessor:
                 "calculations": {
                     "gross_pay": float(record.gross_pay),
                     "disposable_earnings": float(record.disposable_earnings),
-                    "allowable_disposable_earnings": float(record.allowable_disposable_earnings),
+                    "allowable_disposable_earnings": round(float(record.allowable_disposable_earnings), 1),
                     "amount_ordered_withheld": float(record.amount_ordered_withheld),
                     "total_withholding_amount": float(record.withholding_amount)
                 },
@@ -824,7 +822,7 @@ class WithholdingProcessor:
                     return Decimal(str(sum(cs_amounts.values())))
                 return Decimal(str(cs_amounts))
             
-            elif deduction_type in [DeductionType.CHILD_SUPPORT_ARREAR, DeductionType.CHILD_SUPPORT_ARREARS_DOT, DeductionType.REMAINING_CHILD_SUPPORT_ARREARS]:
+            elif deduction_type in [DeductionType.CHILD_SUPPORT_ARREAR, DeductionType.REMAINING_CHILD_SUPPORT_ARREAR]:
                 # Use calculator for arrears
                 arrear_amounts = cs_calculator.calculate_arrear()
                 if isinstance(arrear_amounts, dict):
@@ -837,8 +835,8 @@ class WithholdingProcessor:
                 DeductionType.CURRENT_SPOUSAL_SUPPORT: record.current_spousal_support,
                 DeductionType.MEDICAL_SUPPORT_ARREAR: record.medical_support_arrear,
                 DeductionType.SPOUSAL_SUPPORT_ARREAR: record.spousal_support_arrear,
-                DeductionType.REMAINING_SPOUSAL_SUPPORT_ARREARS: record.remaining_spousal_support_arrear,
-                DeductionType.REMAINING_CHILD_SUPPORT_ARREARS: record.remaining_child_support_arrear,
+                DeductionType.REMAINING_SPOUSAL_SUPPORT_ARREAR: record.remaining_spousal_support_arrear,
+                DeductionType.REMAINING_CHILD_SUPPORT_ARREAR: record.remaining_child_support_arrear,
                 DeductionType.FEES: record.fees,
                 DeductionType.INSURANCE_PAYMENT: record.insurance_payment,
                 DeductionType.HOUSE_PAYMENT: record.house_payment,
@@ -858,7 +856,7 @@ class WithholdingProcessor:
         """Generate processing summary."""
         try:
             total_deducted = sum(result["deducted_amount"] for result in deduction_results)
-            total_requested = sum(result["requested_amount"] for result in deduction_results)
+            total_requested = sum(result["ordered_amount"] for result in deduction_results)
             
             # Convert to Decimal for proper calculation
             total_deducted_decimal = Decimal(str(total_deducted))
@@ -867,10 +865,11 @@ class WithholdingProcessor:
             return {
                 "total_requested": float(total_requested),
                 "total_deducted": float(total_deducted),
-                "remaining_allowable": float(Decimal(str(record.allowable_disposable_earnings)) - total_deducted_decimal),
+                "remaining_allowable": round(float(Decimal(str(record.allowable_disposable_earnings)) - total_deducted_decimal), 1),
                 "deduction_efficiency": float(
                     (total_deducted_decimal / total_requested_decimal * 100) if total_requested_decimal > 0 else 0
                 ),
+                "priorities_processed": len(deduction_results),
                 "fully_satisfied_deductions": len([r for r in deduction_results if r["fully_deducted"]]),
                 
             }

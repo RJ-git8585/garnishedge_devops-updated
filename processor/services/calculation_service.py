@@ -688,7 +688,7 @@ class CalculationDataView:
             enhanced_record['calculation_summary'] = {
                 'twenty_five_percent_of_de':round(result[GT.CHILD_SUPPORT]["twenty_five_percent_of_de"], 2),
                 'disposable_earnings': round(result[GT.CHILD_SUPPORT]["de"], 2),
-                'allowable_disposable_earnings': round(result[GT.CHILD_SUPPORT]['ade'], 2),
+                'allowable_disposable_earnings': round(result[GT.CHILD_SUPPORT]['ade'], 1),
                 'total_mandatory_deduction': round(total_mandatory_deduction_val, 2),
             }
             

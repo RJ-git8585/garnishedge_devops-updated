@@ -6,7 +6,7 @@ class PayPeriodSerializers(serializers.ModelSerializer):
 
     class Meta:
         model = PayPeriod
-        fields = '__all__'
+        fields = [ 'state_code', 'state']
 
 class StateSerializer(serializers.ModelSerializer):
     class Meta :

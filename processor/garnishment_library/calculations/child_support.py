@@ -179,7 +179,8 @@ class ChildSupportHelper:
             disposable_earnings (float): Calculated disposable earnings
         """
         try:
-            return withholding_limit * disposable_earnings
+            ade = withholding_limit * disposable_earnings
+            return round(ade, 1)
         except Exception as e:
             raise ValueError(
                 f"Error calculating allowable disposable earnings: {str(e)}")
