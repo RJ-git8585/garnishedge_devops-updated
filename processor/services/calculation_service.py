@@ -278,7 +278,7 @@ class CalculationDataView:
                 ],
                 "calculate": self.calculate_franchise_tax_board
             },
-            GT.CHILD_SUPPORT_PRIORITY: {
+            "spousal_and_medical_support": {
                 "fields": [
                     EE.ARREARS_GREATER_THAN_12_WEEKS, EE.SUPPORT_SECOND_FAMILY,
                     CA.GROSS_PAY, PT.PAYROLL_TAXES
@@ -287,7 +287,7 @@ class CalculationDataView:
             },
             "bankruptcy": {
                 "fields": [
-                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, GT.SPOUSAL_SUPPORT_AMOUNT,GT.CHILD_SUPPORT_AMOUNT, GT.BANKRUPTCY_AMOUNT
+                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, GT.SPOUSAL_SUPPORT_AMOUNT, GT.BANKRUPTCY_AMOUNT
                 ],
                 "calculate": self.calculate_bankcrupty
             },
@@ -791,6 +791,7 @@ class CalculationDataView:
                 else:
                     return result
             except Exception as e:
+                print(t.print_exc())
                 logger.error(f"Error in garnishment wrapper: {e}")
                 return {"error": f"Error in garnishment wrapper: {e}"}
 

@@ -11,8 +11,9 @@ class CalculationFields:
     GARNISHMENT_TYPE = "garnishment_type"
     CURRENT_MEDICAL_SUPPORT = 'current_medical_support'
     PAST_DUE_MEDICAL_SUPPORT = 'past_due_medical_support'
-    CURRENT_SPOUSAL_SUPPORT = 'current_spousal_support'
+    CURRENT_SPOUSAL_SUPPORT = 'spousal_and_medical_support'
     PAST_DUE_SPOUSAL_SUPPORT = 'past_due_spousal_support'
+
 
 
 class GarnishmentTypeFields:
@@ -22,11 +23,10 @@ class GarnishmentTypeFields:
     STATE_TAX_LEVY = 'state_tax_levy'
     CREDITOR_DEBT = 'creditor_debt'
     FRANCHISE_TAX_BOARD ='franchise_tax_board'
-    CHILD_SUPPORT_PRIORITY = 'spousal_and_medical_support'
+    SPOUSAL_AND_MEDICAL_SUPPORT = 'spousal_and_medical_support'
     FTB_TYPE = 'ftb_type'
     BANKRUPTCY_AMOUNT = 'bankruptcy_amount'
-    CHILD_SUPPORT_AMOUNT= 'child_support_amount'
-    SPOUSAL_SUPPORT_AMOUNT= 'spousal_support_amount'
+    SPOUSAL_SUPPORT_AMOUNT = 'spousal_support_amount'
 
 
 
@@ -298,7 +298,7 @@ class GarnishmentConstants:
 class CalculationMessages:
     DE_LE_LOWER = "Disposable Earning <= Lower Threshold Amount"
     DE_BANKRUPTCY_LE_LOWER = "Available For Bankruptcy <= Lower Threshold Amount"
-    DE_BANKRUPTCY_LE_UPPER = "Available For Bankruptcy >= Lower Threshold Amount"
+    DE_BANKRUPTCY_LE_UPPER = ""
     DE_GT_LOWER = "Disposable Earning > Lower Threshold Amount"
     DE_GT_LOWER_LT_UPPER = "Lower Threshold Amount <= Disposable Earning <= Upper Threshold Amount"
     DE_GT_UPPER = "Disposable Earning > Upper Threshold Amount"

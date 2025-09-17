@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from processor.models import ExemptConfig
-from processor.serializers import ExemptConfigWithThresholdSerializer
+from processor.models import ExemptConfig, GarnishmentType
+from processor.serializers import ExemptConfigWithThresholdSerializer, get_garnishment_type_serializer
 import logging
 from rest_framework.views import APIView
 from rest_framework import status
@@ -18,29 +18,92 @@ from processor.garnishment_library import ResponseHelper
 import logging
 
 logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
 
 class ExemptConfigAPIView(APIView):
     """
-    API view for CRUD operations on ExemptConfig
+    API view for CRUD operations on ExemptConfig with dynamic garnishment type support.
+    Supports URLs like:
+    - /config/creditor_debt/ - CRUD for Creditor_debt garnishment type
+    - /config/state_tax_levy/ - CRUD for State_tax_levy garnishment type
     """
+
+    def get_serializer_class(self, garnishment_type=None):
+        """
+        Get the appropriate serializer class based on garnishment type.
+        If no garnishment_type is provided, use the default serializer.
+        """
+        if garnishment_type:
+            try:
+                return get_garnishment_type_serializer(garnishment_type)
+            except ValueError as e:
+                logger.error(f"Invalid garnishment type: {garnishment_type}")
+                raise ValueError(str(e))
+        return ExemptConfigWithThresholdSerializer
+
+    def get_queryset(self, garnishment_type=None):
+        """
+        Get queryset filtered by garnishment type if provided.
+        """
+        queryset = ExemptConfig.objects.select_related('state', 'pay_period', 'garnishment_type')
+        
+        if garnishment_type:
+            try:
+                # Map URL parameter to actual GarnishmentType names
+                # Handle various case combinations that users might use
+                type_mapping = {
+                    'creditor_debt': 'Creditor_Debt',
+                    'state_tax_levy': 'State_Tax_Levy',
+                }
+                
+                # Try exact match first, then lowercase match
+                actual_type_name = type_mapping.get(garnishment_type) or type_mapping.get(garnishment_type.lower())
+                
+                if not actual_type_name:
+                    # If no mapping found, try to find the GarnishmentType directly
+                    try:
+                        garnishment_type_obj = GarnishmentType.objects.get(type=garnishment_type)
+                    except GarnishmentType.DoesNotExist:
+                        # Try case-insensitive search
+                        try:
+                            garnishment_type_obj = GarnishmentType.objects.get(type__iexact=garnishment_type)
+                        except GarnishmentType.DoesNotExist:
+                            raise ValueError(f"Unsupported garnishment type: {garnishment_type}")
+                else:
+                    # Get the GarnishmentType object using the mapped name
+                    garnishment_type_obj = GarnishmentType.objects.get(type=actual_type_name)
+                queryset = queryset.filter(garnishment_type=garnishment_type_obj)
+            except GarnishmentType.DoesNotExist:
+                logger.error(f"GarnishmentType '{garnishment_type}' does not exist")
+                raise ValueError(f"GarnishmentType '{garnishment_type}' does not exist")
+        
+        return queryset
 
     @swagger_auto_schema(
         responses={
             200: openapi.Response("ExemptConfig data fetched successfully", ExemptConfigWithThresholdSerializer(many=True)),
             404: "ExemptConfig not found",
+            400: "Invalid garnishment type",
             500: "Internal server error"
         }
     )
-    def get(self, request, pk=None):
+    def get(self, request, garnishment_type=None, pk=None):
         try:
+            serializer_class = self.get_serializer_class(garnishment_type)
+            
             if pk:
-                config = ExemptConfig.objects.get(pk=pk)
-                serializer = ExemptConfigWithThresholdSerializer(config)
+                # Get specific record
+                queryset = self.get_queryset(garnishment_type)
+                config = queryset.get(pk=pk)
+                serializer = serializer_class(config)
                 return Response(serializer.data, status=status.HTTP_200_OK)
-            configs = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').all()
-            serializer = ExemptConfigWithThresholdSerializer(configs, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            else:
+                # Get all records (filtered by garnishment type if provided)
+                queryset = self.get_queryset(garnishment_type)
+                serializer = serializer_class(queryset, many=True)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+                
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except ExemptConfig.DoesNotExist:
             return Response({"error": "ExemptConfig not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -48,41 +111,58 @@ class ExemptConfigAPIView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @swagger_auto_schema(request_body=ExemptConfigWithThresholdSerializer)
-    def post(self, request):
+    def post(self, request, garnishment_type=None):
         try:
-            serializer = ExemptConfigWithThresholdSerializer(data=request.data)
+            serializer_class = self.get_serializer_class(garnishment_type)
+            serializer = serializer_class(data=request.data)
+            
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("Error creating ExemptConfig")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @swagger_auto_schema(request_body=ExemptConfigWithThresholdSerializer)
-    def put(self, request, pk=None):
+    def put(self, request, garnishment_type=None, pk=None):
         if not pk:
             return Response({"error": "pk required"}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            config = ExemptConfig.objects.get(pk=pk)
-            serializer = ExemptConfigWithThresholdSerializer(config, data=request.data)
+            serializer_class = self.get_serializer_class(garnishment_type)
+            queryset = self.get_queryset(garnishment_type)
+            config = queryset.get(pk=pk)
+            
+            serializer = serializer_class(config, data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_200_OK)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except ExemptConfig.DoesNotExist:
             return Response({"error": "ExemptConfig not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error updating ExemptConfig")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def delete(self, request, pk=None):
+    def delete(self, request, garnishment_type=None, pk=None):
         if not pk:
             return Response({"error": "pk required"}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            config = ExemptConfig.objects.get(pk=pk)
+            queryset = self.get_queryset(garnishment_type)
+            config = queryset.get(pk=pk)
             config.delete()
             return Response({"message": "Deleted successfully"}, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except ExemptConfig.DoesNotExist:
             return Response({"error": "ExemptConfig not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
