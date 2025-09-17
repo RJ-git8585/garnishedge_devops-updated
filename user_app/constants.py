@@ -22,7 +22,7 @@ class GarnishmentTypeFields:
     STATE_TAX_LEVY = 'state_tax_levy'
     CREDITOR_DEBT = 'creditor_debt'
     FRANCHISE_TAX_BOARD ='franchise_tax_board'
-    CHILD_SUPPORT_PRIORITY = 'child_support_priority'
+    CHILD_SUPPORT_PRIORITY = 'spousal_and_medical_support'
     FTB_TYPE = 'ftb_type'
     BANKRUPTCY_AMOUNT = 'bankruptcy_amount'
     CHILD_SUPPORT_AMOUNT= 'child_support_amount'

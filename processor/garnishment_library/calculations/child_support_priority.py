@@ -206,7 +206,7 @@ class EmployeeRecord:
         total_child_support_arrear = Decimal("0")
         
         for garnishment_group in self.garnishment_data:
-            if garnishment_group.get('type') == 'child_support_priority':
+            if garnishment_group.get('type') == 'spousal_and_medical_support':
                 for case_data in garnishment_group.get('data', []):
                     # Extract current_child_support from case data
                     current_support = case_data.get('current_child_support', 0)
@@ -549,7 +549,7 @@ class WithholdingProcessor:
             # Get the individual case amounts from garnishment data
             garnishment_cases = []
             for garnishment_group in record.garnishment_data:
-                if garnishment_group.get('type') == 'child_support_priority':
+                if garnishment_group.get('type') == 'spousal_and_medical_support':
                     garnishment_cases = garnishment_group.get('data', [])
                     break
             
