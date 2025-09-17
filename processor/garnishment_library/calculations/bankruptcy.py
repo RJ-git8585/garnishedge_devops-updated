@@ -62,7 +62,7 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
             CSH = ChildSupportHelper(record.get(EE.WORK_STATE))
             pay_period = record.get(EE.PAY_PERIOD).lower()
             gross_pay = record.get(EE.GROSS_PAY)
-            home_state = StateAbbreviations(record.get(EE.HOME_STATE)).get_state_name_and_abbr()
+            #home_state = StateAbbreviations(record.get(EE.HOME_STATE)).get_state_name_and_abbr()
             child_support_amount = record.get(GT.CHILD_SUPPORT_AMOUNT, 0)
             spousal_support_amount = record.get(GT.SPOUSAL_SUPPORT_AMOUNT, 0)
             bankruptcy_amount = record.get(GT.BANKRUPTCY_AMOUNT, 0)
@@ -80,7 +80,7 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
             
         
             exempt_amt_config = self._exempt_amt_config_data(
-            config_data, state, pay_period,garn_start_date,is_consumer_debt, non_consumer_debt,home_state)
+            config_data, state, pay_period,garn_start_date,is_consumer_debt, non_consumer_debt)
 
 
             gross_pay = CSH.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
