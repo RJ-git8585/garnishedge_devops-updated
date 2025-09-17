@@ -59,15 +59,29 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
     """
     def calculate(self, record, config_data):
         try:
-            CSH=ChildSupportHelper()
-            # Extract required values from record
-            bankruptcy_amount = record.get(GT.BANKRUPTCY_AMOUNT, 0)
+            CSH = ChildSupportHelper(record.get(EE.WORK_STATE))
+            pay_period = record.get(EE.PAY_PERIOD).lower()
+            gross_pay = record.get(EE.GROSS_PAY)
+            home_state = StateAbbreviations(record.get(EE.HOME_STATE)).get_state_name_and_abbr()
             child_support_amount = record.get(GT.CHILD_SUPPORT_AMOUNT, 0)
             spousal_support_amount = record.get(GT.SPOUSAL_SUPPORT_AMOUNT, 0)
+            bankruptcy_amount = record.get(GT.BANKRUPTCY_AMOUNT, 0)
+            state = StateAbbreviations(record.get(
+                EE.WORK_STATE)).get_state_name_and_abbr()
+            is_consumer_debt = record.get(EE.IS_CONSUMER_DEBT)
+            non_consumer_debt = record.get(EE.NON_CONSUMER_DEBT)
             wages = record.get(CF.WAGES, 0)
             commission_and_bonus = record.get(CF.COMMISSION_AND_BONUS, 0)
             non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
+            gross_pay = CSH.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+            mandatory_deductions = CSH.calculate_md(payroll_taxes)
+            garn_start_date=record.get(EE.GARN_START_DATE)
+            
+        
+            exempt_amt_config = self._exempt_amt_config_data(
+            config_data, state, pay_period,garn_start_date,is_consumer_debt, non_consumer_debt,home_state)
+
 
             gross_pay = CSH.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = CSH.calculate_md(payroll_taxes)
@@ -78,7 +92,13 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
                 allowable_bankruptcy_amount = 0
 
             available_for_bankruptcy = 0.25 * allowable_bankruptcy_amount
-            federal_min_wage_threshold = self._exempt_amt_config_data()
+            # Get the minimum allowable withholding amount
+            if exempt_amt_config and isinstance(exempt_amt_config, dict):
+                federal_min_wage_threshold = exempt_amt_config.get("threshold_amount", 0)
+            elif isinstance(exempt_amt_config, (int, float)):
+                federal_min_wage_threshold = exempt_amt_config
+            else:
+                federal_min_wage_threshold = 0
 
             if available_for_bankruptcy <= federal_min_wage_threshold:
                 withholding_amount = 0
@@ -88,6 +108,7 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
                 withholding_amount = min(available_for_bankruptcy, bankruptcy_amount)
                 return UtilityClass.build_response(
                     withholding_amount, de, CM.DE_BANKRUPTCY_LE_UPPER, f"Min({available_for_bankruptcy}, {bankruptcy_amount})")
+                    # withholding_amount = min(available_for_bankruptcy, bankruptcy_amount)
 
         except Exception as e:
             raise ValueError(f"Error in Bankruptcy calculation: {str(e)}")

@@ -11,7 +11,7 @@ from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerial
 )
 from user_app.serializers import EmployeeDetailSerializer
 
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,WithholdingProcessor,
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,WithholdingProcessor,Bankruptcy,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
 from user_app.constants import (
     EmployeeFields as EE,
@@ -108,6 +108,24 @@ class CalculationDataView:
                     loaded_types.append("franchise_tax_board")
                     logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
+                    logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
+            
+            if "bankruptcy" in garnishment_types:
+                try:
+                    queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=7)
+
+                    config_ids = queryset.values_list("id", flat=True)
+
+                    # Get ThresholdAmount records linked to those configs
+                    threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
+
+                    serializer = ThresholdAmountSerializer(threshold_qs, many=True)
+                    config_data["bankruptcy"] = serializer.data
+                    loaded_types.append("bankruptcy")
+                    logger.info(f"Successfully loaded config for types: {loaded_types}")
+                except Exception as e:
+                    import traceback as t
+                    print("preload_config",t.print_exc())
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
 
             
@@ -266,7 +284,13 @@ class CalculationDataView:
                     CA.GROSS_PAY, PT.PAYROLL_TAXES
                 ],
                 "calculate": self.calculate_child_support_priority
-            }
+            },
+            "bankruptcy": {
+                "fields": [
+                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, GT.SPOUSAL_SUPPORT_AMOUNT,GT.CHILD_SUPPORT_AMOUNT, GT.BANKRUPTCY_AMOUNT
+                ],
+                "calculate": self.calculate_bankcrupty
+            },
 
         }
         rule = garnishment_rules.get(garnishment_type_lower)
@@ -530,6 +554,47 @@ class CalculationDataView:
         except Exception as e:
             logger.error(f"Error calculating franchise tax board: {e}")
             return {"error": f"Error calculating franchise tax board: {e}"}
+        
+    
+    def calculate_bankcrupty(self, record, config_data=None,garn_fees=None):
+        """
+        Calculate bankcrupty garnishment.
+        """
+        try:
+            bankruptcy_calculator = Bankruptcy()
+            payroll_taxes = record.get(PT.PAYROLL_TAXES)
+            work_state = record.get(EE.WORK_STATE)
+            result = bankruptcy_calculator.calculate(
+                record, config_data["bankruptcy"])
+            if isinstance(result, tuple):
+                result = result[0]
+            if result == CommonConstants.NOT_FOUND:
+                return None
+            elif result == CommonConstants.NOT_PERMITTED:
+                return CommonConstants.NOT_PERMITTED
+            total_mandatory_deduction_val = ChildSupport(
+                work_state).calculate_md(payroll_taxes)
+            if result[CR.WITHHOLDING_AMT] <= 0:
+                return self._handle_insufficient_pay_garnishment(
+                    record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
+            else:
+                record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
+                    {CR.GARNISHMENT_AMOUNT: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
+                record[CR.DISPOSABLE_EARNING] = round(
+                    result[CR.DISPOSABLE_EARNING], 2)
+                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
+                    total_mandatory_deduction_val, 2)
+                record[CR.ER_DEDUCTION] = {
+                    CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
+                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
+                    )}
+                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
+                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
+                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
+                return record
+        except Exception as e:
+            logger.error(f"Error calculating bankcrupty: {e}")
+            return {"error": f"Error calculating bankcrupty: {e}"}
         
 
     def calculate_child_support_priority(self, record, config_data=None,garn_fees=None):
