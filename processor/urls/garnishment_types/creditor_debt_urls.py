@@ -20,10 +20,9 @@ urlpatterns = [
          CreditorDebtExemptAmtConfigAPIView.as_view(), name='exempt-amt-config'),
 
     # CRUD for the creditor debt rule
-    path('rule/', CreditorDebtRuleAPIView.as_view(),
-         name='exempt-amt-config'),
-    path('rule/<str:state>/', CreditorDebtRuleAPIView.as_view(),
-         name='exempt-amt-config'),
+    path('rule/', CreditorDebtRuleAPIView.as_view(), name='creditor_debt_rule'),
+    path('rule/<int:pk>/', CreditorDebtRuleAPIView.as_view(), name='creditor_debt_rule_by_pk'),
+    path('rule/<str:state>/', CreditorDebtRuleAPIView.as_view(), name='creditor_debt_rule_by_state'),
 
     # This is for the state tax levy rule edit request
     path('rule-edit-request/', CreditorDebtEditPermissionAPIView.as_view(),

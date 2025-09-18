@@ -66,14 +66,21 @@ class CreditorDebtRuleAPIView(APIView):
             500: 'Internal server error'
         }
     )
-    def get(self, request, state=None):
+    def get(self, request, state=None, pk=None):
         try:
-            if state:
+            if pk is not None:
+                try:
+                    rule = CreditorDebtRule.objects.get(id=pk)
+                    serializer = CreditorDebtRuleSerializers(rule)
+                    return ResponseHelper.success_response(f'Data for id "{pk}" fetched successfully', serializer.data)
+                except CreditorDebtRule.DoesNotExist:
+                    return ResponseHelper.error_response(f'id "{pk}" not found', status_code=status.HTTP_404_NOT_FOUND)
+            elif state:
                 state = StateAbbreviations(
                     state.strip()).get_state_name_and_abbr()
                 try:
                     rule = CreditorDebtRule.objects.get(
-                        state__iexact=state.strip())
+                        state__state__iexact=state.strip())
                     serializer = CreditorDebtRuleSerializers(rule)
                     return ResponseHelper.success_response(f'Data for state "{state}" fetched successfully', serializer.data)
                 except CreditorDebtRule.DoesNotExist:
@@ -123,7 +130,7 @@ class CreditorDebtRuleAPIView(APIView):
         try:
             state = StateAbbreviations(
                 state.strip()).get_state_name_and_abbr().lower()
-            rule = CreditorDebtRule.objects.get(state__iexact=state)
+            rule = CreditorDebtRule.objects.get(state__state__iexact=state)
         except CreditorDebtRule.DoesNotExist:
             return ResponseHelper.error_response(f'Data for state "{state}" not found', status_code=status.HTTP_404_NOT_FOUND)
         try:
@@ -149,7 +156,7 @@ class CreditorDebtRuleAPIView(APIView):
         if not state:
             return ResponseHelper.error_response('State and pay_period are required in URL to delete data', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            rule = CreditorDebtRule.objects.get(state__iexact=state)
+            rule = CreditorDebtRule.objects.get(state__state__iexact=state)
             rule.delete()
             return ResponseHelper.success_response(f'Data for state "{state}" deleted successfully')
         except CreditorDebtRule.DoesNotExist:

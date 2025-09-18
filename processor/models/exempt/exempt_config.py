@@ -2,6 +2,7 @@ from django.db import models
 from .exempt_rule import ExemptRule
 
 class ExemptConfig(models.Model):
+    rule =models.ForeignKey('processor.ExemptRule', on_delete=models.CASCADE,db_index=True)
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE,db_index=True)
     is_home_state_resident = models.BooleanField(null=True, blank=True)
     pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE,db_index=True)
