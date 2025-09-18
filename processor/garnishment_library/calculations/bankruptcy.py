@@ -41,7 +41,7 @@ class StateWiseFTBStateTaxLevyFormulas():
                          and i[EE.PAY_PERIOD].lower() == pay_period.lower()
                          and (i.get("debt_type") is None or i.get("debt_type").lower() == debt_type or not i.get("debt_type")) 
                          and (i.get("start_gt_5dec24") is None or i.get("start_gt_5dec24") == garn_start_date)
-                         and i.get("ftb_type" ) == ftb_type
+                         and i.get("ftb_type" ) is None 
                      ),
                      None
                  )        
@@ -92,11 +92,25 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
                 allowable_bankruptcy_amount = 0
 
             available_for_bankruptcy = 0.25 * allowable_bankruptcy_amount
+            print("available_for_bankruptcy",available_for_bankruptcy)
+            # federal_min_wage_threshold = exempt_amt_config
+            # print("federal_min_wage_threshold",federal_min_wage_threshold)
             # Get the minimum allowable withholding amount
+            # if exempt_amt_config and isinstance(exempt_amt_config, dict):
+            #     federal_min_wage_threshold = federal_min_wage_threshold.get("lower_threshold_amount", 0)
+            # elif isinstance(exempt_amt_config, (int, float)):
+            #     federal_min_wage_threshold = exempt_amt_config
+            # else:
+            #     federal_min_wage_threshold = 0
             if exempt_amt_config and isinstance(exempt_amt_config, dict):
-                federal_min_wage_threshold = exempt_amt_config.get("threshold_amount", 0)
+                federal_min_wage_threshold = float(exempt_amt_config.get("lower_threshold_amount", 0) or 0)
             elif isinstance(exempt_amt_config, (int, float)):
-                federal_min_wage_threshold = exempt_amt_config
+                federal_min_wage_threshold = float(exempt_amt_config)
+            elif isinstance(exempt_amt_config, str):
+                try:
+                    federal_min_wage_threshold = float(exempt_amt_config)
+                except Exception:
+                    federal_min_wage_threshold = 0
             else:
                 federal_min_wage_threshold = 0
 
