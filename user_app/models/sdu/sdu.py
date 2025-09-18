@@ -6,11 +6,12 @@ class SDU(models.Model):
     State Disbursement Unit - where child support or garnishment payments are sent.
     """
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="sdus")
-    order = models.ForeignKey(
+    case_id = models.ForeignKey(
         'user_app.GarnishmentOrder', on_delete=models.CASCADE, related_name="sdus"
     )
-    name = models.CharField(max_length=255)
-    country = models.CharField(max_length=255)
+    payee = models.CharField(max_length=255)
+    address = models.CharField(max_length=255,blank=True,null=True)
+    contact = models.CharField(max_length=255,blank=True,null=True)
     fips_code = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,6 +20,6 @@ class SDU(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["state_id"]),
-            models.Index(fields=["order"]),
+            models.Index(fields=["case_id"]),
         ]
         db_table = "sdu"

@@ -31,7 +31,7 @@ class SDUSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SDU
-        fields = ['id', 'name', 'state', 'order', 'country', 'fips_code', 'is_active']
+        fields = ['id', 'payee', 'state', 'case_id', 'address', 'contact', 'fips_code', 'is_active']
 
     def validate_order(self, value):
         """
@@ -40,3 +40,5 @@ class SDUSerializer(serializers.ModelSerializer):
         if not GarnishmentOrder.objects.filter(id=value.id).exists():
             raise serializers.ValidationError("Order not found.")
         return value
+
+
