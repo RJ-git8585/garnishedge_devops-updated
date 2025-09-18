@@ -27,6 +27,7 @@ class GarnishmentTypeFields:
     FTB_TYPE = 'ftb_type'
     BANKRUPTCY_AMOUNT = 'bankruptcy_amount'
     SPOUSAL_SUPPORT_AMOUNT = 'spousal_support_amount'
+    CHILD_SUPPORT_AMOUNT = 'child_support_amount'
 
 
 
