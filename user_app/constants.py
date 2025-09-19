@@ -299,7 +299,7 @@ class GarnishmentConstants:
 class CalculationMessages:
     DE_LE_LOWER = "Disposable Earning <= Lower Threshold Amount"
     DE_BANKRUPTCY_LE_LOWER = "Available For Bankruptcy <= Lower Threshold Amount"
-    DE_BANKRUPTCY_LE_UPPER = ""
+    DE_BANKRUPTCY_LE_UPPER = "Available For Bankruptcy >= Lower Threshold Amount"
     DE_GT_LOWER = "Disposable Earning > Lower Threshold Amount"
     DE_GT_LOWER_LT_UPPER = "Lower Threshold Amount <= Disposable Earning <= Upper Threshold Amount"
     DE_GT_UPPER = "Disposable Earning > Upper Threshold Amount"
