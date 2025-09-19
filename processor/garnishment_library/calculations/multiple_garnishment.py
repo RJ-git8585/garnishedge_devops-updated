@@ -12,10 +12,11 @@ from user_app.constants import (
     GarnishmentTypeFields as GT,
 
 )
+from processor.serializers import MultipleGarnPriorityOrderCRUDSerializer
 from decimal import Decimal
 import traceback as t 
-from processor.models import PriorityOrders
-from processor.serializers import PriorityOrderSerializer
+from processor.models import MultipleGarnPriorityOrders
+
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class InsufficientDataError(GarnishmentError):
 
 
 class MultipleGarnishmentPriorityOrder:
+    
     
     # --- Constants for Readability and Maintenance ---
     MAX_CALCULATED_GARNISHMENTS = 2
@@ -77,7 +79,7 @@ class MultipleGarnishmentPriorityOrder:
             if not work_state_name:
                 raise ValueError("Could not resolve state name from abbreviation.")
             
-            pri_order_qs = PriorityOrders.objects.select_related('state', 'garnishment_type').filter(
+            pri_order_qs = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type').filter(
                 state__state__iexact=work_state_name
             ).order_by('priority_order')
             
@@ -85,7 +87,7 @@ class MultipleGarnishmentPriorityOrder:
                 logger.warning(f"No priority order found for state: {self.work_state}")
                 return []
                 
-            serializer = PriorityOrderSerializer(pri_order_qs, many=True)
+            serializer = MultipleGarnPriorityOrderCRUDSerializer(pri_order_qs, many=True)
             return serializer.data
         
         except Exception as e:
@@ -142,7 +144,6 @@ class MultipleGarnishmentPriorityOrder:
                 # Skip non-numeric values silently
                 pass
         return total
-
 
 
     def calculate(self) -> Dict[str, Any]:

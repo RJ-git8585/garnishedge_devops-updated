@@ -6,5 +6,5 @@ from .student_loan import *
 from .state_tax import *
 from .multiple_garnishment import *
 from  .franchise_tax_board import *
-from .child_support_priority import *
 from .bankruptcy import *
+from .deductions_priority import *

@@ -1,7 +1,7 @@
 # app/urls/garnishment_urls.py
 from django.urls import path
 from processor.views import ChildSupportCalculationRules
-from processor.views.garnishment_types.child_support_views import WithholdingRulesAPIView, WithholdingLimitAPIView, DeductionPriorityAPIView
+from processor.views.garnishment_types.child_support_views import WithholdingRulesAPIView, WithholdingLimitAPIView, DeductionPriorityAPIView, MultipleGarnPriorityOrderAPIView, DeductionPriorityReorderAPIView, MultipleGarnPriorityOrderReorderAPIView
 
 
 
@@ -25,5 +25,11 @@ urlpatterns = [
     # DeductionPriority CRUD endpoints
     path('deduction-priorities/', DeductionPriorityAPIView.as_view(), name='deduction_priority_list_create'),
     path('deduction-priorities/<int:pk>/', DeductionPriorityAPIView.as_view(), name='deduction_priority_detail'),
+    path('deduction-priorities/reorder/', DeductionPriorityReorderAPIView.as_view(), name='deduction_priority_reorder'),
+
+    # MultipleGarnPriorityOrders CRUD endpoints
+    path('multiple-garnishment-priorities/', MultipleGarnPriorityOrderAPIView.as_view(), name='multiple_garn_priority_list_create'),
+    path('multiple-garnishment-priorities/<int:pk>/', MultipleGarnPriorityOrderAPIView.as_view(), name='multiple_garn_priority_detail'),
+    path('multiple-garnishment-priorities/reorder/', MultipleGarnPriorityOrderReorderAPIView.as_view(), name='multiple_garn_priority_reorder'),
          
 ]
