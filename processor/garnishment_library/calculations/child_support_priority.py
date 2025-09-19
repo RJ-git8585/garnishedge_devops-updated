@@ -9,7 +9,7 @@ from processor.garnishment_library.calculations import  MultipleChild,Allocation
 from processor.garnishment_library.utils import  AllocationMethods,StateAbbreviations
 from processor.garnishment_library.utils.child_support import Helper
 from user_app.constants import CalculationFields
-from processor.models import ChildSupportPriority
+from processor.models import DeductionPriority
 from processor.serializers import PriorityDeductionSerializer
 from processor.garnishment_library.input_validator import WithholdingInputValidator, ValidationError
 
@@ -363,7 +363,7 @@ class PriorityOrderRepository:
             if not work_state_name:
                 raise ValueError("Could not resolve state name from abbreviation.")
             
-            pri_order_qs = ChildSupportPriority.objects.select_related('state', 'deduction_type').filter(
+            pri_order_qs = DeductionPriority.objects.select_related('state', 'deduction_type').filter(
                 state__state__iexact=work_state_name
             ).order_by('priority_order')
             

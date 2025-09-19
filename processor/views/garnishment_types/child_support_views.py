@@ -124,8 +124,9 @@ class ChildSupportCalculationRules(APIView):
 from processor.serializers.child_support_serializers import (
     WithholdingRulesCRUDSerializer,
     WithholdingLimitCRUDSerializer,
+    DeductionPriorityCRUDSerializer,
 )
-from processor.models import WithholdingRules, WithholdingLimit
+from processor.models import WithholdingRules, WithholdingLimit, DeductionPriority
 
 
 class WithholdingRulesAPIView(APIView):
@@ -333,4 +334,103 @@ class WithholdingLimitAPIView(APIView):
             return ResponseHelper.error_response("WithholdingLimit not found", status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error deleting WithholdingLimit")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DeductionPriorityAPIView(APIView):
+    """
+    CRUD API for DeductionPriority.
+    Accepts state name/code and deduction name; stores related IDs.
+    """
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Response("DeductionPriority fetched successfully"),
+            404: "Record not found",
+            500: "Internal server error"
+        }
+    )
+    def get(self, request, pk=None):
+        try:
+            if pk:
+                rec = DeductionPriority.objects.select_related('state', 'deduction_type').get(pk=pk)
+                serializer = DeductionPriorityCRUDSerializer(rec)
+                return ResponseHelper.success_response(
+                    message="Record fetched successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            qs = DeductionPriority.objects.select_related('state', 'deduction_type').all()
+            serializer = DeductionPriorityCRUDSerializer(qs, many=True)
+            return ResponseHelper.success_response(
+                message="All data fetched successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+        except DeductionPriority.DoesNotExist:
+            return ResponseHelper.error_response("DeductionPriority not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Unexpected error in DeductionPriority GET")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=DeductionPriorityCRUDSerializer)
+    def post(self, request):
+        try:
+            serializer = DeductionPriorityCRUDSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record created successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_201_CREATED
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception("Error creating DeductionPriority")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=DeductionPriorityCRUDSerializer)
+    def put(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = DeductionPriority.objects.get(pk=pk)
+            serializer = DeductionPriorityCRUDSerializer(rec, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record updated successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except DeductionPriority.DoesNotExist:
+            return ResponseHelper.error_response("DeductionPriority not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error updating DeductionPriority")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = DeductionPriority.objects.get(pk=pk)
+            rec.delete()
+            return ResponseHelper.success_response(
+                message="Deleted successfully",
+                data={},
+                status_code=status.HTTP_200_OK
+            )
+        except DeductionPriority.DoesNotExist:
+            return ResponseHelper.error_response("DeductionPriority not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error deleting DeductionPriority")
             return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

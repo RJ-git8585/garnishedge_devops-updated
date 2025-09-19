@@ -144,11 +144,74 @@ class PriorityDeductionSerializer(serializers.ModelSerializer):
     type = serializers.CharField(source='deduction_type.type', read_only=True) 
 
     class Meta:
-        model = ChildSupportPriority
+        model = DeductionPriority
         fields = [
             'priority_order',  'type', 'state'
         ]
 
+
+class DeductionPriorityCRUDSerializer(serializers.ModelSerializer):
+    """
+    CRUD serializer for DeductionPriority that accepts state name/code and
+    deduction name instead of IDs, while storing the related IDs.
+    """
+    state = serializers.CharField(source='state.state')
+    deduction = serializers.CharField(source='deduction_type.type')
+
+    class Meta:
+        model = DeductionPriority
+        fields = [
+            'id', 'state', 'deduction', 'priority_order', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        # Resolve state by name or code
+        state_payload = attrs.get('state')
+        state_name = None
+        if isinstance(state_payload, dict):
+            state_name = state_payload.get('state')
+        elif isinstance(state_payload, str):
+            state_name = state_payload
+
+        if not state_name:
+            raise serializers.ValidationError("state is required")
+
+        state_obj = State.objects.filter(state__iexact=state_name).first() or \
+                    State.objects.filter(state_code__iexact=state_name).first()
+        if not state_obj:
+            raise serializers.ValidationError(f"State '{state_name}' not found")
+
+        # Resolve deduction by name (type field in Deductions)
+        deduction_payload = attrs.get('deduction_type') or attrs.get('deduction')
+        deduction_name = None
+        if isinstance(deduction_payload, dict):
+            deduction_name = deduction_payload.get('type') or deduction_payload.get('deduction')
+        elif isinstance(deduction_payload, str):
+            deduction_name = deduction_payload
+
+        if not deduction_name:
+            raise serializers.ValidationError("deduction is required")
+
+        deduction_obj = Deductions.objects.filter(type__iexact=deduction_name).first()
+        if not deduction_obj:
+            raise serializers.ValidationError(f"Deduction '{deduction_name}' not found")
+
+        # Replace nested inputs with actual model instances
+        attrs['state'] = state_obj
+        attrs['deduction_type'] = deduction_obj
+        # Clean helper keys if present
+        attrs.pop('deduction', None)
+        return attrs
+
+    def create(self, validated_data):
+        return DeductionPriority.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 class WithholdingRulesWithLimitsSerializer(serializers.ModelSerializer):
     state = serializers.CharField(source='state.state', read_only=True)
