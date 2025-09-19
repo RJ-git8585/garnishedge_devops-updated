@@ -3,6 +3,7 @@ from rest_framework import status
 from django.conf import settings
 
 from processor.garnishment_library.utils import StateAbbreviations, WLIdentifier
+from processor.garnishment_library.utils.response import ResponseHelper
 import os
 import logging
 import json
@@ -118,3 +119,218 @@ class ChildSupportCalculationRules(APIView):
                 "message": f"Error retrieving child support calculation rules: {str(e)}",
                 "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from processor.serializers.child_support_serializers import (
+    WithholdingRulesCRUDSerializer,
+    WithholdingLimitCRUDSerializer,
+)
+from processor.models import WithholdingRules, WithholdingLimit
+
+
+class WithholdingRulesAPIView(APIView):
+    """
+    CRUD API for WithholdingRules.
+    Accepts state name/code as input; stores related State id; returns state name.
+    """
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Response("WithholdingRules fetched successfully"),
+            404: "Record not found",
+            500: "Internal server error"
+        }
+    )
+    def get(self, request, pk=None):
+        try:
+            if pk:
+                rule = WithholdingRules.objects.select_related('state').get(pk=pk)
+                serializer = WithholdingRulesCRUDSerializer(rule)
+                return ResponseHelper.success_response(
+                    message="Record fetched successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            rules = WithholdingRules.objects.select_related('state').all()
+            serializer = WithholdingRulesCRUDSerializer(rules, many=True)
+            return ResponseHelper.success_response(
+                message="All data fetched successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+        except WithholdingRules.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingRules not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Unexpected error in WithholdingRules GET")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=WithholdingRulesCRUDSerializer)
+    def post(self, request):
+        try:
+            serializer = WithholdingRulesCRUDSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record created successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_201_CREATED
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception("Error creating WithholdingRules")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=WithholdingRulesCRUDSerializer)
+    def put(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rule = WithholdingRules.objects.get(pk=pk)
+            serializer = WithholdingRulesCRUDSerializer(rule, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record updated successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except WithholdingRules.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingRules not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error updating WithholdingRules")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rule = WithholdingRules.objects.get(pk=pk)
+            rule.delete()
+            return ResponseHelper.success_response(
+                message="Deleted successfully",
+                data={},
+                status_code=status.HTTP_200_OK
+            )
+        except WithholdingRules.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingRules not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error deleting WithholdingRules")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class WithholdingLimitAPIView(APIView):
+    """
+    CRUD API for WithholdingLimit.
+    Accepts state name/code and rule_number to resolve FK to WithholdingRules.
+    """
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Response("WithholdingLimit fetched successfully"),
+            404: "Record not found",
+            500: "Internal server error"
+        }
+    )
+    def get(self, request, pk=None, rule_id=None):
+        try:
+            if pk:
+                rec = WithholdingLimit.objects.select_related('rule__state').get(pk=pk)
+                serializer = WithholdingLimitCRUDSerializer(rec)
+                return ResponseHelper.success_response(
+                    message="Record fetched successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            # Optional filter by rule_id
+            rule_id = rule_id or request.query_params.get('rule_id')
+            qs = WithholdingLimit.objects.select_related('rule__state').all()
+            if rule_id:
+                try:
+                    qs = qs.filter(rule_id=int(rule_id))
+                except ValueError:
+                    return ResponseHelper.error_response(
+                        message="rule_id must be an integer",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+            serializer = WithholdingLimitCRUDSerializer(qs, many=True)
+            return ResponseHelper.success_response(
+                message="All data fetched successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+        except WithholdingLimit.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingLimit not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Unexpected error in WithholdingLimit GET")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=WithholdingLimitCRUDSerializer)
+    def post(self, request):
+        try:
+            serializer = WithholdingLimitCRUDSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record created successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_201_CREATED
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception("Error creating WithholdingLimit")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(request_body=WithholdingLimitCRUDSerializer)
+    def put(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = WithholdingLimit.objects.get(pk=pk)
+            serializer = WithholdingLimitCRUDSerializer(rec, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Record updated successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+            return ResponseHelper.error_response(
+                message="Validation failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except WithholdingLimit.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingLimit not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error updating WithholdingLimit")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, pk=None):
+        if not pk:
+            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = WithholdingLimit.objects.get(pk=pk)
+            rec.delete()
+            return ResponseHelper.success_response(
+                message="Deleted successfully",
+                data={},
+                status_code=status.HTTP_200_OK
+            )
+        except WithholdingLimit.DoesNotExist:
+            return ResponseHelper.error_response("WithholdingLimit not found", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("Error deleting WithholdingLimit")
+            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
