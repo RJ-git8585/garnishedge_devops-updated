@@ -1,3 +1,4 @@
+from ast import Try
 from rest_framework.response import Response
 from rest_framework import status
 from .child_support import *
@@ -87,6 +88,7 @@ class CreditorDebtHelper():
                 return UtilityClass.build_response(
                     upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
+            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
@@ -157,13 +159,22 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
     """
 
     def cal_alaska(self,home_state, disposable_earning, config_data):
-        if home_state == ST.ALASKA.lower():
-            return self._general_debt_logic(self, disposable_earning, config_data)
-        elif home_state != ST.ALASKA.lower():
-            return self._minimum_wage_threshold_compare(self, disposable_earning, config_data)
-        return UtilityClass.build_response(
-                0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
-     
+        try:
+            print("config_data",config_data)
+            if home_state == ST.ALASKA.lower():
+                return self._minimum_wage_threshold_compare(disposable_earning, config_data)
+                
+            elif home_state != ST.ALASKA.lower():
+                return self._general_debt_logic( disposable_earning, config_data)
+                
+            return UtilityClass.build_response(
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+        except Exception as e:
+            print(t.print_exc())
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"Exception in cal_alaska: {str(e)}"
+            )
 
     def cal_delaware(self, disposable_earning, config_data):
         """

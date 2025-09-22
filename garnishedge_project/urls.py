@@ -71,7 +71,9 @@ urlpatterns = [
     path('iwo_pdf/', include('user_app.urls.iwo_pdf_urls', namespace='garnishment')),
     path('garnishment_state/', include('processor.urls.garnishment_types.state_tax_urls', namespace='garnishment_state')),
     path('garnishment_creditor/', include('processor.urls.garnishment_types.creditor_debt_urls', namespace='garnishment_creditor')),
+    path('multiple_garnishment/', include('processor.urls.garnishment_types.multiple_garnishment_urls', namespace='multiple_garnishment')),
     path('utility/', include('user_app.urls.utility_urls', namespace='utility')),
     path('exempt_amt/', include('processor.urls.configs.exempt_urls', namespace='exempt_amt')),
-    path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule'))
+    path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule')),
+    path('batch/', include('user_app.urls.batch_processing_urls', namespace='batch_processing'))
 ]

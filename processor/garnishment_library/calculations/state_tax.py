@@ -18,6 +18,7 @@ from user_app.constants import (
     GarnishmentConstants as GC
 
 )
+import  traceback as t
 from ..utils.response import UtilityClass, CalculationResponse
 from processor.serializers.shared_serializers import ThresholdAmountSerializer
 logger = logging.getLogger(__name__)
@@ -76,8 +77,6 @@ class StateTaxViewHelper:
         Get deduction basis for a state.
         """
         try:
-            state = state.title()
-            obj = StateTaxLevyConfig.objects.filter(state=state)
             obj = StateTaxLevyConfig.objects.filter(state=state)
             if obj.exists():
                 return obj[0].deduction_basis
@@ -358,6 +357,7 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             return CC.NOT_FOUND
 
         except Exception as e:
+            print(t.print_exc())
             logger.error(f"Error in state tax levy calculation: {e}")
             return Response(
                 {

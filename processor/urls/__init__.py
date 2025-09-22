@@ -2,6 +2,7 @@ from .garnishment_types.calculation_urls import *
 from .garnishment_types.creditor_debt_urls import *   
 from .garnishment_types.child_support_urls import *
 from .garnishment_types.federal_tax_urls import * 
+from .garnishment_types.multiple_garnishment_urls import *
 from .configs.garnishment_fees_urls import *
 from .garnishment_types.state_tax_urls import *
 from .configs import *

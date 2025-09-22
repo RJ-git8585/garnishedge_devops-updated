@@ -7,5 +7,6 @@ from .garnishment_order_views import *
 from .sdu_views import *
 from .client_views import *
 from .peo_views import *
+from .batch_processing_views import *
  
 # try:

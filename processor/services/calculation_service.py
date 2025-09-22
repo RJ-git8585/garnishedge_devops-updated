@@ -46,7 +46,7 @@ class CalculationDataView:
         try:
             if GT.STATE_TAX_LEVY in garnishment_types:
                 try:
-                    queryset = StateTaxLevyExemptAmtConfig.objects.all()
+                    queryset = StateTaxLevyExemptAmtConfig.objects.select_related('state').all()
                     serializer = StateTaxLevyExemptAmtConfigSerializers(queryset, many=True)
                     config_data[GT.STATE_TAX_LEVY] = serializer.data
                     loaded_types.append(GT.STATE_TAX_LEVY)
@@ -278,18 +278,18 @@ class CalculationDataView:
                 ],
                 "calculate": self.calculate_franchise_tax_board
             },
-            "spousal_and_medical_support": {
+            GT.SPOUSAL_AND_MEDICAL_SUPPORT: {
                 "fields": [
                     EE.ARREARS_GREATER_THAN_12_WEEKS, EE.SUPPORT_SECOND_FAMILY,
                     CA.GROSS_PAY, PT.PAYROLL_TAXES
                 ],
                 "calculate": self.calculate_child_support_priority
             },
-            "bankruptcy": {
+            GT.BANKRUPTCY: {
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, GT.SPOUSAL_SUPPORT_AMOUNT, GT.BANKRUPTCY_AMOUNT
                 ],
-                "calculate": self.calculate_bankcrupty
+                "calculate": self.calculate_bankruptcy
             },
 
         }
@@ -322,79 +322,241 @@ class CalculationDataView:
         record[CR.WITHHOLDING_CAP] = CM.NA
         return record
 
-    def calculate_child_support(self, record, config_data=None,garn_fees=None):
+    def _create_standardized_result(self, garnishment_type, record, calculation_result=None, error_message=None):
         """
-        Calculate child support garnishment.
+        Creates a standardized result structure for garnishment calculations.
+        This ensures consistency across all garnishment types.
+        """
+        result = {
+            "garnishment_type": garnishment_type,
+            "employee_id": record.get(EE.EMPLOYEE_ID),
+            "work_state": record.get(EE.WORK_STATE),
+            "calculation_status": "success" if not error_message else "error",
+            "calculation_timestamp": datetime.now().isoformat(),
+            "garnishment_details": {
+                "withholding_amounts": [],
+                "arrear_amounts": [],
+                "total_withheld": 0.0,
+                "garnishment_fees": 0.0,
+                "net_withholding": 0.0
+            },
+            "calculation_metrics": {
+                "disposable_earnings": 0.0,
+                "allowable_disposable_earnings": 0.0,
+                "total_mandatory_deductions": 0.0,
+                "withholding_basis": CM.NA,
+                "withholding_cap": CM.NA,
+                "withholding_limit_rule": CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
+            },
+            "employer_deductions": {
+                "garnishment_fees": 0.0,
+                "total_employer_cost": 0.0
+            }
+        }
+        
+        if error_message:
+            result["error"] = error_message
+            result["calculation_status"] = "error"
+            
+        return result
+
+    def calculate_child_support(self, record, config_data=None, garn_fees=None):
+        """
+        Calculate child support garnishment with standardized result structure.
         """
         try:
             work_state = record.get(EE.WORK_STATE)
-            result = ChildSupport(work_state).calculate(record)
-            child_support_data = result["result_amt"]
-            arrear_amount_data = result["arrear_amt"]
-            ade, de, mde = result["ade"], result["de"], result["mde"]
-            total_withhold_amt = sum(
-                child_support_data.values()) + sum(arrear_amount_data.values())
+            calculation_result = ChildSupport(work_state).calculate(record)
+            
+            child_support_data = calculation_result["result_amt"]
+            arrear_amount_data = calculation_result["arrear_amt"]
+            ade, de, mde = calculation_result["ade"], calculation_result["de"], calculation_result["mde"]
+            
+            total_withhold_amt = sum(child_support_data.values()) + sum(arrear_amount_data.values())
+            
+            # Create standardized result
+            result = self._create_standardized_result(GT.CHILD_SUPPORT, record)
+            
             if total_withhold_amt <= 0:
-                record.update({
-                    CR.AGENCY: [
-                        {CR.WITHHOLDING_AMT: [{CR.GARNISHMENT_AMOUNT: INSUFFICIENT_PAY}
-                                              for _ in child_support_data]},
-                        {"arrear": [{CR.WITHHOLDING_ARREAR: INSUFFICIENT_PAY}
-                                    for _ in arrear_amount_data]}
-                    ],
-                    CR.ER_DEDUCTION: {CR.GARNISHMENT_FEES: "Garnishment fees cannot be deducted due to insufficient pay"},
-                    CR.WITHHOLDING_BASIS: CM.NA,
-                    CR.WITHHOLDING_CAP: CM.NA
-                })
+                # Handle insufficient pay scenario with case IDs
+                result["calculation_status"] = "insufficient_pay"
+                
+                # Get case IDs for insufficient pay scenario
+                garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+                child_support_garnishment = None
+                
+                for garnishment in garnishment_data:
+                    if garnishment.get('type', '').lower() == 'child_support':
+                        child_support_garnishment = garnishment
+                        break
+                
+                if child_support_garnishment:
+                    cases = child_support_garnishment.get('data', [])
+                    withholding_amounts = []
+                    arrear_amounts = []
+                    
+                    for case in cases:
+                        case_id = case.get(EE.CASE_ID, "unknown_case")
+                        withholding_amounts.append({
+                            "amount": INSUFFICIENT_PAY, 
+                            "type": "current_support",
+                            "case_id": case_id
+                        })
+                        arrear_amounts.append({
+                            "amount": INSUFFICIENT_PAY, 
+                            "type": "arrear",
+                            "case_id": case_id
+                        })
+                    
+                    result["garnishment_details"]["withholding_amounts"] = withholding_amounts
+                    result["garnishment_details"]["arrear_amounts"] = arrear_amounts
+                else:
+                    # Fallback
+                    result["garnishment_details"]["withholding_amounts"] = [
+                        {"amount": INSUFFICIENT_PAY, "type": "current_support"} 
+                        for _ in child_support_data
+                    ]
+                    result["garnishment_details"]["arrear_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "arrear"} 
+                    for _ in arrear_amount_data
+                    ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["calculation_metrics"]["disposable_earnings"] = round(de, 2)
+                result["calculation_metrics"]["allowable_disposable_earnings"] = round(ade, 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(mde, 2)
             else:
-                record.update({
-                    CR.AGENCY: [
-                        {CR.WITHHOLDING_AMT: [{CR.GARNISHMENT_AMOUNT: amt}
-                                              for amt in child_support_data.values()]},
-                        {CR.ARREAR: [{CR.WITHHOLDING_ARREAR: amt}
-                                     for amt in arrear_amount_data.values()]}
-                    ],
-                    CR.ER_DEDUCTION: {CR.GARNISHMENT_FEES: self.get_garnishment_fees(record, total_withhold_amt,garn_fees)},
-                    CR.DISPOSABLE_EARNING: round(de, 2),
-                    CR.ALLOWABLE_DISPOSABLE_EARNING: round(ade, 2),
-                    CR.TOTAL_MANDATORY_DEDUCTION: round(mde, 2),
-                    CR.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
-                    CR.WITHHOLDING_BASIS: CM.NA,
-                    CR.WITHHOLDING_CAP: CM.NA
-                })
-            return record
+                # Calculate garnishment fees
+                garnishment_fees = self.get_garnishment_fees(record, total_withhold_amt, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                # Populate withholding amounts with actual case IDs
+                withholding_amounts = []
+                arrear_amounts = []
+                
+                # Get garnishment data from input to extract case IDs
+                garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+                child_support_garnishment = None
+                
+                # Find child support garnishment data
+                for garnishment in garnishment_data:
+                    if garnishment.get('type', '').lower() == 'child_support':
+                        child_support_garnishment = garnishment
+                        break
+                
+                # Map amounts to case IDs
+                if child_support_garnishment:
+                    cases = child_support_garnishment.get('data', [])
+                    child_support_amounts = list(child_support_data.values())
+                    arrear_amounts_list = list(arrear_amount_data.values())
+                    
+                    for idx, case in enumerate(cases):
+                        case_id = case.get(EE.CASE_ID, f"case_{idx}")
+                        
+                        # Add current support amount
+                        if idx < len(child_support_amounts):
+                            withholding_amounts.append({
+                                "amount": round(child_support_amounts[idx], 2),
+                                "type": "current_support",
+                                "case_id": case_id
+                            })
+                        
+                        # Add arrear amount
+                        if idx < len(arrear_amounts_list):
+                            arrear_amounts.append({
+                                "amount": round(arrear_amounts_list[idx], 2),
+                                "type": "arrear",
+                                "case_id": case_id
+                            })
+                else:
+                    # Fallback to case_index if no garnishment data found
+                    withholding_amounts = [
+                        {"amount": round(amt, 2), "type": "current_support", "case_index": idx}
+                        for idx, amt in enumerate(child_support_data.values())
+                    ]
+                    arrear_amounts = [
+                        {"amount": round(amt, 2), "type": "arrear", "case_index": idx}
+                        for idx, amt in enumerate(arrear_amount_data.values())
+                    ]
+                
+                result["garnishment_details"]["withholding_amounts"] = withholding_amounts
+                result["garnishment_details"]["arrear_amounts"] = arrear_amounts
+                
+                result["garnishment_details"]["total_withheld"] = round(total_withhold_amt, 2)
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(total_withhold_amt + garnishment_fees_amount, 2)
+                
+                result["calculation_metrics"]["disposable_earnings"] = round(de, 2)
+                result["calculation_metrics"]["allowable_disposable_earnings"] = round(ade, 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(mde, 2)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(total_withhold_amt + garnishment_fees_amount, 2)
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating child support: {e}")
-            return {"error": f"Error calculating child support: {e}"}
+            return self._create_standardized_result(GT.CHILD_SUPPORT, record, error_message=f"Error calculating child support: {e}")
 
-    def calculate_federal_tax(self, record, config_data,garn_fees=None):
+    def calculate_federal_tax(self, record, config_data, garn_fees=None):
         """
-        Calculate federal tax garnishment.
+        Calculate federal tax garnishment with standardized result structure.
         """
         try:
             work_state = record.get(EE.WORK_STATE)
-            add_exempt={"federal_add_exempt":config_data["federal_add_exempt"]}
-            std_exempt={"federal_std_exempt":config_data["federal_std_exempt"]}
-            result = FederalTax().calculate(record,std_exempt,add_exempt)
+            add_exempt = {"federal_add_exempt": config_data["federal_add_exempt"]}
+            std_exempt = {"federal_std_exempt": config_data["federal_std_exempt"]}
+            calculation_result = FederalTax().calculate(record, std_exempt, add_exempt)
 
-            if result == 0:
-                record[CR.AGENCY] = [
-                    {CR.WITHHOLDING_AMT: [{GR.FEDERAL_TAX_LEVY: INSUFFICIENT_PAY}]}]
+            # Create standardized result
+            result = self._create_standardized_result(GT.FEDERAL_TAX_LEVY, record)
+            
+            if calculation_result == 0:
+                result["calculation_status"] = "insufficient_pay"
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "federal_tax_levy"}
+                ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
             else:
-                record[CR.AGENCY] = [
-                    {CR.WITHHOLDING_AMT: [{GR.FEDERAL_TAX_LEVY: result}]}]
-            record[CR.ER_DEDUCTION] = {
-                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(work_state, record, result,garn_fees)}
-            record[CR.WITHHOLDING_BASIS] = CM.NA
-            record[CR.WITHHOLDING_CAP] = CM.NA
-            return record
+                # Calculate garnishment fees
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, calculation_result, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                withholding_amount = round(calculation_result, 2)
+                
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": withholding_amount, "type": "federal_tax_levy"}
+                ]
+                result["garnishment_details"]["total_withheld"] = withholding_amount
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                # Federal tax specific metrics
+                result["calculation_metrics"]["withholding_basis"] = CM.NA
+                result["calculation_metrics"]["withholding_cap"] = CM.NA
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating federal tax: {e}")
-            return {"error": f"Error calculating federal tax: {e}"}
+            return self._create_standardized_result(GT.FEDERAL_TAX_LEVY, record, error_message=f"Error calculating federal tax: {e}")
 
-    def calculate_student_loan(self, record, config_data=None,garn_fees=None):
+    def calculate_student_loan(self, record, config_data=None, garn_fees=None):
         """
-        Calculate student loan garnishment.
+        Calculate student loan garnishment with standardized result structure.
         """
         try:
             work_state = record.get(EE.WORK_STATE)
@@ -424,177 +586,321 @@ class CalculationDataView:
                 work_state, record, total_student_loan_amt,garn_fees)}
             record[CR.WITHHOLDING_BASIS] = CM.NA
             record[CR.WITHHOLDING_CAP] = CM.NA
-            record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
-                    total_mandatory_deduction_val, 2)
-            record[CR.DISPOSABLE_EARNING] = result["disposable_earning"]
-            return record
-        except Exception as e:
-            import traceback as t
-            print("eee",t.print_exc())
-            logger.error(f"Error calculating student loan: {e}")
-            return {"error": f"Error calculating student loan: {e}"}
+            # Create standardized result
+            standardized_result = self._create_standardized_result(GT.STUDENT_DEFAULT_LOAN, record)
+            
+            # Calculate total student loan amount
+            total_student_loan_amt = 0
+            withholding_amounts = []
+            
+            # Get garnishment data from input to extract case IDs
+            garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+            student_loan_garnishment = None
+            
+            # Find student loan garnishment data
+            for garnishment in garnishment_data:
+                if garnishment.get('type', '').lower() == 'student_default_loan':
+                    student_loan_garnishment = garnishment
+                    break
+            
+            if isinstance(loan_amt, dict):
+                if student_loan_garnishment:
+                    cases = student_loan_garnishment.get('data', [])
+                    for idx, (key, amount) in enumerate(loan_amt.items()):
+                        case_id = cases[idx].get(EE.CASE_ID, f"case_{idx}") if idx < len(cases) else f"case_{idx}"
+                        
+                        if isinstance(amount, (int, float)):
+                            withholding_amounts.append({"amount": round(amount, 2), "type": "student_loan", "case_id": case_id})
+                            total_student_loan_amt += amount
+                        else:
+                            withholding_amounts.append({"amount": INSUFFICIENT_PAY, "type": "student_loan", "case_id": case_id})
+                else:
+                    # Fallback to case_index if no garnishment data found
+                    for idx, (key, amount) in enumerate(loan_amt.items()):
+                        if isinstance(amount, (int, float)):
+                            withholding_amounts.append({"amount": round(amount, 2), "type": "student_loan", "case_index": idx})
+                            total_student_loan_amt += amount
+                        else:
+                            withholding_amounts.append({"amount": INSUFFICIENT_PAY, "type": "student_loan", "case_index": idx})
+            elif isinstance(loan_amt, (int, float)):
+                withholding_amounts.append({"amount": round(loan_amt, 2), "type": "student_loan"})
+                total_student_loan_amt = loan_amt
+            else:
+                withholding_amounts.append({"amount": INSUFFICIENT_PAY, "type": "student_loan"})
 
-    def calculate_state_tax_levy(self, record, config_data=None,garn_fees=None):
+            if total_student_loan_amt <= 0:
+                standardized_result["calculation_status"] = "insufficient_pay"
+                standardized_result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+            else:
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_student_loan_amt, garn_fees)
+                garnishment_fees_amount = round(garnishment_fees, 2) if isinstance(garnishment_fees, (int, float)) else 0.0
+                
+                standardized_result["garnishment_details"]["total_withheld"] = round(total_student_loan_amt, 2)
+                standardized_result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                standardized_result["garnishment_details"]["net_withholding"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
+                standardized_result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                standardized_result["employer_deductions"]["total_employer_cost"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
+
+            standardized_result["garnishment_details"]["withholding_amounts"] = withholding_amounts
+            standardized_result["calculation_metrics"]["disposable_earnings"] = round(result["disposable_earning"], 2)
+            standardized_result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+            standardized_result["calculation_metrics"]["withholding_basis"] = CM.NA
+            standardized_result["calculation_metrics"]["withholding_cap"] = CM.NA
+            
+            return standardized_result
+        except Exception as e:
+            logger.error(f"Error calculating student loan: {e}")
+            return self._create_standardized_result(GT.STUDENT_DEFAULT_LOAN, record, error_message=f"Error calculating student loan: {e}")
+
+    def calculate_state_tax_levy(self, record, config_data=None, garn_fees=None):
         """
-        Calculate state tax levy garnishment.
+        Calculate state tax levy garnishment with standardized result structure.
         """
         try:
             state_tax_view = StateTaxLevyCalculator()
             work_state = record.get(EE.WORK_STATE)
-            result = state_tax_view.calculate(
-                record, config_data[GT.STATE_TAX_LEVY])
-            total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(record)
-            if result == CommonConstants.NOT_FOUND:
-                return None
-            if isinstance(result, dict) and result.get(CR.WITHHOLDING_AMT, 0) <= 0:
-                return self._handle_insufficient_pay_garnishment(
-                    record,
-                    result.get(CR.DISPOSABLE_EARNING, 0),
-                    total_mandatory_deduction_val
-                )
+            calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY])
+            print("calculation_result",calculation_result)
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
+            
+            if calculation_result == CommonConstants.NOT_FOUND:
+                return self._create_standardized_result(GT.STATE_TAX_LEVY, record, error_message="State tax levy configuration not found")
+            
+            # Create standardized result
+            result = self._create_standardized_result(GT.STATE_TAX_LEVY, record)
+            
+            if isinstance(calculation_result, dict) and calculation_result.get(CR.WITHHOLDING_AMT, 0) <= 0:
+                result["calculation_status"] = "insufficient_pay"
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "state_tax_levy"}
+                ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result.get(CR.DISPOSABLE_EARNING, 0), 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
-                record[CR.AGENCY] = [{
-                    CR.WITHHOLDING_AMT: [
-                        {CR.GARNISHMENT_AMOUNT: round(
-                            result[CR.WITHHOLDING_AMT], 2)}
-                    ]
-                }]
-                record[CR.ER_DEDUCTION] = {
-                    CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                        work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
-                    )
-                }
+                withholding_amount = round(calculation_result[CR.WITHHOLDING_AMT], 2)
                 
-                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
-                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
-                    total_mandatory_deduction_val, 2)
-                record[CR.DISPOSABLE_EARNING] = round(
-                    result[CR.DISPOSABLE_EARNING], 2)
-                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
-                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
-                return record
+                # Calculate garnishment fees
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": withholding_amount, "type": "state_tax_levy"}
+                ]
+                result["garnishment_details"]["total_withheld"] = withholding_amount
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+                result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+            
+            return result
+            
         except Exception as e:
+            print(t.print_exc())
             logger.error(f"Error calculating state tax levy: {e}")
-            return {"error": f"Error calculating state tax levy: {e}"}
+            return self._create_standardized_result(GT.STATE_TAX_LEVY, record, error_message=f"Error calculating state tax levy: {e}")
 
-    def calculate_creditor_debt(self, record, config_data=None,garn_fees=None):
+    def calculate_creditor_debt(self, record, config_data=None, garn_fees=None):
         """
-        Calculate creditor debt garnishment.
+        Calculate creditor debt garnishment with standardized result structure.
         """
         try:
             creditor_debt_calculator = CreditorDebtCalculator()
             work_state = record.get(EE.WORK_STATE)
-            result = creditor_debt_calculator.calculate(
-                record, config_data[GT.CREDITOR_DEBT])
-            if isinstance(result, tuple):
-                result = result[0]
-            if result == CommonConstants.NOT_FOUND:
-                return None
-            elif result == CommonConstants.NOT_PERMITTED:
-                return CommonConstants.NOT_PERMITTED
-            total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(record)
-            if result[CR.WITHHOLDING_AMT] <= 0:
-                return self._handle_insufficient_pay_garnishment(
-                    record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
+            calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
+            if isinstance(calculation_result, tuple):
+                calculation_result = calculation_result[0]
+                
+            if calculation_result == CommonConstants.NOT_FOUND:
+                return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message="Creditor debt configuration not found")
+            elif calculation_result == CommonConstants.NOT_PERMITTED:
+                return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message="Creditor debt garnishment not permitted in this state")
+                
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
+            
+            # Create standardized result
+            result = self._create_standardized_result(GT.CREDITOR_DEBT, record)
+            
+            if calculation_result[CR.WITHHOLDING_AMT] <= 0:
+                result["calculation_status"] = "insufficient_pay"
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "creditor_debt"}
+                ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
-                record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
-                    {CR.CREDITOR_DEBT: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
-                record[CR.DISPOSABLE_EARNING] = round(
-                    result[CR.DISPOSABLE_EARNING], 2)
-                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
-                    total_mandatory_deduction_val, 2)
-                record[CR.ER_DEDUCTION] = {CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees)}
-                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
-                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
-                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
-                return record
+                withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
+                
+                # Calculate garnishment fees
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": withholding_amount, "type": "creditor_debt"}
+                ]
+                result["garnishment_details"]["total_withheld"] = withholding_amount
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+                result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating creditor debt: {e}")
-            return {"error": f"Error calculating creditor debt: {e}"}
+            return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message=f"Error calculating creditor debt: {e}")
         
-    def calculate_franchise_tax_board(self, record, config_data=None,garn_fees=None):
+    def calculate_franchise_tax_board(self, record, config_data=None, garn_fees=None):
         """
-        Calculate creditor debt garnishment.
+        Calculate franchise tax board garnishment with standardized result structure.
         """
         try:
             creditor_debt_calculator = FranchaiseTaxBoard()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
-            result = creditor_debt_calculator.calculate(
-                record, config_data["franchise_tax_board"])
-            if isinstance(result, tuple):
-                result = result[0]
-            if result == CommonConstants.NOT_FOUND:
-                return None
-            elif result == CommonConstants.NOT_PERMITTED:
-                return CommonConstants.NOT_PERMITTED
-            total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(payroll_taxes)
-            if result[CR.WITHHOLDING_AMT] <= 0:
-                return self._handle_insufficient_pay_garnishment(
-                    record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
+            calculation_result = creditor_debt_calculator.calculate(record, config_data["franchise_tax_board"])
+            
+            if isinstance(calculation_result, tuple):
+                calculation_result = calculation_result[0]
+                
+            if calculation_result == CommonConstants.NOT_FOUND:
+                return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message="Franchise tax board configuration not found")
+            elif calculation_result == CommonConstants.NOT_PERMITTED:
+                return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message="Franchise tax board garnishment not permitted in this state")
+                
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
+            
+            # Create standardized result
+            result = self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record)
+            
+            if calculation_result[CR.WITHHOLDING_AMT] <= 0:
+                result["calculation_status"] = "insufficient_pay"
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "franchise_tax_board"}
+                ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
-                record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
-                    {GT.FRANCHISE_TAX_BOARD: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
-                record[CR.DISPOSABLE_EARNING] = round(
-                    result[CR.DISPOSABLE_EARNING], 2)
-                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
-                    total_mandatory_deduction_val, 2)
-                record[CR.ER_DEDUCTION] = {
-                    CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
-                    )}
-                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
-                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
-                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
-                return record
+                withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
+                
+                # Calculate garnishment fees
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": withholding_amount, "type": "franchise_tax_board"}
+                ]
+                result["garnishment_details"]["total_withheld"] = withholding_amount
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+                result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating franchise tax board: {e}")
-            return {"error": f"Error calculating franchise tax board: {e}"}
+            return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message=f"Error calculating franchise tax board: {e}")
         
     
-    def calculate_bankcrupty(self, record, config_data=None,garn_fees=None):
+    def calculate_bankruptcy(self, record, config_data=None, garn_fees=None):
         """
-        Calculate bankcrupty garnishment.
+        Calculate bankruptcy garnishment with standardized result structure.
         """
         try:
             bankruptcy_calculator = Bankruptcy()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
-            result = bankruptcy_calculator.calculate(
-                record, config_data["bankruptcy"])
-            if isinstance(result, tuple):
-                result = result[0]
-            if result == CommonConstants.NOT_FOUND:
-                return None
-            elif result == CommonConstants.NOT_PERMITTED:
-                return CommonConstants.NOT_PERMITTED
-            total_mandatory_deduction_val = ChildSupport(
-                work_state).calculate_md(payroll_taxes)
-            if result[CR.WITHHOLDING_AMT] <= 0:
-                return self._handle_insufficient_pay_garnishment(
-                    record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val)
+            calculation_result = bankruptcy_calculator.calculate(record, config_data["bankruptcy"])
+            
+            if isinstance(calculation_result, tuple):
+                calculation_result = calculation_result[0]
+                
+            if calculation_result == CommonConstants.NOT_FOUND:
+                return self._create_standardized_result("bankruptcy", record, error_message="Bankruptcy configuration not found")
+            elif calculation_result == CommonConstants.NOT_PERMITTED:
+                return self._create_standardized_result("bankruptcy", record, error_message="Bankruptcy garnishment not permitted in this state")
+                
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
+            
+            # Create standardized result
+            result = self._create_standardized_result("bankruptcy", record)
+            
+            if calculation_result[CR.WITHHOLDING_AMT] <= 0:
+                result["calculation_status"] = "insufficient_pay"
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": INSUFFICIENT_PAY, "type": "bankruptcy"}
+                ]
+                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
-                record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
-                    {CR.GARNISHMENT_AMOUNT: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}]}]
-                record[CR.DISPOSABLE_EARNING] = round(
-                    result[CR.DISPOSABLE_EARNING], 2)
-                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
-                    total_mandatory_deduction_val, 2)
-                record[CR.ER_DEDUCTION] = {
-                    CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, record, result[CR.WITHHOLDING_AMT],garn_fees
-                    )}
-                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
-                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
-                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
-                return record
+                withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
+                
+                # Calculate garnishment fees
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees_amount = 0.0
+                
+                if isinstance(garnishment_fees, (int, float)):
+                    garnishment_fees_amount = round(garnishment_fees, 2)
+                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                    garnishment_fees_amount = round(float(garnishment_fees), 2)
+                
+                result["garnishment_details"]["withholding_amounts"] = [
+                    {"amount": withholding_amount, "type": "bankruptcy"}
+                ]
+                result["garnishment_details"]["total_withheld"] = withholding_amount
+                result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                
+                result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
+                result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+                result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                
+                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Error calculating bankcrupty: {e}")
-            return {"error": f"Error calculating bankcrupty: {e}"}
+            logger.error(f"Error calculating bankruptcy: {e}")
+            return self._create_standardized_result("bankruptcy", record, error_message=f"Error calculating bankruptcy: {e}")
         
 
     def calculate_child_support_priority(self, record, config_data=None,garn_fees=None):
@@ -614,163 +920,190 @@ class CalculationDataView:
             return {"error": f"Error calculating franchise tax board: {e}"}
 
 
-    def calculate_multiple_garnishment(self, record, config_data=None,garn_fees=None):
+    def calculate_multiple_garnishment(self, record, config_data=None, garn_fees=None):
         """
-        Calculate multiple garnishment and merge results with input record.
+        Calculate multiple garnishment with standardized result structure.
         """
         try:
-            # Create copy of original record to preserve input data
-            enhanced_record = record.copy()
-            payroll_taxes = record.get(PT.PAYROLL_TAXES)
+            # Create standardized result for multiple garnishment
+            result = self._create_standardized_result("multiple_garnishment", record)
+            result["garnishment_types"] = []
             
-            multiple_garnishment = MultipleGarnishmentPriorityOrder(record, config_data)
+            # Prepare record for multiple garnishment calculation
+            # The MultipleGarnishmentPriorityOrder expects garnishment_orders to be in the record
+            prepared_record = record.copy()
+            prepared_record["garnishment_orders"] = record.get("garnishment_orders", [])
+            
+            multiple_garnishment = MultipleGarnishmentPriorityOrder(prepared_record, config_data)
             work_state = record.get(EE.WORK_STATE)
-            result = multiple_garnishment.calculate()
+            calculation_result = multiple_garnishment.calculate()
+            print("calculation_result",calculation_result)
             
-            if result == CommonConstants.NOT_FOUND:
-                enhanced_record['calculation_status'] = 'not_found'
-                enhanced_record['error'] = 'No garnishment configuration found'
-                return enhanced_record
+            if calculation_result == CommonConstants.NOT_FOUND:
+                result["calculation_status"] = "not_found"
+                result["error"] = "No garnishment configuration found"
+                return result
                 
-            elif result == CommonConstants.NOT_PERMITTED:
-                enhanced_record['calculation_status'] = 'not_permitted'
-                enhanced_record['message'] = 'Garnishment not permitted for this case'
-                return enhanced_record
+            elif calculation_result == CommonConstants.NOT_PERMITTED:
+                result["calculation_status"] = "not_permitted"
+                result["error"] = "Garnishment not permitted for this case"
+                return result
             
-            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
-            
-            # Transform garnishment_data to include calculation results
-            enhanced_garnishment_data = []
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record.get(PT.PAYROLL_TAXES))
             total_withheld = 0.0
             
             # Process each garnishment type from the calculation results
-            for garnishment_type, type_result in result.items():
+            for garnishment_type, type_result in calculation_result.items():
                 if isinstance(type_result, dict):
-                    # Find matching garnishment data from input
-                    original_garnishment = None
-                    for garnishment in record.get(EE.GARNISHMENT_DATA, []):
-                        if garnishment.get('type', '').lower().replace(' ', '_') == garnishment_type.lower().replace(' ', '_'):
-                            original_garnishment = garnishment
-                            break
+                    type_withholding_amounts = []
+                    type_total_withheld = 0.0
                     
-                    if original_garnishment:
-                        enhanced_type_data = {
-                            'type': garnishment_type,
-                            'cases': []
-                        }
+                    # Handle child support specific structure
+                    if garnishment_type == 'child_support':
+                        result_amounts = type_result.get('result_amt', {})
+                        arrear_amounts = type_result.get('arrear_amt', {})
                         
-                        original_cases = original_garnishment.get('data', [])
+                        # Get garnishment data from input to extract case IDs
+                        garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+                        child_support_garnishment = None
                         
-                        # Handle child support specific structure
-                        if garnishment_type == 'child_support':
-                            result_amounts = type_result.get('result_amt', {})
-                            arrear_amounts = type_result.get('arrear_amt', {})
+                        # Find child support garnishment data
+                        for garnishment in garnishment_data:
+                            if garnishment.get('type', '').lower() == 'child_support':
+                                child_support_garnishment = garnishment
+                                break
+                        
+                        if child_support_garnishment:
+                            cases = child_support_garnishment.get('data', [])
+                            result_amounts_list = list(result_amounts.values())
+                            arrear_amounts_list = list(arrear_amounts.values())
                             
-                            type_total_withheld = 0.0
-                            
-                            for i, original_case in enumerate(original_cases):
-                                enhanced_case = original_case.copy()
-                                case_key_result = f"child support amount{i+1}"
-                                case_key_arrear = f"arrear amount{i+1}"
-                                
-                                # Get individual amounts from calculation result
-                                garnishment_amount = result_amounts.get(case_key_result, 0)
-                                arrear_amount = arrear_amounts.get(case_key_arrear, 0)
-                                
-                                # For child support, the full amounts are typically withheld if available
-                                current_support_withheld = garnishment_amount
-                                arrear_withheld = arrear_amount
-                                
-                                # Total withheld for this case
-                                case_total_withheld = current_support_withheld + arrear_withheld
-                                
-                                # Calculate remaining balance (should be 0 if fully withheld)
-                                total_required = garnishment_amount + arrear_amount
-                                remaining_balance = max(0, total_required - case_total_withheld)
-                                
-                                enhanced_case.update({
-                                    'withholding_amount': round(garnishment_amount, 2),
-                                    'arrear_amount': round(arrear_amount, 2),
-                                    'arrear_withheld': round(arrear_withheld, 2),
-                                    'remaining_balance': round(remaining_balance, 2),
-                                    'calculation_status': type_result["calculation_status"]
+                            for i, (key, amount) in enumerate(result_amounts.items()):
+                                case_id = cases[i].get(EE.CASE_ID, f"case_{i}") if i < len(cases) else f"case_{i}"
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "current_support",
+                                    "case_id": case_id
                                 })
-                                enhanced_type_data['cases'].append(enhanced_case)
-                                type_total_withheld += case_total_withheld
+                                type_total_withheld += amount
                             
-                            total_withheld += type_total_withheld
-                        
-                        # Handle other garnishment types (student loan, creditor debt, etc.)
+                            for i, (key, amount) in enumerate(arrear_amounts.items()):
+                                case_id = cases[i].get(EE.CASE_ID, f"case_{i}") if i < len(cases) else f"case_{i}"
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "arrear",
+                                    "case_id": case_id
+                                })
+                                type_total_withheld += amount
                         else:
-                            withholding_amount = type_result.get('withholding_amt', 0)
-                            status = type_result.get('status', 'processed')
-                            
-                            # Calculate per case amounts
-                            total_cases = len(original_cases)
-                            per_case_withholding = withholding_amount / total_cases if total_cases > 0 else 0
-                            
-                            type_total_withheld = 0.0
-                            
-                            for original_case in original_cases:
-                                enhanced_case = original_case.copy()
-                                
-                                # Get ordered amount (required amount)
-                                ordered_amount = enhanced_case.get('ordered_amount', 0)
-                                
-                                # Calculate actual withholding for this case
-                                case_withholding = per_case_withholding if status != 'skipped_due_to_limit' else 0
-                                
-                                # Calculate remaining balance
-                                remaining_balance = max(0, ordered_amount - case_withholding)
-
-                                enhanced_case.update({
-                                    'withholding_amount': round(case_withholding, 2),
-                                    'remaining_balance': round(remaining_balance, 2),
-                                    'calculation_status': type_result["calculation_status"],
-                                    CR.WITHHOLDING_LIMIT_RULE : CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
-                                    CR.WITHHOLDING_BASIS : type_result.get(CR.WITHHOLDING_BASIS, CM.NA),
-                                    CR.WITHHOLDING_CAP : type_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                                    
+                            # Fallback to case_index if no garnishment data found
+                            for i, (key, amount) in enumerate(result_amounts.items()):
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "current_support",
+                                    "case_index": i
                                 })
-                                enhanced_type_data['cases'].append(enhanced_case)
-                                type_total_withheld += case_withholding
+                                type_total_withheld += amount
                             
-                            total_withheld += type_total_withheld
+                            for i, (key, amount) in enumerate(arrear_amounts.items()):
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "arrear",
+                                    "case_index": i
+                                })
+                                type_total_withheld += amount
+                    
+                    # Handle student loan specific structure
+                    elif garnishment_type == 'student_default_loan':
+                        student_loan_amounts = type_result.get('student_loan_amt', {})
                         
-                        # Add type summary
-                        enhanced_type_data['type_summary'] = {
-                            'total_cases': len(enhanced_type_data['cases']),
-                            'status': type_result.get('status', 'processed'),
-                            'total_withheld': round(type_total_withheld if garnishment_type == 'child_support' or garnishment_type in ['student default loan', 'creditor debt'] else type_result.get('garnishment_amount', type_result.get('withholding_amt', 0)), 2)
+                        # Get garnishment data from input to extract case IDs
+                        garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+                        student_loan_garnishment = None
+                        
+                        # Find student loan garnishment data
+                        for garnishment in garnishment_data:
+                            if garnishment.get('type', '').lower() == 'student_default_loan':
+                                student_loan_garnishment = garnishment
+                                break
+                        
+                        if student_loan_garnishment:
+                            cases = student_loan_garnishment.get('data', [])
+                            for i, (key, amount) in enumerate(student_loan_amounts.items()):
+                                case_id = cases[i].get(EE.CASE_ID, f"case_{i}") if i < len(cases) else f"case_{i}"
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "student_loan",
+                                    "case_id": case_id
+                                })
+                                type_total_withheld += amount
+                        else:
+                            # Fallback to case_index if no garnishment data found
+                            for i, (key, amount) in enumerate(student_loan_amounts.items()):
+                                type_withholding_amounts.append({
+                                    "amount": round(amount, 2),
+                                    "type": "student_loan",
+                                    "case_index": i
+                                })
+                                type_total_withheld += amount
+                    
+                    # Handle other garnishment types (creditor debt, etc.)
+                    else:
+                        withholding_amount = type_result.get('withholding_amt', 0)
+                        type_withholding_amounts.append({
+                            "amount": round(withholding_amount, 2),
+                            "type": garnishment_type
+                        })
+                        type_total_withheld = withholding_amount
+                    
+                    # Add garnishment type to result
+                    result["garnishment_types"].append({
+                        "garnishment_type": garnishment_type,
+                        "withholding_amounts": type_withholding_amounts,
+                        "total_withheld": round(type_total_withheld, 2),
+                        "status": type_result.get('calculation_status', 'processed'),
+                        "calculation_metrics": {
+                            "disposable_earnings": type_result.get('de', 0),
+                            "allowable_disposable_earnings": type_result.get('ade', 0),
+                            "twenty_five_percent_of_de": type_result.get('twenty_five_percent_of_de', 0),
+                            "current_amount_withheld": type_result.get('current_amount_withheld', 0),
+                            "amount_left_for_other_garn": type_result.get('amount_left_for_other_garn', 0)
                         }
+                    })
+                    
+                    total_withheld += type_total_withheld
                         
-                        enhanced_garnishment_data.append(enhanced_type_data)
+            # Calculate garnishment fees
+            garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_withheld, garn_fees)
+            garnishment_fees_amount = 0.0
             
-            # Update the record with enhanced garnishment data
-            enhanced_record[EE.GARNISHMENT_DATA] = enhanced_garnishment_data
+            if isinstance(garnishment_fees, (int, float)):
+                garnishment_fees_amount = round(garnishment_fees, 2)
+            elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                garnishment_fees_amount = round(float(garnishment_fees), 2)
             
-            # Add calculation summary
-            enhanced_record['calculation_summary'] = {
-                'twenty_five_percent_of_de':round(result[GT.CHILD_SUPPORT]["twenty_five_percent_of_de"], 2),
-                'disposable_earnings': round(result[GT.CHILD_SUPPORT]["de"], 2),
-                'allowable_disposable_earnings': round(result[GT.CHILD_SUPPORT]['ade'], 1),
-                'total_mandatory_deduction': round(total_mandatory_deduction_val, 2),
-            }
+            # Update garnishment details
+            result["garnishment_details"]["total_withheld"] = round(total_withheld, 2)
+            result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
+            result["garnishment_details"]["net_withholding"] = round(total_withheld + garnishment_fees_amount, 2)
             
-            # Add employer deduction information
-            enhanced_record[CR.ER_DEDUCTION] = {
-                CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
-                    work_state, enhanced_record, total_withheld,garn_fees
-                )
-            }
-            return enhanced_record
+            # Update calculation metrics
+            if GT.CHILD_SUPPORT in calculation_result:
+                child_support_result = calculation_result[GT.CHILD_SUPPORT]
+                result["calculation_metrics"]["disposable_earnings"] = round(child_support_result.get("de", 0), 2)
+                result["calculation_metrics"]["allowable_disposable_earnings"] = round(child_support_result.get("ade", 0), 2)
+            
+            result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
+            
+            # Update employer deductions
+            result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
+            result["employer_deductions"]["total_employer_cost"] = round(total_withheld + garnishment_fees_amount, 2)
+            
+            return result
             
         except Exception as e:
             logger.error(f"Error calculating multiple garnishment: {e}")
-            enhanced_record = record.copy()
-            enhanced_record['calculation_status'] = 'error'
-            enhanced_record['error'] = f"Error calculating multiple garnishment: {e}"
-            return enhanced_record
+            return self._create_standardized_result("multiple_garnishment", record, error_message=f"Error calculating multiple garnishment: {e}")
                 
     def calculate_garnishment_wrapper(self, record, config_data,garn_fees=None):
             """

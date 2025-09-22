@@ -44,7 +44,7 @@ class StudentLoan:
 
         except Exception as e:
             return {
-                "student_loan_amt": {"student_loan_amt1": f"Error calculating single student loan amount: {e}"}
+                "student_loan_amt": {"student_loan_amt1": f"Error calculating single student loan amount: {e}"},"disposable_earning": 0
             }
 
     def get_multiple_student_amount(self, work_state,pay_period, wages,commission_and_bonus,non_accountable_allowances,payroll_taxes):
@@ -98,7 +98,8 @@ class StudentLoanCalculator:
             elif count and count > 1:
                 return student_loan.get_multiple_student_amount(state_name,pay_period, wages,commission_and_bonus,non_accountable_allowances,payroll_taxes)
             else:
-                return {"student_loan_amt": {"student_loan_amt1": 0, "de": 0}}
+                
+                return {"student_loan_amt": {"student_loan_amt1": 0}, "disposable_earning": 0}
 
         except Exception as e:
             return Response(

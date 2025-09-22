@@ -176,16 +176,15 @@ class MultipleGarnishmentPriorityOrder:
         applicable_orders = sorted(
             [
                 item for item in priority_list
-                if item.get('type', '').strip().lower() in active_order_types and
-                   item.get('type', '').strip().lower() not in skip_types
+                if item.get('garnishment_type', '').strip().lower() in active_order_types and
+                   item.get('garnishment_type', '').strip().lower() not in skip_types
             ],
             key=lambda x: x.get('priority_order', float('inf'))
         )
-
         calculated_count = 0
         # --- Main Calculation Loop ---
         for item in applicable_orders:
-            g_type = item.get('type', '').strip().lower()
+            g_type = item.get('garnishment_type', '').strip().lower()
             if not g_type:
                 continue
 
@@ -274,5 +273,6 @@ class MultipleGarnishmentPriorityOrder:
                 garnishment_results[g_type] = {"withholding_amt": 0, "calculation_status": "calculation_error", "error_details": str(e)}
 
                 # We still increment count as this counts as a processed attempt
-                calculated_count += 1    
+                calculated_count += 1   
+         
         return garnishment_results

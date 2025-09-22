@@ -11,10 +11,14 @@ class StateTaxLevyRulesSerializers(serializers.ModelSerializer):
         exclude = ['id']
 
 
+
+
 class StateTaxLevyExemptAmtConfigSerializers(serializers.ModelSerializer):
+    state = serializers.CharField(source='state.state')
     class Meta:
         model = StateTaxLevyExemptAmtConfig
-        fields = '__all__'
+        fields = ['state','pay_period','minimum_hourly_wage_basis','minimum_wage_amount','multiplier_lt','condition_expression_lt','lower_threshold_amount','multiplier_ut','condition_expression_ut','upper_threshold_amount']
+
 
 
 class StateTaxLevyRuleEditPermissionSerializers(serializers.ModelSerializer):

@@ -28,6 +28,8 @@ class GarnishmentTypeFields:
     BANKRUPTCY_AMOUNT = 'bankruptcy_amount'
     SPOUSAL_SUPPORT_AMOUNT = 'spousal_support_amount'
     CHILD_SUPPORT_AMOUNT = 'child_support_amount'
+    BANKRUPTCY='bankruptcy'
+    
 
 
 

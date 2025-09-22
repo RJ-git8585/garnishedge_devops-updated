@@ -108,9 +108,11 @@ class PostCalculationView(APIView):
                             # Add metadata for multi-garnishment cases
                             if calculation_service.is_multi_garnishment_case(case_info_original):
                                 result['is_multi_garnishment'] = True
-                                result['garnishment_types'] = list(
-                                    calculation_service.get_case_garnishment_types(case_info_original)
-                                )
+                                # Only set garnishment_types if it's not already populated with detailed breakdown
+                                if not result.get('garnishment_types') or len(result.get('garnishment_types', [])) == 0:
+                                    result['garnishment_types'] = list(
+                                        calculation_service.get_case_garnishment_types(case_info_original)
+                                    )
                             
                             output.append(result)
                         else:

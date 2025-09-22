@@ -4,3 +4,4 @@ from .state_tax_serializers import *
 from .federal_tax_serializers import *
 from .garnishment_fees_serializers import *
 from .shared_serializers import *
+from .multiple_garnishment_serializers import *
