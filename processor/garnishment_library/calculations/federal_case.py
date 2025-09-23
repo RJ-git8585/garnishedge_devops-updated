@@ -42,47 +42,47 @@ class FederalTaxCalculation:
             return "married_filing_joint_return"
         return status
 
-    def _calculate_age_blind_exemptions(self, age, is_blind):
-        return int(age >= 65) + int(is_blind)
+    # def _calculate_age_blind_exemptions(self, age, is_blind):
+    #     return int(age >= 65) + int(is_blind)
 
-    def get_total_exemption_self(self, age,is_blind):
-        return self._calculate_age_blind_exemptions(
-            age,is_blind
-        )
+    # def get_total_exemption_self(self, age,is_blind):
+    #     return self._calculate_age_blind_exemptions(
+    #         age,is_blind
+    #     )
 
-    def get_total_exemption_dependent(self,spouse_age, is_spouse_blind):
-        return self._calculate_age_blind_exemptions(
-            spouse_age,is_spouse_blind)
+    # def get_total_exemption_dependent(self,spouse_age, is_spouse_blind):
+    #     return self._calculate_age_blind_exemptions(
+    #         spouse_age,is_spouse_blind)
 
-    def _get_additional_exempt_amount(self, pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, data, exemption_type='self'):
-        try:
-            year = str(self._get_year_from_date(statement_of_exemption_received_date))
-            num_exemptions = (self.get_total_exemption_self(age, is_blind) if exemption_type == 'self'
-                              else self.get_total_exemption_dependent(spouse_age,is_spouse_blind))
+    # def _get_additional_exempt_amount(self, pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, data, exemption_type='self'):
+    #     try:
+    #         year = str(self._get_year_from_date(statement_of_exemption_received_date))
+    #         num_exemptions = (self.get_total_exemption_self(age, is_blind) if exemption_type == 'self'
+    #                           else self.get_total_exemption_dependent(spouse_age,is_spouse_blind))
 
-            normalized_status = self._normalize_filing_status(filing_status)
+    #         normalized_status = self._normalize_filing_status(filing_status)
 
-            federal_data = data.get('federal_add_exempt', [])
+    #         federal_data = data.get('federal_add_exempt', [])
 
 
-            for row in federal_data:
-                if  row.get('filing_status').lower() in [normalized_status, FilingStatusFields.ANY_OTHER_FILING_STATUS.lower()]:
-                    if (row.get('num_exemptions') == num_exemptions and
-                        row.get('year') == str(year)):
-                        amount = row.get(pay_period, 0)
-                        return Decimal(str(amount)) if amount else Decimal('0.00')
+    #         for row in federal_data:
+    #             if  row.get('filing_status').lower() in [normalized_status, FilingStatusFields.ANY_OTHER_FILING_STATUS.lower()]:
+    #                 if (row.get('num_exemptions') == num_exemptions and
+    #                     row.get('year') == str(year)):
+    #                     amount = row.get(pay_period, 0)
+    #                     return Decimal(str(amount)) if amount else Decimal('0.00')
 
-            raise ValueError(f"No matching additional exemption data found for {exemption_type}.")
+    #         raise ValueError(f"No matching additional exemption data found for {exemption_type}.")
 
-        except Exception as e:
-            logger.error(f"Error in additional exemption ({exemption_type}): {e}\n{t.format_exc()}")
-            raise ValueError(f"Failed to retrieve additional exemption amount for {exemption_type}: {e}")
+    #     except Exception as e:
+    #         logger.error(f"Error in additional exemption ({exemption_type}): {e}\n{t.format_exc()}")
+    #         raise ValueError(f"Failed to retrieve additional exemption amount for {exemption_type}: {e}")
 
-    def get_additional_exempt_for_self(self,pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data):
-        return self._get_additional_exempt_amount(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data, exemption_type='self')
+    # def get_additional_exempt_for_self(self,pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data):
+    #     return self._get_additional_exempt_amount(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data, exemption_type='self')
 
-    def get_additional_exempt_for_dependent(self,pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data):
-        return self._get_additional_exempt_amount(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data, exemption_type='dependent')
+    # def get_additional_exempt_for_dependent(self,pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data):
+    #     return self._get_additional_exempt_amount(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data, exemption_type='dependent')
 
     def get_standard_exempt_amt(self, filing_status,no_of_exemption_for_self,pay_period,statement_of_exemption_received_date, std_data):
         try:
@@ -125,14 +125,14 @@ class FederalTaxCalculation:
 
 
 class FederalTax(FederalTaxCalculation):
-    def calculate(self, record, std_exempt_data, add_exempt_data):
+    def calculate(self, record, std_exempt_data):
         try:
             # Ensure types
             net_pay = Decimal(str(record.get(CalculationFields.NET_PAY, '0.00')))
-            age = record.get(EmployeeFields.AGE, 0)
-            is_blind = record.get(EmployeeFields.IS_BLIND, False)
-            spouse_age = record.get(EmployeeFields.SPOUSE_AGE, 0)
-            is_spouse_blind = record.get(EmployeeFields.IS_SPOUSE_BLIND, False)
+            # age = record.get(EmployeeFields.AGE, 0)
+            # is_blind = record.get(EmployeeFields.IS_BLIND, False)
+            # spouse_age = record.get(EmployeeFields.SPOUSE_AGE, 0)
+            # is_spouse_blind = record.get(EmployeeFields.IS_SPOUSE_BLIND, False)
             pay_period = record.get(EmployeeFields.PAY_PERIOD, "").lower()
             filing_status = record.get(EmployeeFields.FILING_STATUS, "").lower()
             no_of_exemption_for_self = record.get(EmployeeFields.NO_OF_EXEMPTION_INCLUDING_SELF)
@@ -147,9 +147,9 @@ class FederalTax(FederalTaxCalculation):
             record[EmployeeFields.PAY_PERIOD] = record.get(EmployeeFields.PAY_PERIOD, "").lower()
 
             standard_amt = self.get_standard_exempt_amt(filing_status,no_of_exemption_for_self,pay_period,statement_of_exemption_received_date, std_exempt_data)
-            add_self = self.get_additional_exempt_for_self(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data) if age >= 65 or is_blind else Decimal('0.00')
-            add_dep = self.get_additional_exempt_for_dependent(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data) if spouse_age >= 65 or is_spouse_blind else Decimal('0.00')
-            total_exemption = standard_amt + add_self + add_dep
+            # add_self = self.get_additional_exempt_for_self(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data) if age >= 65 or is_blind else Decimal('0.00')
+            # add_dep = self.get_additional_exempt_for_dependent(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data) if spouse_age >= 65 or is_spouse_blind else Decimal('0.00')
+            total_exemption = standard_amt
             deduction = max(Decimal('0.00'), round(net_pay - total_exemption, 2))
             return deduction
 

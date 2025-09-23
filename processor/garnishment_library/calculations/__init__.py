@@ -7,4 +7,5 @@ from .state_tax import *
 from .multiple_garnishment import *
 from  .franchise_tax_board import *
 from .bankruptcy import *
+from .ftb import *
 from .deductions_priority import *

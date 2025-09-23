@@ -29,6 +29,11 @@ class GarnishmentTypeFields:
     SPOUSAL_SUPPORT_AMOUNT = 'spousal_support_amount'
     CHILD_SUPPORT_AMOUNT = 'child_support_amount'
     BANKRUPTCY='bankruptcy'
+    FTB_RELATED_TYPES = {
+                    "ftb_ewot": 9,
+                    "ftb_court": 11,      # Replace with actual ID
+                    "ftb_vehicle": 10     # Replace with actual ID
+                }
     
 
 

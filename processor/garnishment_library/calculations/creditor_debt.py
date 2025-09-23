@@ -54,7 +54,7 @@ class CreditorDebtHelper():
                             and (i.get("debt_type") is None or i.get("debt_type").lower() == debt_type or not i.get("debt_type")) 
                             and (i.get("start_gt_5dec24") is None or i.get("start_gt_5dec24") == garn_start_date)
                             and (i.get("home_state") is None or i.get("home_state").lower() == home_state.lower())
-                            and i.get("ftb_type" ) == ftb_type
+                            and (i.get("ftb_type" ) == ftb_type or i.get("ftb_type" ) is None) 
                         ),
                         None
                     )
@@ -125,6 +125,7 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
+            print("config_data",config_data)
             lower_threshold_amount =float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(

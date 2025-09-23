@@ -11,7 +11,7 @@ from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerial
 )
 from user_app.serializers import EmployeeDetailSerializer
 
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,WithholdingProcessor,Bankruptcy,
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,ftb_ewot,WithholdingProcessor,Bankruptcy,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
 from user_app.constants import (
     EmployeeFields as EE,
@@ -124,13 +124,25 @@ class CalculationDataView:
                     loaded_types.append("bankruptcy")
                     logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
-                    import traceback as t
-                    print("preload_config",t.print_exc())
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
 
+            for type_name, type_id in GT.FTB_RELATED_TYPES.items():
+                if type_name in garnishment_types:
+                    try:
+                        queryset = ExemptConfig.objects.select_related('state', 'pay_period', 'garnishment_type').filter(garnishment_type=type_id)
+                        config_ids = queryset.values_list("id", flat=True)
+                        threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
+                        serializer = ThresholdAmountSerializer(threshold_qs, many=True)
+                        config_data[type_name] = serializer.data
+                        loaded_types.append(type_name)
+                        logger.info(f"Successfully loaded config for types: {loaded_types}")
+                    except Exception as e:
+                        logger.error(f"Error loading config for {type_name}: {e}")
             
         except Exception as e:
             logger.error(f"Critical error preloading config data: {e}", exc_info=True) 
+
+
         return config_data
     
     def preload_garnishment_fees(self) -> list:
@@ -253,7 +265,7 @@ class CalculationDataView:
 
             },
             GT.FEDERAL_TAX_LEVY: {
-                "fields": [EE.FILING_STATUS, EE.PAY_PERIOD, CA.NET_PAY, EE.AGE, EE.IS_BLIND, EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE],
+                "fields": [EE.FILING_STATUS, EE.PAY_PERIOD, CA.NET_PAY, EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE],
                 "calculate": self.calculate_federal_tax
             },
             GT.STUDENT_DEFAULT_LOAN: {
@@ -290,6 +302,24 @@ class CalculationDataView:
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, GT.SPOUSAL_SUPPORT_AMOUNT, GT.BANKRUPTCY_AMOUNT
                 ],
                 "calculate": self.calculate_bankruptcy
+            },
+            "ftb_ewot": {
+                "fields": [
+                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
+                ],
+                "calculate": self.calculate_ewot
+            },
+            "court_ordered_debt": {  
+                "fields": [
+                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
+                ],
+                "calculate": self.calculate_ewot
+            },
+            "ftb_vehicle": {  
+                "fields": [
+                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
+                ],
+                "calculate": self.calculate_ewot
             },
 
         }
@@ -348,7 +378,7 @@ class CalculationDataView:
                 "withholding_cap": CM.NA,
                 "withholding_limit_rule": CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
             },
-            "employer_deductions": {
+            "er_deductions": {
                 "garnishment_fees": 0.0,
                 "total_employer_cost": 0.0
             }
@@ -420,7 +450,7 @@ class CalculationDataView:
                     {"amount": INSUFFICIENT_PAY, "type": "arrear"} 
                     for _ in arrear_amount_data
                     ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
                 result["calculation_metrics"]["disposable_earnings"] = round(de, 2)
                 result["calculation_metrics"]["allowable_disposable_earnings"] = round(ade, 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(mde, 2)
@@ -494,8 +524,8 @@ class CalculationDataView:
                 result["calculation_metrics"]["allowable_disposable_earnings"] = round(ade, 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(mde, 2)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(total_withhold_amt + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(total_withhold_amt + garnishment_fees_amount, 2)
             
             return result
             
@@ -509,9 +539,9 @@ class CalculationDataView:
         """
         try:
             work_state = record.get(EE.WORK_STATE)
-            add_exempt = {"federal_add_exempt": config_data["federal_add_exempt"]}
+            #add_exempt = {"federal_add_exempt": config_data["federal_add_exempt"]}
             std_exempt = {"federal_std_exempt": config_data["federal_std_exempt"]}
-            calculation_result = FederalTax().calculate(record, std_exempt, add_exempt)
+            calculation_result = FederalTax().calculate(record, std_exempt)
 
             # Create standardized result
             result = self._create_standardized_result(GT.FEDERAL_TAX_LEVY, record)
@@ -521,7 +551,7 @@ class CalculationDataView:
                 result["garnishment_details"]["withholding_amounts"] = [
                     {"amount": INSUFFICIENT_PAY, "type": "federal_tax_levy"}
                 ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
             else:
                 # Calculate garnishment fees
                 garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, calculation_result, garn_fees)
@@ -539,10 +569,10 @@ class CalculationDataView:
                 ]
                 result["garnishment_details"]["total_withheld"] = withholding_amount
                 result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
-                result["garnishment_details"]["net_withholding"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["garnishment_details"]["net_withholding"] = round(float(withholding_amount)+ float(garnishment_fees_amount), 2)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(float(withholding_amount)+ float(garnishment_fees_amount), 2)
                 
                 # Federal tax specific metrics
                 result["calculation_metrics"]["withholding_basis"] = CM.NA
@@ -564,7 +594,6 @@ class CalculationDataView:
             total_mandatory_deduction_val = ChildSupport(
                 work_state).calculate_md(record)
             loan_amt = result["student_loan_amt"]
-            print("result",result)
 
 
             if len(loan_amt) == 1:
@@ -630,7 +659,7 @@ class CalculationDataView:
 
             if total_student_loan_amt <= 0:
                 standardized_result["calculation_status"] = "insufficient_pay"
-                standardized_result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                standardized_result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
             else:
                 garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_student_loan_amt, garn_fees)
                 garnishment_fees_amount = round(garnishment_fees, 2) if isinstance(garnishment_fees, (int, float)) else 0.0
@@ -638,8 +667,8 @@ class CalculationDataView:
                 standardized_result["garnishment_details"]["total_withheld"] = round(total_student_loan_amt, 2)
                 standardized_result["garnishment_details"]["garnishment_fees"] = garnishment_fees_amount
                 standardized_result["garnishment_details"]["net_withholding"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
-                standardized_result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                standardized_result["employer_deductions"]["total_employer_cost"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
+                standardized_result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                standardized_result["er_deductions"]["total_employer_cost"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
 
             standardized_result["garnishment_details"]["withholding_amounts"] = withholding_amounts
             standardized_result["calculation_metrics"]["disposable_earnings"] = round(result["disposable_earning"], 2)
@@ -660,7 +689,6 @@ class CalculationDataView:
             state_tax_view = StateTaxLevyCalculator()
             work_state = record.get(EE.WORK_STATE)
             calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY])
-            print("calculation_result",calculation_result)
             total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
             
             if calculation_result == CommonConstants.NOT_FOUND:
@@ -674,7 +702,7 @@ class CalculationDataView:
                 result["garnishment_details"]["withholding_amounts"] = [
                     {"amount": INSUFFICIENT_PAY, "type": "state_tax_levy"}
                 ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
                 result["calculation_metrics"]["disposable_earnings"] = round(calculation_result.get(CR.DISPOSABLE_EARNING, 0), 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
@@ -701,13 +729,12 @@ class CalculationDataView:
                 result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
         except Exception as e:
-            print(t.print_exc())
             logger.error(f"Error calculating state tax levy: {e}")
             return self._create_standardized_result(GT.STATE_TAX_LEVY, record, error_message=f"Error calculating state tax levy: {e}")
 
@@ -737,7 +764,7 @@ class CalculationDataView:
                 result["garnishment_details"]["withholding_amounts"] = [
                     {"amount": INSUFFICIENT_PAY, "type": "creditor_debt"}
                 ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
                 result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
@@ -764,8 +791,8 @@ class CalculationDataView:
                 result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
@@ -801,7 +828,7 @@ class CalculationDataView:
                 result["garnishment_details"]["withholding_amounts"] = [
                     {"amount": INSUFFICIENT_PAY, "type": "franchise_tax_board"}
                 ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
                 result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
@@ -828,8 +855,8 @@ class CalculationDataView:
                 result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
@@ -866,7 +893,7 @@ class CalculationDataView:
                 result["garnishment_details"]["withholding_amounts"] = [
                     {"amount": INSUFFICIENT_PAY, "type": "bankruptcy"}
                 ]
-                result["employer_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
+                result["er_deductions"]["garnishment_fees"] = "Garnishment fees cannot be deducted due to insufficient pay"
                 result["calculation_metrics"]["disposable_earnings"] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             else:
@@ -893,15 +920,74 @@ class CalculationDataView:
                 result["calculation_metrics"]["withholding_basis"] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result["calculation_metrics"]["withholding_cap"] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
-                result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-                result["employer_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
+                result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+                result["er_deductions"]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
         except Exception as e:
             logger.error(f"Error calculating bankruptcy: {e}")
             return self._create_standardized_result("bankruptcy", record, error_message=f"Error calculating bankruptcy: {e}")
-        
+
+
+    def calculate_ewot(self, record, config_data, garn_fees=None):
+        """
+        Calculate FTB EWOT/Court/Vehicle garnishment.
+        """
+        try:
+            garnishment_data = record.get("garnishment_data")
+            if not garnishment_data:
+                return None
+            garnishment_type = garnishment_data[0].get(
+                    EE.GARNISHMENT_TYPE, "").strip().lower()
+
+            # Check if the config exists for this type
+            if garnishment_type not in config_data:
+                logger.error(f"Config data for '{garnishment_type}' is missing. Available keys: {list(config_data.keys())}")
+                return {"error": f"Configuration data for '{garnishment_type}' is missing. Please check your config loading and DB records."}
+
+            creditor_debt_calculator = ftb_ewot()
+            payroll_taxes = record.get(PT.PAYROLL_TAXES)
+            work_state = record.get(EE.WORK_STATE)
+            result = creditor_debt_calculator.calculate(
+                record, config_data[garnishment_type]
+            )
+            if isinstance(result, tuple):
+                result = result[0]
+            if result == CommonConstants.NOT_FOUND:
+                return None
+            elif result == CommonConstants.NOT_PERMITTED:
+                return CommonConstants.NOT_PERMITTED
+            total_mandatory_deduction_val = ChildSupport(
+                work_state
+            ).calculate_md(payroll_taxes)
+            if result[CR.WITHHOLDING_AMT] <= 0:
+                return self._handle_insufficient_pay_garnishment(
+                    record, result[CR.DISPOSABLE_EARNING], total_mandatory_deduction_val
+                )
+            else:
+                record[CR.AGENCY] = [{CR.WITHHOLDING_AMT: [
+                    {garnishment_type: max(round(result[CR.WITHHOLDING_AMT], 2), 0)}
+                ]}]
+                record[CR.DISPOSABLE_EARNING] = round(
+                    result[CR.DISPOSABLE_EARNING], 2
+                )
+                record[CR.TOTAL_MANDATORY_DEDUCTION] = round(
+                    total_mandatory_deduction_val, 2
+                )
+                record[CR.ER_DEDUCTION] = {
+                    CR.GARNISHMENT_FEES: self.get_rounded_garnishment_fee(
+                        work_state, record, result[CR.WITHHOLDING_AMT], garn_fees
+                    )
+                }
+                record[CR.WITHHOLDING_LIMIT_RULE] = CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
+                record[CR.WITHHOLDING_BASIS] = result.get(CR.WITHHOLDING_BASIS)
+                record[CR.WITHHOLDING_CAP] = result.get(CR.WITHHOLDING_CAP)
+                return record
+        except Exception as e:
+            logger.error(f"Error calculating {garnishment_type}: {e}")
+            return {"error": f"Error calculating {garnishment_type}: {e}"}
+
 
     def calculate_child_support_priority(self, record, config_data=None,garn_fees=None):
         """
@@ -915,7 +1001,6 @@ class CalculationDataView:
                 record)
             return result
         except Exception as e:
-            print(t.print_exc())
             logger.error(f"Error calculating franchise tax board: {e}")
             return {"error": f"Error calculating franchise tax board: {e}"}
 
@@ -937,7 +1022,6 @@ class CalculationDataView:
             multiple_garnishment = MultipleGarnishmentPriorityOrder(prepared_record, config_data)
             work_state = record.get(EE.WORK_STATE)
             calculation_result = multiple_garnishment.calculate()
-            print("calculation_result",calculation_result)
             
             if calculation_result == CommonConstants.NOT_FOUND:
                 result["calculation_status"] = "not_found"
@@ -1096,8 +1180,8 @@ class CalculationDataView:
             result["calculation_metrics"]["total_mandatory_deductions"] = round(total_mandatory_deduction_val, 2)
             
             # Update employer deductions
-            result["employer_deductions"]["garnishment_fees"] = garnishment_fees_amount
-            result["employer_deductions"]["total_employer_cost"] = round(total_withheld + garnishment_fees_amount, 2)
+            result["er_deductions"]["garnishment_fees"] = garnishment_fees_amount
+            result["er_deductions"]["total_employer_cost"] = round(total_withheld + garnishment_fees_amount, 2)
             
             return result
             
@@ -1124,7 +1208,6 @@ class CalculationDataView:
                 else:
                     return result
             except Exception as e:
-                print(t.print_exc())
                 logger.error(f"Error in garnishment wrapper: {e}")
                 return {"error": f"Error in garnishment wrapper: {e}"}
 
