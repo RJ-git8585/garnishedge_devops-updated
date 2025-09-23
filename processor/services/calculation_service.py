@@ -1323,15 +1323,23 @@ class CalculationDataView:
         """
         garnishment_types = set()
         
-        for case in cases_data:
+        logger.debug(f"Processing {len(cases_data)} cases for garnishment types")
+        
+        for i, case in enumerate(cases_data):
+            logger.debug(f"Case {i} keys: {list(case.keys())}")
             garnishment_data = case.get(EE.GARNISHMENT_DATA, [])
+            logger.debug(f"Case {i} garnishment_data: {garnishment_data}")
             
-            for garnishment in garnishment_data:
+            for j, garnishment in enumerate(garnishment_data):
+                logger.debug(f"Garnishment {j}: {garnishment}")
                 garnishment_type = garnishment.get(EE.GARNISHMENT_TYPE) or garnishment.get('type')
+                logger.debug(f"Extracted garnishment_type: {garnishment_type}")
                 if garnishment_type:
                     normalized_type = garnishment_type.lower().strip()
                     garnishment_types.add(normalized_type)
+                    logger.debug(f"Added normalized type: {normalized_type}")
                     
+        logger.debug(f"Final garnishment_types: {garnishment_types}")
         return garnishment_types
 
     def is_multi_garnishment_case(self, case_data: Dict) -> bool:

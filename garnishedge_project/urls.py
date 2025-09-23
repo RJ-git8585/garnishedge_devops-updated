@@ -74,6 +74,5 @@ urlpatterns = [
     path('multiple_garnishment/', include('processor.urls.garnishment_types.multiple_garnishment_urls', namespace='multiple_garnishment')),
     path('utility/', include('user_app.urls.utility_urls', namespace='utility')),
     path('exempt_amt/', include('processor.urls.configs.exempt_urls', namespace='exempt_amt')),
-    path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule')),
-    path('batch/', include('user_app.urls.batch_processing_urls', namespace='batch_processing'))
+    path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule'))
 ]
