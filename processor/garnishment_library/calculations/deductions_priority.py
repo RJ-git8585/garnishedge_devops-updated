@@ -275,8 +275,6 @@ class CurrentSupportCalculator:
             twa=self.record.twa
             gross_pay=self.record.gross_pay
             withholding_amount=self.record.withholding_amount
-            print("tcsa",tcsa)
-            print("adewwww",withholding_amount)
 
             if self.record.withholding_amount <= 0:
                 return Decimal("0")

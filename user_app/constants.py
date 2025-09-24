@@ -334,7 +334,7 @@ class CalculationResponseFields:
     WITHHOLDING_BASIS = "withholding_basis"
     DISPOSABLE_EARNING = "disposable_earning"
     WITHHOLDING_CAP = "withholding_cap"
-    ER_DEDUCTION = "er_deduction"
+    ER_DEDUCTION = "er_deductions"
     GARNISHMENT_FEES = "garnishment_fees"
     AGENCY = "agency"
     WITHHOLDING_LIMIT_RULE = "withholding_limit_rule"
@@ -367,3 +367,114 @@ class AllocationMethods:
     DEVIDEEQUALLY = "divide equally"
     CHILDSUPPORT = "child_support"
 
+
+class GarnishmentResultFields:
+    """Constants for garnishment result structure fields"""
+    GARNISHMENT_TYPE = "garnishment_type"
+    EMPLOYEE_ID = "employee_id"
+    WORK_STATE = "work_state"
+    CALCULATION_STATUS = "calculation_status"
+    CALCULATION_TIMESTAMP = "calculation_timestamp"
+    GARNISHMENT_DETAILS = "garnishment_details"
+    CALCULATION_METRICS = "calculation_metrics"
+    ERROR = "error"
+    
+    # Garnishment details sub-fields
+    WITHHOLDING_AMOUNTS = "withholding_amounts"
+    ARREAR_AMOUNTS = "arrear_amounts"
+    TOTAL_WITHHELD = "total_withheld"
+    GARNISHMENT_FEES = "garnishment_fees"
+    NET_WITHHOLDING = "net_withholding"
+    
+    # Calculation metrics sub-fields
+    DISPOSABLE_EARNINGS = "disposable_earnings"
+    ALLOWABLE_DISPOSABLE_EARNINGS = "allowable_disposable_earnings"
+    TOTAL_MANDATORY_DEDUCTIONS = "total_mandatory_deductions"
+    WITHHOLDING_BASIS = "withholding_basis"
+    WITHHOLDING_CAP = "withholding_cap"
+    WITHHOLDING_LIMIT_RULE = "withholding_limit_rule"
+    
+    # Withholding amount structure fields
+    AMOUNT = "amount"
+    TYPE = "type"
+    CASE_ID = "case_id"
+    CASE_INDEX = "case_index"
+    
+    # Garnishment types for withholding amounts
+    CURRENT_SUPPORT = "current_support"
+    ARREAR = "arrear"
+    STUDENT_LOAN = "student_loan"
+    FEDERAL_TAX_LEVY = "federal_tax_levy"
+    STATE_TAX_LEVY = "state_tax_levy"
+    CREDITOR_DEBT = "creditor_debt"
+    FRANCHISE_TAX_BOARD = "franchise_tax_board"
+    BANKRUPTCY = "bankruptcy"
+    
+    # Calculation status values
+    SUCCESS = "success"
+    ERROR = "error"
+    INSUFFICIENT_PAY = "insufficient_pay"
+    NOT_FOUND = "not_found"
+    NOT_PERMITTED = "not_permitted"
+    
+    # Multiple garnishment fields
+    GARNISHMENT_TYPES = "garnishment_types"
+    STATUS = "status"
+    
+    # Case ID fallback
+    UNKNOWN_CASE = "unknown_case"
+    CASE_PREFIX = "case_"
+
+
+class ConfigDataKeys:
+    """Constants for configuration data keys"""
+    FEDERAL_ADD_EXEMPT = "federal_add_exempt"
+    FEDERAL_STD_EXEMPT = "federal_std_exempt"
+    FRANCHISE_TAX_BOARD = "franchise_tax_board"
+    BANKRUPTCY = "bankruptcy"
+
+
+class ErrorMessages:
+    """Constants for error messages"""
+    INSUFFICIENT_PAY = "Garnishment cannot be deducted due to insufficient pay"
+    GARNISHMENT_FEES_INSUFFICIENT_PAY = "Garnishment fees cannot be deducted due to insufficient pay"
+    EMPLOYEE_NOT_REGISTERED = "is not registered. Please register the employee first to suspend garnishment fees calculation."
+    GARNISHMENT_FEES_SUSPENDED = "Garnishment fees cannot be deducted due to the suspension of garnishment fees until"
+    ERROR_CALCULATING_GARNISHMENT_FEES = "Error calculating garnishment fees:"
+    ERROR_CALCULATING_GARNISHMENT_FEE = "Error calculating garnishment fee:"
+    UNSUPPORTED_GARNISHMENT_TYPE = "Unsupported garnishment type:"
+    MISSING_FIELDS = "Missing fields in record:"
+    ERROR_CALCULATING = "Error calculating"
+    CONFIGURATION_NOT_FOUND = "configuration not found"
+    GARNISHMENT_NOT_PERMITTED = "garnishment not permitted in this state"
+    NO_GARNISHMENT_CONFIGURATION = "No garnishment configuration found"
+    GARNISHMENT_NOT_PERMITTED_CASE = "Garnishment not permitted for this case"
+    COULD_NOT_CALCULATE_GARNISHMENT = "Could not calculate garnishment for employee:"
+    UNEXPECTED_ERROR = "Unexpected error during garnishment calculation for employee"
+    ERROR_PROCESSING_CASE = "Error processing case for employee"
+    CONFIG_DATA_MISSING = "Configuration data for"
+    CONFIG_DATA_MISSING_END = "is missing. Please check your config loading and DB records."
+    ERROR_IN_GARNISHMENT_WRAPPER = "Error in garnishment wrapper:"
+    ERROR_CALCULATING_MULTIPLE_GARNISHMENT = "Error calculating multiple garnishment:"
+
+
+class CalculationResultKeys:
+    """Constants for calculation result keys"""
+    RESULT_AMT = "result_amt"
+    ARREAR_AMT = "arrear_amt"
+    ADE = "ade"
+    DE = "de"
+    MDE = "mde"
+    STUDENT_LOAN_AMT = "student_loan_amt"
+    DISPOSABLE_EARNING = "disposable_earning"
+    WITHHOLDING_AMT = "withholding_amt"
+    TWENTY_FIVE_PERCENT_OF_DE = "twenty_five_percent_of_de"
+    CURRENT_AMOUNT_WITHHELD = "current_amount_withheld"
+    AMOUNT_LEFT_FOR_OTHER_GARN = "amount_left_for_other_garn"
+
+
+class GarnishmentDataKeys:
+    """Constants for garnishment data keys"""
+    DATA = "data"
+    TYPE = "type"
+    GARNISHMENT_ORDERS = "garnishment_orders"
