@@ -11,7 +11,7 @@ from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerial
 )
 from user_app.serializers import EmployeeDetailSerializer
 
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FranchaiseTaxBoard,ftb_ewot,WithholdingProcessor,Bankruptcy,
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,ftb_ewot,WithholdingProcessor,Bankruptcy,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
 from user_app.constants import (
     EmployeeFields as EE,
@@ -99,21 +99,6 @@ class CalculationDataView:
                 # except Exception as e:
                 #     logger.error(f"Error loading {GT.CHILD_SUPPORT} config: {e}")
 
-            if GT.FRANCHISE_TAX_BOARD in garnishment_types:
-                try:
-                    queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=6)
-
-                    config_ids = queryset.values_list("id", flat=True)
-
-                    # Get ThresholdAmount records linked to those configs
-                    threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
-
-                    serializer = ThresholdAmountSerializer(threshold_qs, many=True)
-                    config_data["franchise_tax_board"] = serializer.data
-                    loaded_types.append("franchise_tax_board")
-                    logger.info(f"Successfully loaded config for types: {loaded_types}")
-                except Exception as e:
-                    logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
             
             if "bankruptcy" in garnishment_types:
                 try:
@@ -288,12 +273,6 @@ class CalculationDataView:
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
                 "calculate": self.calculate_creditor_debt
-            },
-            GT.FRANCHISE_TAX_BOARD: {
-                "fields": [
-                    EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
-                ],
-                "calculate": self.calculate_franchise_tax_board
             },
             GT.SPOUSAL_AND_MEDICAL_SUPPORT: {
                 "fields": [
@@ -805,71 +784,7 @@ class CalculationDataView:
             logger.error(f"{EM.ERROR_CALCULATING} creditor debt: {e}")
             return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message=f"{EM.ERROR_CALCULATING} creditor debt: {e}")
         
-    def calculate_franchise_tax_board(self, record, config_data=None, garn_fees=None):
-        """
-        Calculate franchise tax board garnishment with standardized result structure.
-        """
-        try:
-            creditor_debt_calculator = FranchaiseTaxBoard()
-            payroll_taxes = record.get(PT.PAYROLL_TAXES)
-            work_state = record.get(EE.WORK_STATE)
-            calculation_result = creditor_debt_calculator.calculate(record, config_data[CDK.FRANCHISE_TAX_BOARD])
-            
-            if isinstance(calculation_result, tuple):
-                calculation_result = calculation_result[0]
-                
-            if calculation_result == CommonConstants.NOT_FOUND:
-                return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message=f"Franchise tax board {EM.CONFIGURATION_NOT_FOUND}")
-            elif calculation_result == CommonConstants.NOT_PERMITTED:
-                return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message=f"Franchise tax board {EM.GARNISHMENT_NOT_PERMITTED}")
-                
-            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
-            
-            # Create standardized result
-            result = self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record)
-            
-            if calculation_result[CR.WITHHOLDING_AMT] <= 0:
-                result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: INSUFFICIENT_PAY, GRF.TYPE: GRF.FRANCHISE_TAX_BOARD}
-                ]
-                result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
-                result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
-                result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-            else:
-                withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
-                
-                # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
-                garnishment_fees_amount = 0.0
-                
-                if isinstance(garnishment_fees, (int, float)):
-                    garnishment_fees_amount = round(garnishment_fees, 2)
-                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
-                    garnishment_fees_amount = round(float(garnishment_fees), 2)
-                
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.FRANCHISE_TAX_BOARD}
-                ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(withholding_amount + garnishment_fees_amount, 2)
-                
-                result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
-                result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                
-                result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"{EM.ERROR_CALCULATING} franchise tax board: {e}")
-            return self._create_standardized_result(GT.FRANCHISE_TAX_BOARD, record, error_message=f"{EM.ERROR_CALCULATING} franchise tax board: {e}")
         
-    
     def calculate_bankruptcy(self, record, config_data=None, garn_fees=None):
         """
         Calculate bankruptcy garnishment with standardized result structure.
