@@ -1,5 +1,6 @@
 from .auth_serializers import *
 from .employee_serializers import *
+from .employee_garnishment_serializers import *
 from .employer_serializers import *
 from .garnishment_order_serializers import *
 from .shared_serializers import *
