@@ -94,7 +94,7 @@ class PostCalculationView(APIView):
                 garnishment_types.append(garn_type)
             
             garnishment_data[garn_type].append({
-                'case_id': garnishment.case_id,
+                EE.CASE_ID: garnishment.case_id,
                 'ordered_amount': float(garnishment.ordered_amount),
                 'arrear_amount': float(garnishment.arrear_amount) if garnishment.arrear_amount else 0.0
             })
@@ -128,14 +128,10 @@ class PostCalculationView(APIView):
             'is_multiple_garnishment_type': len(garnishment_types) > 1,
             'no_of_student_default_loan': employee.number_of_student_default_loan,
             'filing_status': employee.filing_status.name if employee.filing_status else None,
-            'is_blind': employee.is_blind,
             'statement_of_exemption_received_date': first_garnishment.received_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.received_date else None,
             'garn_start_date': first_garnishment.start_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.start_date else None,
             'non_consumer_debt': not first_garnishment.is_consumer_debt if first_garnishment else False,
             'consumer_debt': first_garnishment.is_consumer_debt if first_garnishment else False,
-            'age': employee.age,
-            'spouse_age': employee.spouse_age,
-            'is_spouse_blind': employee.is_spouse_blind,
             'support_second_family': employee.support_second_family,
             'no_of_dependent_child': employee.number_of_dependent_child,
             'arrears_greater_than_12_weeks': first_garnishment.arrear_greater_than_12_weeks if first_garnishment else False,
@@ -144,12 +140,13 @@ class PostCalculationView(APIView):
             'garnishment_orders': garnishment_types
         })
 
+        print("enriched_case",enriched_case)
 
         return enriched_case
 
     def post(self, request, *args, **kwargs):
         batch_id = request.data.get(BatchDetail.BATCH_ID)
-        cases_data = request.data.get("cases", [])
+        cases_data = request.data.get("payroll_data", [])
 
         # Input validation
         if not batch_id:
@@ -159,7 +156,7 @@ class PostCalculationView(APIView):
             )
         if not cases_data:
             return Response(
-                {"error": "No cases provided"}, 
+                {"error": "No PayRoll Data provided"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
