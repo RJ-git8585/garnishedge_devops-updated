@@ -453,7 +453,7 @@ class ConvertExcelToJsonView(APIView):
                 client_id = row.get(EE.CLIENT_ID)
                 ee_id = row.get(EE.EMPLOYEE_ID)
                 
-                output_json["cases"].append({
+                output_json["payroll_data"].append({
                     EE.CLIENT_ID: client_id,
                     EE.EMPLOYEE_ID: ee_id,
                     EE.PAY_PERIOD: row.get(EE.PAY_PERIOD),
