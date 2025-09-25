@@ -76,9 +76,11 @@ class PayrollTaxesFields:
     PAYROLL_TAXES = 'payroll_taxes'
     WILMINGTON_TAX = "wilmington_tax"
     FAMLI_TAX = 'famli_tax'
+    RETIREMENT_401K= 'retirement_401k'
 
 
 class EmployeeFields:
+    CLIENT_ID = 'client_id'
     EMPLOYEE_ID = 'ee_id'
     FIRST_NAME = 'first_name'
     MIDDLE_NAME = 'middle_name'

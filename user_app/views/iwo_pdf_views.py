@@ -43,7 +43,7 @@ class InsertIWODetailView(APIView):
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'cid': openapi.Schema(type=openapi.TYPE_STRING, description='Case ID'),
+                #'cid': openapi.Schema(type=openapi.TYPE_STRING, description='Case ID'),
                 EE.EMPLOYEE_ID: openapi.Schema(type=openapi.TYPE_STRING, description='Employee ID'),
                 'IWO_Status': openapi.Schema(type=openapi.TYPE_STRING, description='IWO Status'),
             },
@@ -163,6 +163,235 @@ class ConvertExcelToJsonView(APIView):
         }
     )
 
+    # def post(self, request,*args,**kwargs):
+    #     file = request.FILES.get('file')
+
+    #     if not file:
+    #         return Response({"error": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+    #     try:
+    #         # Load Excel sheets
+    #         garnishment_df = pd.read_excel(
+    #             file, sheet_name='Garnishment Order')
+    #         garnishment_df.columns = garnishment_df.columns.str.strip().str.lower()
+
+    #         payroll_df = pd.read_excel(
+    #             file, sheet_name='Payroll Batch', header=[0, 1])
+    #         payroll_df.columns = payroll_df.columns.map(
+    #             lambda x: '_'.join(str(i)
+    #                                for i in x) if isinstance(x, tuple) else x
+    #         ).str.lower().str.strip()
+    #         # garnishment_df[GT.FTB_TYPE] = garnishemnr
+            
+
+
+    #         # Define column mapping dictionaries
+    #         payroll_column_map = {
+    #             'unnamed: 1_level_0_eeid': EE.EMPLOYEE_ID,
+    #             'unnamed: 0_level_0_caseid': EE.CASE_ID,
+    #             'unnamed: 2_level_0_payperiod': EE.PAY_PERIOD,
+    #             'unnamed: 3_level_0_payrolldate': EE.PAYROLL_DATE,
+    #             'earnings_grosspay': CA.GROSS_PAY,
+    #             'earnings_wages': CA.WAGES,
+    #             'earnings_commission&bonus': CA.COMMISSION_AND_BONUS,
+    #             'earnings_nonaccountableallowances': CA.NON_ACCOUNTABLE_ALLOWANCES,
+    #             'taxes_fedtaxamt': PT.FEDERAL_INCOME_TAX,
+    #             'taxes_statetaxamt': PT.STATE_TAX,
+    #             'taxes_local/othertaxes': PT.LOCAL_TAX,
+    #             'taxes_medtax': PT.MEDICARE_TAX,
+    #             'taxes_oasditax': PT.SOCIAL_SECURITY_TAX,
+    #             'deductions_medicalinsurance': PT.MEDICAL_INSURANCE_PRETAX,
+    #             'deductions_sdi': PT.CALIFORNIA_SDI,
+    #             'deductions_lifeinsurance': PT.LIFE_INSURANCE,
+    #             'taxes_wilmingtontax': PT.WILMINGTON_TAX,
+    #             'deductions_uniondues': PT.UNION_DUES,
+    #             'deductions_netpay': CA.NET_PAY,
+    #             'deductions_famlitax': PT.FAMLI_TAX,
+    #             'deductions_industrialinsurance': PT.INDUSTRIAL_INSURANCE,
+    #         }
+
+    #         garnishment_column_map = {
+    #             'eeid': EE.EMPLOYEE_ID, 'caseid': EE.CASE_ID, 'ssn': EE.SSN,'ismultiplegarnishment': EE.IS_MULTIPLE_GARNISHMENT,
+    #             'supportsecondfamily': EE.SUPPORT_SECOND_FAMILY, 'supports2ndfam': EE.SUPPORT_SECOND_FAMILY,
+    #             'orderedamount': CA.ORDERED_AMOUNT, 'ordered$': CA.ORDERED_AMOUNT,
+    #             'arrear>12weeks': EE.ARREARS_GREATER_THAN_12_WEEKS,
+    #             'arrears_greater_than_12_weeks': EE.ARREARS_GREATER_THAN_12_WEEKS,
+    #             'workstate': EE.WORK_STATE,  'homestate': EE.HOME_STATE,
+    #             'no.ofexemptionsincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF, 'no.ofexemptionincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF,
+    #             'garntype': EE.GARNISHMENT_TYPE, 'ftbtype' : GT.FTB_TYPE,
+    #             'arrearamount': CA.ARREAR_AMOUNT, 'arrear$': CA.ARREAR_AMOUNT,
+    #             'no. ofdependentchild(underthe ageof16)': EE.NO_OF_DEPENDENT_CHILD,
+    #             'isblind': EE.IS_BLIND, 'age': EE.AGE, 'spouseage': EE.SPOUSE_AGE,
+    #             'filingstatus': EE.FILING_STATUS, 'isspouseblind': EE.IS_SPOUSE_BLIND,
+    #             'statementofexemptionreceiveddate': EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE,
+    #             'no.ofstudentdefaultloan': EE.NO_OF_STUDENT_DEFAULT_LOAN,
+    #             # 'debt type': EE.DEBT_TYPE,
+    #             'garnstartdate': EE.GARN_START_DATE,
+    #             'consumerdebt': EE.CONSUMER_DEBT, 'non-consumerdebt': EE.NON_CONSUMER_DEBT}
+                
+            
+
+    #         # Drop empty columns and rename
+    #         garnishment_df.dropna(axis=1, how='all', inplace=True)
+    #         payroll_df.dropna(axis=1, how='all', inplace=True)
+
+    #         garnishment_df.rename(columns=garnishment_column_map, inplace=True)
+    #         payroll_df.rename(columns=payroll_column_map, inplace=True)
+
+    #         if 'ismultiplegarnishment' not in garnishment_df.columns:
+    #             garnishment_df['ismultiplegarnishment'] = False
+    #         else:
+    #             garnishment_df["is_multiple_garnishment_type"] = garnishment_df["is_multiple_garnishment_type"].fillna(0).astype(int).astype(bool)
+
+    #         # # Strip 'case_id' fields before merging
+    #         garnishment_df[EE.CASE_ID] = garnishment_df[EE.CASE_ID].str.strip()
+    #         payroll_df[EE.CASE_ID] = payroll_df[EE.CASE_ID].str.strip()
+    #         garnishment_df[EE.EMPLOYEE_ID] = garnishment_df[EE.EMPLOYEE_ID].str.strip()
+    #         payroll_df[EE.EMPLOYEE_ID] = payroll_df[EE.EMPLOYEE_ID].str.strip()
+    #         garnishment_df[EE.GARNISHMENT_TYPE] = garnishment_df[EE.GARNISHMENT_TYPE].str.strip()
+
+    #         # Formated "mm-dd-yyyy"
+    #         date_cols = [
+    #             'statement_of_exemption_received_date', 'garn_start_date']
+    #         garnishment_df[date_cols] = garnishment_df[date_cols].apply(
+    #             lambda col: col.dt.strftime('%m-%d-%Y'))
+            
+    #         # Merge on both employee ID and case ID
+    #         merged_df = pd.merge(
+    #             payroll_df,
+    #             garnishment_df,
+    #             on=[EE.EMPLOYEE_ID, EE.CASE_ID],
+    #             how='inner',  
+    #             suffixes=('', '_garnishment')
+    #         )
+
+    #         # Clean specific columns
+    #         if EE.FILING_STATUS in merged_df.columns and merged_df[EE.FILING_STATUS].notna().any():
+    #             merged_df[EE.FILING_STATUS] = merged_df[EE.FILING_STATUS].str.strip().str.lower(
+    #             ).str.replace(" ", "_")
+    #         else:
+    #             merged_df[EE.FILING_STATUS] = None
+
+    #         merged_df[EE.ARREARS_GREATER_THAN_12_WEEKS] = merged_df[EE.ARREARS_GREATER_THAN_12_WEEKS].astype(bool).apply(
+    #             lambda x: True if str(x).lower() in ['true', '1',1,True,"Yes"] else False
+    #         )
+
+    #         merged_df[EE.SUPPORT_SECOND_FAMILY] = merged_df[EE.SUPPORT_SECOND_FAMILY].astype(bool).apply(
+    #             lambda x: True if str(x).lower() in ['true', '1',1,True,"Yes"] else False
+    #         )
+
+    #         merged_df[EE.GARNISHMENT_TYPE] = merged_df[EE.GARNISHMENT_TYPE].str.strip().str.replace(' ', '_')
+            
+    #         if GT.FTB_TYPE in merged_df.columns:
+    #              merged_df[GT.FTB_TYPE] = (merged_df[GT.FTB_TYPE].fillna('').astype(str).str.strip().str.lower().str.replace(' ', '_').replace('', None))
+    #         else:
+    #             merged_df[GT.FTB_TYPE] = None
+
+
+    #         # Generate dynamic batch ID
+    #         batch_id = f"B{int(time.time() % 1000):03d}{random.choice(string.ascii_uppercase)}"
+
+    #         # Build JSON structure
+    #         output_json = {BatchDetail.BATCH_ID: batch_id, "cases": []}
+
+    #         for ee_id, group in merged_df.groupby(f"{EE.EMPLOYEE_ID}"):
+    #             first_row = group.iloc[0]
+
+    #             is_multiple = str(first_row.get(EE.IS_MULTIPLE_GARNISHMENT, "")).strip().lower() in ["true", "1"]
+
+    #             if is_multiple:
+    #                 garnishment_data = []
+    #                 for garn_type, sub_group in group.groupby(EE.GARNISHMENT_TYPE):
+    #                     garn_type = garn_type.lower()
+    #                     type_data = {
+    #                         EE.GARNISHMENT_TYPE: garn_type,
+    #                         "data": []
+    #                     }
+
+    #                     for _, row in sub_group.iterrows():
+    #                         entry = {
+    #                             EE.CASE_ID: row.get(EE.CASE_ID),
+    #                             CA.ORDERED_AMOUNT: row.get(CA.ORDERED_AMOUNT),
+    #                             CA.ARREAR_AMOUNT: row.get(CA.ARREAR_AMOUNT)
+    #                         }
+                                
+    #                         type_data["data"].append(entry)
+
+    #                     garnishment_data.append(type_data)
+
+    #                 garnishment_orders = [item[EE.GARNISHMENT_TYPE].lower() for item in garnishment_data]
+
+    #             else:
+    #                 garn_type = first_row.get(EE.GARNISHMENT_TYPE).lower()
+    #                 garnishment_data = [{
+    #                     EE.GARNISHMENT_TYPE: garn_type,
+    #                     "data": [
+    #                         {
+    #                             EE.CASE_ID: row.get(EE.CASE_ID),
+    #                             CA.ORDERED_AMOUNT: row.get(CA.ORDERED_AMOUNT),
+    #                             CA.ARREAR_AMOUNT: row.get(CA.ARREAR_AMOUNT)
+    #                         }
+    #                         for _, row in group.iterrows()
+    #                     ]
+    #                 }]
+
+    #                 garnishment_orders = [garn_type]
+
+
+    #             # Append employee data to output JSON
+    #             output_json["cases"].append({
+    #                 EE.EMPLOYEE_ID: ee_id,
+    #                 EE.WORK_STATE: first_row.get(EE.WORK_STATE, "").strip(),
+    #                 EE.HOME_STATE: first_row.get(EE.HOME_STATE, "").strip(),
+    #                 EE.NO_OF_EXEMPTION_INCLUDING_SELF: first_row.get(EE.NO_OF_EXEMPTION_INCLUDING_SELF),
+    #                 EE.IS_MULTIPLE_GARNISHMENT: first_row.get(EE.IS_MULTIPLE_GARNISHMENT),
+    #                 EE.NO_OF_STUDENT_DEFAULT_LOAN: first_row.get(EE.NO_OF_STUDENT_DEFAULT_LOAN),
+    #                 EE.PAY_PERIOD: first_row.get(EE.PAY_PERIOD),
+    #                 EE.FILING_STATUS: first_row.get(EE.FILING_STATUS),
+    #                 CA.WAGES: first_row.get(CA.WAGES, 0),
+    #                 CA.COMMISSION_AND_BONUS: first_row.get(CA.COMMISSION_AND_BONUS, 0),
+    #                 CA.NON_ACCOUNTABLE_ALLOWANCES: first_row.get(CA.NON_ACCOUNTABLE_ALLOWANCES, 0),
+    #                 CA.GROSS_PAY: first_row.get(CA.GROSS_PAY, 0),
+    #                 PT.PAYROLL_TAXES: {
+    #                     PT.FEDERAL_INCOME_TAX: first_row.get(PT.FEDERAL_INCOME_TAX, 0),
+    #                     PT.SOCIAL_SECURITY_TAX: first_row.get(PT.SOCIAL_SECURITY_TAX, 0),
+    #                     PT.MEDICARE_TAX: first_row.get(PT.MEDICARE_TAX, 0),
+    #                     PT.STATE_TAX: first_row.get(PT.STATE_TAX, 0),
+    #                     PT.LOCAL_TAX: first_row.get(PT.LOCAL_TAX, 0),
+    #                     PT.UNION_DUES: first_row.get(PT.UNION_DUES, 0),
+    #                     PT.WILMINGTON_TAX: first_row.get(PT.WILMINGTON_TAX, 0),
+    #                     PT.MEDICAL_INSURANCE_PRETAX: first_row.get(PT.MEDICAL_INSURANCE_PRETAX, 0),
+    #                     PT.INDUSTRIAL_INSURANCE: first_row.get(PT.INDUSTRIAL_INSURANCE, 0),
+    #                     PT.LIFE_INSURANCE: first_row.get(PT.LIFE_INSURANCE, 0),
+    #                     PT.CALIFORNIA_SDI: first_row.get(PT.CALIFORNIA_SDI, 0),
+    #                     PT.FAMLI_TAX: first_row.get(PT.FAMLI_TAX, 0)
+    #                 },
+    #                 CA.NET_PAY: first_row.get(CA.NET_PAY),
+    #                 EE.IS_BLIND: first_row.get(EE.IS_BLIND),
+    #                 EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE: first_row.get(EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE),
+    #                 EE.GARN_START_DATE: first_row.get(EE.GARN_START_DATE),
+    #                 EE.NON_CONSUMER_DEBT: first_row.get(EE.NON_CONSUMER_DEBT),
+    #                 EE.CONSUMER_DEBT: first_row.get(EE.CONSUMER_DEBT),
+    #                 EE.AGE: first_row.get(EE.AGE),
+    #                 EE.SPOUSE_AGE: first_row.get(EE.SPOUSE_AGE),
+    #                 EE.IS_SPOUSE_BLIND: first_row.get(EE.IS_SPOUSE_BLIND),
+    #                 EE.SUPPORT_SECOND_FAMILY: first_row.get(EE.SUPPORT_SECOND_FAMILY),
+    #                 EE.NO_OF_DEPENDENT_CHILD: first_row.get(EE.NO_OF_DEPENDENT_CHILD, 0),
+    #                 EE.ARREARS_GREATER_THAN_12_WEEKS: first_row.get(EE.ARREARS_GREATER_THAN_12_WEEKS),
+    #                 GT.FTB_TYPE : first_row.get(GT.FTB_TYPE, "None"),
+    #                 EE.GARNISHMENT_DATA: garnishment_data,
+    #                 EE.GARNISHMENT_ORDERS: garnishment_orders
+    #             })
+    #         output_json = clean_data_for_json(output_json)
+    #         return Response(output_json, status=status.HTTP_200_OK)
+    #     except KeyError as e:
+    #         return Response({"error": f"Missing key in data: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+    #     except ValueError as e:
+    #         return Response({"error": f"Data value error: {str(e)}"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+    #     except Exception as e:
+    #         return Response({"error": f"Internal server error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
     def post(self, request,*args,**kwargs):
         file = request.FILES.get('file')
 
@@ -170,122 +399,47 @@ class ConvertExcelToJsonView(APIView):
             return Response({"error": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Load Excel sheets
-            garnishment_df = pd.read_excel(
-                file, sheet_name='Garnishment Order')
-            garnishment_df.columns = garnishment_df.columns.str.strip().str.lower()
-
             payroll_df = pd.read_excel(
                 file, sheet_name='Payroll Batch', header=[0, 1])
             payroll_df.columns = payroll_df.columns.map(
                 lambda x: '_'.join(str(i)
                                    for i in x) if isinstance(x, tuple) else x
             ).str.lower().str.strip()
-            # garnishment_df[GT.FTB_TYPE] = garnishemnr
+            # garnishment_df[GT.FTB_TYPE] = garnishemnt
             
-
-
             # Define column mapping dictionaries
-            payroll_column_map = {
+            payroll_column_map={
+                'unnamed: 0_level_0_client id':EE.CLIENT_ID,
                 'unnamed: 1_level_0_eeid': EE.EMPLOYEE_ID,
-                'unnamed: 0_level_0_caseid': EE.CASE_ID,
                 'unnamed: 2_level_0_payperiod': EE.PAY_PERIOD,
                 'unnamed: 3_level_0_payrolldate': EE.PAYROLL_DATE,
-                'earnings_grosspay': CA.GROSS_PAY,
                 'earnings_wages': CA.WAGES,
                 'earnings_commission&bonus': CA.COMMISSION_AND_BONUS,
                 'earnings_nonaccountableallowances': CA.NON_ACCOUNTABLE_ALLOWANCES,
+                'earnings_grosspay': CA.GROSS_PAY,
                 'taxes_fedtaxamt': PT.FEDERAL_INCOME_TAX,
-                'taxes_statetaxamt': PT.STATE_TAX,
+                'taxes_statetaxamt': PT.STATE_TAX, 
                 'taxes_local/othertaxes': PT.LOCAL_TAX,
-                'taxes_medtax': PT.MEDICARE_TAX,
+                'taxes_medtax': PT.MEDICARE_TAX, 
                 'taxes_oasditax': PT.SOCIAL_SECURITY_TAX,
-                'deductions_medicalinsurance': PT.MEDICAL_INSURANCE_PRETAX,
-                'deductions_sdi': PT.CALIFORNIA_SDI,
-                'deductions_lifeinsurance': PT.LIFE_INSURANCE,
                 'taxes_wilmingtontax': PT.WILMINGTON_TAX,
+                'deductions_sdi': PT.CALIFORNIA_SDI,
+                'deductions_medicalinsurance': PT.MEDICAL_INSURANCE_PRETAX,
+                'deductions_lifeinsurance': PT.LIFE_INSURANCE,
+                'deductions_401k':PT.RETIREMENT_401K,
+                'deductions_industrialinsurance': PT.INDUSTRIAL_INSURANCE,
                 'deductions_uniondues': PT.UNION_DUES,
                 'deductions_netpay': CA.NET_PAY,
-                'deductions_famlitax': PT.FAMLI_TAX,
-                'deductions_industrialinsurance': PT.INDUSTRIAL_INSURANCE,
+
+
             }
-
-            garnishment_column_map = {
-                'eeid': EE.EMPLOYEE_ID, 'caseid': EE.CASE_ID, 'ssn': EE.SSN,'ismultiplegarnishment': EE.IS_MULTIPLE_GARNISHMENT,
-                'supportsecondfamily': EE.SUPPORT_SECOND_FAMILY, 'supports2ndfam': EE.SUPPORT_SECOND_FAMILY,
-                'orderedamount': CA.ORDERED_AMOUNT, 'ordered$': CA.ORDERED_AMOUNT,
-                'arrear>12weeks': EE.ARREARS_GREATER_THAN_12_WEEKS,
-                'arrears_greater_than_12_weeks': EE.ARREARS_GREATER_THAN_12_WEEKS,
-                'workstate': EE.WORK_STATE,  'homestate': EE.HOME_STATE,
-                'no.ofexemptionsincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF, 'no.ofexemptionincludingself': EE.NO_OF_EXEMPTION_INCLUDING_SELF,
-                'garntype': EE.GARNISHMENT_TYPE, 'ftbtype' : GT.FTB_TYPE,
-                'arrearamount': CA.ARREAR_AMOUNT, 'arrear$': CA.ARREAR_AMOUNT,
-                'no. ofdependentchild(underthe ageof16)': EE.NO_OF_DEPENDENT_CHILD,
-                'isblind': EE.IS_BLIND, 'age': EE.AGE, 'spouseage': EE.SPOUSE_AGE,
-                'filingstatus': EE.FILING_STATUS, 'isspouseblind': EE.IS_SPOUSE_BLIND,
-                'statementofexemptionreceiveddate': EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE,
-                'no.ofstudentdefaultloan': EE.NO_OF_STUDENT_DEFAULT_LOAN,
-                # 'debt type': EE.DEBT_TYPE,
-                'garnstartdate': EE.GARN_START_DATE,
-                'consumerdebt': EE.CONSUMER_DEBT, 'non-consumerdebt': EE.NON_CONSUMER_DEBT}
-                
-            
-
             # Drop empty columns and rename
-            garnishment_df.dropna(axis=1, how='all', inplace=True)
             payroll_df.dropna(axis=1, how='all', inplace=True)
-
-            garnishment_df.rename(columns=garnishment_column_map, inplace=True)
             payroll_df.rename(columns=payroll_column_map, inplace=True)
 
-            if 'ismultiplegarnishment' not in garnishment_df.columns:
-                garnishment_df['ismultiplegarnishment'] = False
-            else:
-                garnishment_df["is_multiple_garnishment_type"] = garnishment_df["is_multiple_garnishment_type"].fillna(0).astype(int).astype(bool)
-
-            # # Strip 'case_id' fields before merging
-            garnishment_df[EE.CASE_ID] = garnishment_df[EE.CASE_ID].str.strip()
-            payroll_df[EE.CASE_ID] = payroll_df[EE.CASE_ID].str.strip()
-            garnishment_df[EE.EMPLOYEE_ID] = garnishment_df[EE.EMPLOYEE_ID].str.strip()
+           
+            # Strip 
             payroll_df[EE.EMPLOYEE_ID] = payroll_df[EE.EMPLOYEE_ID].str.strip()
-            garnishment_df[EE.GARNISHMENT_TYPE] = garnishment_df[EE.GARNISHMENT_TYPE].str.strip()
-
-            # Formated "mm-dd-yyyy"
-            date_cols = [
-                'statement_of_exemption_received_date', 'garn_start_date']
-            garnishment_df[date_cols] = garnishment_df[date_cols].apply(
-                lambda col: col.dt.strftime('%m-%d-%Y'))
-            
-            # Merge on both employee ID and case ID
-            merged_df = pd.merge(
-                payroll_df,
-                garnishment_df,
-                on=[EE.EMPLOYEE_ID, EE.CASE_ID],
-                how='inner',  
-                suffixes=('', '_garnishment')
-            )
-
-            # Clean specific columns
-            if EE.FILING_STATUS in merged_df.columns and merged_df[EE.FILING_STATUS].notna().any():
-                merged_df[EE.FILING_STATUS] = merged_df[EE.FILING_STATUS].str.strip().str.lower(
-                ).str.replace(" ", "_")
-            else:
-                merged_df[EE.FILING_STATUS] = None
-
-            merged_df[EE.ARREARS_GREATER_THAN_12_WEEKS] = merged_df[EE.ARREARS_GREATER_THAN_12_WEEKS].astype(bool).apply(
-                lambda x: True if str(x).lower() in ['true', '1',1,True,"Yes"] else False
-            )
-
-            merged_df[EE.SUPPORT_SECOND_FAMILY] = merged_df[EE.SUPPORT_SECOND_FAMILY].astype(bool).apply(
-                lambda x: True if str(x).lower() in ['true', '1',1,True,"Yes"] else False
-            )
-
-            merged_df[EE.GARNISHMENT_TYPE] = merged_df[EE.GARNISHMENT_TYPE].str.strip().str.replace(' ', '_')
-            
-            if GT.FTB_TYPE in merged_df.columns:
-                 merged_df[GT.FTB_TYPE] = (merged_df[GT.FTB_TYPE].fillna('').astype(str).str.strip().str.lower().str.replace(' ', '_').replace('', None))
-            else:
-                merged_df[GT.FTB_TYPE] = None
 
 
             # Generate dynamic batch ID
@@ -294,94 +448,37 @@ class ConvertExcelToJsonView(APIView):
             # Build JSON structure
             output_json = {BatchDetail.BATCH_ID: batch_id, "cases": []}
 
-            for ee_id, group in merged_df.groupby(f"{EE.EMPLOYEE_ID}"):
-                first_row = group.iloc[0]
-
-                is_multiple = str(first_row.get(EE.IS_MULTIPLE_GARNISHMENT, "")).strip().lower() in ["true", "1"]
-
-                if is_multiple:
-                    garnishment_data = []
-                    for garn_type, sub_group in group.groupby(EE.GARNISHMENT_TYPE):
-                        garn_type = garn_type.lower()
-                        type_data = {
-                            EE.GARNISHMENT_TYPE: garn_type,
-                            "data": []
-                        }
-
-                        for _, row in sub_group.iterrows():
-                            entry = {
-                                EE.CASE_ID: row.get(EE.CASE_ID),
-                                CA.ORDERED_AMOUNT: row.get(CA.ORDERED_AMOUNT),
-                                CA.ARREAR_AMOUNT: row.get(CA.ARREAR_AMOUNT)
-                            }
-                                
-                            type_data["data"].append(entry)
-
-                        garnishment_data.append(type_data)
-
-                    garnishment_orders = [item[EE.GARNISHMENT_TYPE].lower() for item in garnishment_data]
-
-                else:
-                    garn_type = first_row.get(EE.GARNISHMENT_TYPE).lower()
-                    garnishment_data = [{
-                        EE.GARNISHMENT_TYPE: garn_type,
-                        "data": [
-                            {
-                                EE.CASE_ID: row.get(EE.CASE_ID),
-                                CA.ORDERED_AMOUNT: row.get(CA.ORDERED_AMOUNT),
-                                CA.ARREAR_AMOUNT: row.get(CA.ARREAR_AMOUNT)
-                            }
-                            for _, row in group.iterrows()
-                        ]
-                    }]
-
-                    garnishment_orders = [garn_type]
-
-
-                # Append employee data to output JSON
+            # Loop over each row in the DataFrame
+            for _, row in payroll_df.iterrows():
+                client_id = row.get(EE.CLIENT_ID)
+                ee_id = row.get(EE.EMPLOYEE_ID)
+                
                 output_json["cases"].append({
+                    EE.CLIENT_ID: client_id,
                     EE.EMPLOYEE_ID: ee_id,
-                    EE.WORK_STATE: first_row.get(EE.WORK_STATE, "").strip(),
-                    EE.HOME_STATE: first_row.get(EE.HOME_STATE, "").strip(),
-                    EE.NO_OF_EXEMPTION_INCLUDING_SELF: first_row.get(EE.NO_OF_EXEMPTION_INCLUDING_SELF),
-                    EE.IS_MULTIPLE_GARNISHMENT: first_row.get(EE.IS_MULTIPLE_GARNISHMENT),
-                    EE.NO_OF_STUDENT_DEFAULT_LOAN: first_row.get(EE.NO_OF_STUDENT_DEFAULT_LOAN),
-                    EE.PAY_PERIOD: first_row.get(EE.PAY_PERIOD),
-                    EE.FILING_STATUS: first_row.get(EE.FILING_STATUS),
-                    CA.WAGES: first_row.get(CA.WAGES, 0),
-                    CA.COMMISSION_AND_BONUS: first_row.get(CA.COMMISSION_AND_BONUS, 0),
-                    CA.NON_ACCOUNTABLE_ALLOWANCES: first_row.get(CA.NON_ACCOUNTABLE_ALLOWANCES, 0),
-                    CA.GROSS_PAY: first_row.get(CA.GROSS_PAY, 0),
+                    EE.PAY_PERIOD: row.get(EE.PAY_PERIOD),
+                    EE.PAYROLL_DATE: row.get(EE.PAYROLL_DATE),
+                    CA.WAGES: row.get(CA.WAGES, 0),
+                    CA.COMMISSION_AND_BONUS: row.get(CA.COMMISSION_AND_BONUS, 0),
+                    CA.NON_ACCOUNTABLE_ALLOWANCES: row.get(CA.NON_ACCOUNTABLE_ALLOWANCES, 0),
+                    CA.GROSS_PAY: row.get(CA.GROSS_PAY, 0),
                     PT.PAYROLL_TAXES: {
-                        PT.FEDERAL_INCOME_TAX: first_row.get(PT.FEDERAL_INCOME_TAX, 0),
-                        PT.SOCIAL_SECURITY_TAX: first_row.get(PT.SOCIAL_SECURITY_TAX, 0),
-                        PT.MEDICARE_TAX: first_row.get(PT.MEDICARE_TAX, 0),
-                        PT.STATE_TAX: first_row.get(PT.STATE_TAX, 0),
-                        PT.LOCAL_TAX: first_row.get(PT.LOCAL_TAX, 0),
-                        PT.UNION_DUES: first_row.get(PT.UNION_DUES, 0),
-                        PT.WILMINGTON_TAX: first_row.get(PT.WILMINGTON_TAX, 0),
-                        PT.MEDICAL_INSURANCE_PRETAX: first_row.get(PT.MEDICAL_INSURANCE_PRETAX, 0),
-                        PT.INDUSTRIAL_INSURANCE: first_row.get(PT.INDUSTRIAL_INSURANCE, 0),
-                        PT.LIFE_INSURANCE: first_row.get(PT.LIFE_INSURANCE, 0),
-                        PT.CALIFORNIA_SDI: first_row.get(PT.CALIFORNIA_SDI, 0),
-                        PT.FAMLI_TAX: first_row.get(PT.FAMLI_TAX, 0)
+                        PT.FEDERAL_INCOME_TAX: row.get(PT.FEDERAL_INCOME_TAX, 0),
+                        PT.STATE_TAX: row.get(PT.STATE_TAX, 0),
+                        PT.LOCAL_TAX: row.get(PT.LOCAL_TAX, 0),
+                        PT.MEDICARE_TAX: row.get(PT.MEDICARE_TAX, 0),
+                        PT.SOCIAL_SECURITY_TAX: row.get(PT.SOCIAL_SECURITY_TAX, 0),
+                        PT.WILMINGTON_TAX: row.get(PT.WILMINGTON_TAX, 0),
+                        PT.CALIFORNIA_SDI: row.get(PT.CALIFORNIA_SDI, 0),
+                        PT.MEDICAL_INSURANCE_PRETAX: row.get(PT.MEDICAL_INSURANCE_PRETAX, 0),
+                        PT.LIFE_INSURANCE: row.get(PT.LIFE_INSURANCE, 0),
+                        PT.RETIREMENT_401K: row.get(PT.RETIREMENT_401K, 0),
+                        PT.INDUSTRIAL_INSURANCE: row.get(PT.INDUSTRIAL_INSURANCE, 0),
+                        PT.UNION_DUES: row.get(PT.UNION_DUES, 0),
                     },
-                    CA.NET_PAY: first_row.get(CA.NET_PAY),
-                    EE.IS_BLIND: first_row.get(EE.IS_BLIND),
-                    EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE: first_row.get(EE.STATEMENT_OF_EXEMPTION_RECEIVED_DATE),
-                    EE.GARN_START_DATE: first_row.get(EE.GARN_START_DATE),
-                    EE.NON_CONSUMER_DEBT: first_row.get(EE.NON_CONSUMER_DEBT),
-                    EE.CONSUMER_DEBT: first_row.get(EE.CONSUMER_DEBT),
-                    EE.AGE: first_row.get(EE.AGE),
-                    EE.SPOUSE_AGE: first_row.get(EE.SPOUSE_AGE),
-                    EE.IS_SPOUSE_BLIND: first_row.get(EE.IS_SPOUSE_BLIND),
-                    EE.SUPPORT_SECOND_FAMILY: first_row.get(EE.SUPPORT_SECOND_FAMILY),
-                    EE.NO_OF_DEPENDENT_CHILD: first_row.get(EE.NO_OF_DEPENDENT_CHILD, 0),
-                    EE.ARREARS_GREATER_THAN_12_WEEKS: first_row.get(EE.ARREARS_GREATER_THAN_12_WEEKS),
-                    GT.FTB_TYPE : first_row.get(GT.FTB_TYPE, "None"),
-                    EE.GARNISHMENT_DATA: garnishment_data,
-                    EE.GARNISHMENT_ORDERS: garnishment_orders
+                    CA.NET_PAY: row.get(CA.NET_PAY, 0),
                 })
+
             output_json = clean_data_for_json(output_json)
             return Response(output_json, status=status.HTTP_200_OK)
         except KeyError as e:
