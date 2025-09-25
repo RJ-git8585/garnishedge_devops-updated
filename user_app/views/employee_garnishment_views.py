@@ -229,6 +229,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
         # Build the complete data structure
         data = {
             "ee_id": employee.ee_id,
+            "home_state": employee.home_state.state if employee.home_state else None,
             "work_state": employee.work_state.state if employee.work_state else None,
             "no_of_exemption_including_self": employee.number_of_exemptions,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
