@@ -4,7 +4,7 @@ from vercel_blob import put
 import numpy as np
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser,JSONParser
 import os
 from user_app.serializers import (IWOPDFFilesSerializer, WithholdingOrderDataSerializers)
 import logging
@@ -136,7 +136,7 @@ def clean_data_for_json(data):
         return data
 
 class ConvertExcelToJsonView(APIView):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser,JSONParser]
 
     @swagger_auto_schema(
         manual_parameters=[
