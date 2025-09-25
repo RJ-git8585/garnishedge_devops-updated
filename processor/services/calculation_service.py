@@ -848,8 +848,8 @@ class CalculationDataView:
         except Exception as e:
             logger.error(f"{EM.ERROR_CALCULATING} bankruptcy: {e}")
             return self._create_standardized_result(GT.BANKRUPTCY, record, error_message=f"{EM.ERROR_CALCULATING} bankruptcy: {e}")
-
-
+        
+    
     def calculate_ewot(self, record, config_data, garn_fees=None):
         """
         Calculate FTB EWOT/Court/Vehicle garnishment with standardized result structure.
@@ -878,10 +878,10 @@ class CalculationDataView:
             calculation_result = creditor_debt_calculator.calculate(
                 record, config_data[garnishment_type]
             )
-
+            
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
-
+                
             if calculation_result == CommonConstants.NOT_FOUND:
                 return self._create_standardized_result(
                     garnishment_type, record,
@@ -892,12 +892,12 @@ class CalculationDataView:
                     garnishment_type, record,
                     error_message=f"{garnishment_type} {EM.GARNISHMENT_NOT_PERMITTED}"
                 )
-
+                
             total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
-
+            
             # Start with standardized result
             result = self._create_standardized_result(garnishment_type, record)
-
+            
             if calculation_result[CR.WITHHOLDING_AMT] <= 0:
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
@@ -912,7 +912,7 @@ class CalculationDataView:
                 )
             else:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
-
+                
                 # Calculate garnishment fees
                 garnishment_fees = self.get_rounded_garnishment_fee(
                     work_state, record, withholding_amount, garn_fees
@@ -922,7 +922,7 @@ class CalculationDataView:
                     garnishment_fees_amount = round(garnishment_fees, 2)
                 elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
                     garnishment_fees_amount = round(float(garnishment_fees), 2)
-
+                
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: garnishment_type}
                 ]
@@ -949,9 +949,9 @@ class CalculationDataView:
                 result[CR.ER_DEDUCTION]["total_employer_cost"] = round(
                     withholding_amount + garnishment_fees_amount, 2
                 )
-
+            
             return result
-
+            
         except Exception as e:
             logger.error(f"{EM.ERROR_CALCULATING} {garnishment_type}: {e}")
             return self._create_standardized_result(

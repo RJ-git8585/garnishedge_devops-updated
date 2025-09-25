@@ -30,7 +30,8 @@ urlpatterns = [
     path('rules/', EmployeeGarnishmentOrderCombineData.as_view(), name='employee_rules'),
 
     # New APIs for employee and garnishment order details
-    path('garnishment-details/<str:ee_id>/<str:case_id>/', EmployeeGarnishmentDetailAPI.as_view(), name='employee-garnishment-details'),
-    path('garnishment-update/<str:ee_id>/<str:case_id>/', EmployeeGarnishmentUpdateAPI.as_view(), name='employee-garnishment-update'),
+    path('garnishment-details/<str:ee_id>/<str:client_id>/', EmployeeGarnishmentDetailAPI.as_view(), name='employee-garnishment-details'),
+    path('garnishment-update/<str:ee_id>/<str:client_id>/', EmployeeGarnishmentUpdateAPI.as_view(), name='employee-garnishment-update'),
     path('garnishment-list/', EmployeeGarnishmentListAPI.as_view(), name='employee-garnishment-list'),
 ]
+

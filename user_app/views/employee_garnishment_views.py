@@ -34,14 +34,14 @@ class EmployeeGarnishmentDetailAPI(APIView):
             500: 'Internal server error'
         }
     )
-    def get(self, request, ee_id, case_id):
+    def get(self, request, ee_id, client_id):
         """
-        Get employee and garnishment order details by ee_id and case_id.
+        Get employee and garnishment order details by ee_id and client_id.
         """
         try:
-            # Fetch employee with related garnishment orders
+            # Fetch employee with related garnishment orders filtered by ee_id and client_id
             employee = EmployeeDetail.objects.select_related(
-                'home_state', 'work_state', 'filing_status'
+                'home_state', 'work_state', 'filing_status', 'client'
             ).prefetch_related(
                 Prefetch(
                     'garnishments',
@@ -49,18 +49,16 @@ class EmployeeGarnishmentDetailAPI(APIView):
                         'garnishment_type', 'issuing_state'
                     ).order_by('created_at')
                 )
-            ).get(ee_id__iexact=ee_id)
+            ).get(ee_id__iexact=ee_id, client__client_id__iexact=client_id)
 
-            # Get the specific garnishment order for the case_id
-            garnishment_order = employee.garnishments.filter(case_id=case_id).first()
+            # Get the first garnishment order for building the data structure
+            garnishment_order = employee.garnishments.first()
             if not garnishment_order:
-                return ResponseHelper.error_response(
-                    message=f"Garnishment order with case_id '{case_id}' not found for employee '{ee_id}'",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
-            # Build the complete data structure
-            data = self._build_employee_garnishment_data(employee, garnishment_order)
+                # If no garnishment orders, still return employee data with empty garnishment_data
+                data = self._build_employee_garnishment_data(employee, None)
+            else:
+                # Build the complete data structure
+                data = self._build_employee_garnishment_data(employee, garnishment_order)
             
             return ResponseHelper.success_response(
                 message="Employee and garnishment details fetched successfully",
@@ -70,11 +68,11 @@ class EmployeeGarnishmentDetailAPI(APIView):
 
         except EmployeeDetail.DoesNotExist:
             return ResponseHelper.error_response(
-                message=f"Employee with ee_id '{ee_id}' not found",
+                message=f"Employee with ee_id '{ee_id}' and client_id '{client_id}' not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
-            logger.error(f"Error fetching employee details for ee_id {ee_id}, case_id {case_id}: {e}")
+            logger.error(f"Error fetching employee details for ee_id {ee_id}, client_id {client_id}: {e}")
             return ResponseHelper.error_response(
                 message="Failed to fetch employee details",
                 error=str(e),
@@ -110,17 +108,18 @@ class EmployeeGarnishmentDetailAPI(APIView):
         # Build the complete data structure
         data = {
             "ee_id": employee.ee_id,
+            "home_state": employee.home_state.state if employee.home_state else None,
             "work_state": employee.work_state.state if employee.work_state else None,
             "no_of_exemption_including_self": employee.number_of_exemptions,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
             "no_of_student_default_loan": employee.number_of_student_default_loan,
-            "statement_of_exemption_received_date": garnishment_order.received_date.strftime('%m/%d/%Y') if garnishment_order.received_date else "",
-            "garn_start_date": garnishment_order.start_date.strftime('%m/%d/%Y') if garnishment_order.start_date else "",
+            "statement_of_exemption_received_date": garnishment_order.received_date.strftime('%m/%d/%Y') if garnishment_order and garnishment_order.received_date else "",
+            "garn_start_date": garnishment_order.start_date.strftime('%m/%d/%Y') if garnishment_order and garnishment_order.start_date else "",
             "support_second_family": employee.support_second_family,
-            "arrears_greater_than_12_weeks": garnishment_order.arrear_greater_than_12_weeks,
+            "arrears_greater_than_12_weeks": garnishment_order.arrear_greater_than_12_weeks if garnishment_order else False,
             "no_of_dependent_child": employee.number_of_dependent_child,
-            "consumer_debt": garnishment_order.is_consumer_debt,
-            "non_consumer_debt": not garnishment_order.is_consumer_debt,
+            "consumer_debt": garnishment_order.is_consumer_debt if garnishment_order else False,
+            "non_consumer_debt": not garnishment_order.is_consumer_debt if garnishment_order else True,
             "garnishment_data": garnishment_data_list
         }
 
@@ -129,21 +128,21 @@ class EmployeeGarnishmentDetailAPI(APIView):
 
 class EmployeeGarnishmentUpdateAPI(APIView):
     """
-    API for updating employee data based on ee_id and case_id.
+    API for updating employee data based on ee_id and client_id.
     """
 
     @swagger_auto_schema(
         request_body=EmployeeBasicUpdateSerializer,
         responses={
             200: openapi.Response('Success', EmployeeGarnishmentDetailSerializer),
-            404: 'Employee or case not found',
+            404: 'Employee not found',
             400: 'Invalid data',
             500: 'Internal server error'
         }
     )
-    def put(self, request, ee_id, case_id):
+    def put(self, request, ee_id, client_id):
         """
-        Update employee data by ee_id and case_id.
+        Update employee data by ee_id and client_id.
         """
         try:
             # Validate input data
@@ -155,10 +154,10 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Get employee
+            # Get employee filtered by ee_id and client_id
             try:
                 employee = EmployeeDetail.objects.select_related(
-                    'home_state', 'work_state', 'filing_status'
+                    'home_state', 'work_state', 'filing_status', 'client'
                 ).prefetch_related(
                     Prefetch(
                         'garnishments',
@@ -166,18 +165,10 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                             'garnishment_type', 'issuing_state'
                         )
                     )
-                ).get(ee_id__iexact=ee_id)
+                ).get(ee_id__iexact=ee_id, client__client_id__iexact=client_id)
             except EmployeeDetail.DoesNotExist:
                 return ResponseHelper.error_response(
-                    message=f"Employee with ee_id '{ee_id}' not found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
-            # Verify case_id exists for this employee
-            garnishment_order = employee.garnishments.filter(case_id=case_id).first()
-            if not garnishment_order:
-                return ResponseHelper.error_response(
-                    message=f"Garnishment order with case_id '{case_id}' not found for employee '{ee_id}'",
+                    message=f"Employee with ee_id '{ee_id}' and client_id '{client_id}' not found",
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
@@ -189,6 +180,9 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                     setattr(employee, field, value)
                 employee.save()
 
+            # Get the first garnishment order for building the data structure
+            garnishment_order = employee.garnishments.first()
+            
             # Build the complete data structure for response
             data = self._build_employee_garnishment_data(employee, garnishment_order)
             
@@ -199,7 +193,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Error updating employee details for ee_id {ee_id}, case_id {case_id}: {e}")
+            logger.error(f"Error updating employee details for ee_id {ee_id}, client_id {client_id}: {e}")
             return ResponseHelper.error_response(
                 message="Failed to update employee details",
                 error=str(e),
@@ -348,6 +342,7 @@ class EmployeeGarnishmentListAPI(APIView):
                     # If no garnishment orders, return basic employee data
                     serializer_data.append({
                         "ee_id": employee.ee_id,
+                        "home_state": employee.home_state.state if employee.home_state else None,
                         "work_state": employee.work_state.state if employee.work_state else None,
                         "no_of_exemption_including_self": employee.number_of_exemptions,
                         "filing_status": employee.filing_status.name if employee.filing_status else None,

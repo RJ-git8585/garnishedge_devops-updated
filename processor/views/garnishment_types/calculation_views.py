@@ -119,6 +119,27 @@ class PostCalculationView(APIView):
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
         
+        # Extract deductions from payroll data if available
+        deductions = {}
+        if 'deductions' in case:
+            # If deductions are already provided in the payroll data, use them
+            deductions = case['deductions']
+        else:
+            # Build deductions from individual fields if they exist in the case data
+            deductions = {
+                'current_child_support': case.get('current_child_support', 0),
+                'current_medical_support': case.get('current_medical_support', 0),
+                'current_spousal_support': case.get('current_spousal_support', 0),
+                'medical_support_arrear': case.get('medical_support_arrear', 0),
+                'spousal_support_arrear': case.get('spousal_support_arrear', 0),
+                'fees': case.get('fees', 0),
+                'child_support_arrear': case.get('child_support_arrear', 0),
+                'house_payment': case.get('house_payment', 0),
+                'insurance_payment': case.get('insurance_payment', 0),
+                'remaining_child_support_arrear': case.get('remaining_child_support_arrear', 0),
+                'remaining_spousal_support_arrear': case.get('remaining_spousal_support_arrear', 0)
+            }
+        
         # Add employee-specific fields
         enriched_case.update({
             'work_state': employee.work_state.state if employee.work_state else None,
@@ -136,11 +157,11 @@ class PostCalculationView(APIView):
             'no_of_dependent_child': employee.number_of_dependent_child,
             'arrears_greater_than_12_weeks': first_garnishment.arrear_greater_than_12_weeks if first_garnishment else False,
             'ftb_type': None,  # This field doesn't exist in the models, setting to None
+            'deductions': deductions,
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
 
-        print("enriched_case",enriched_case)
 
         return enriched_case
 
@@ -183,8 +204,7 @@ class PostCalculationView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            # Use enriched cases for processing
-            print("enriched_cases",enriched_cases)
+            
             cases_data = enriched_cases
             
             # Log any missing employees but continue processing

@@ -28,6 +28,7 @@ class GarnishmentDataSerializer(serializers.Serializer):
 
 class EmployeeGarnishmentDetailSerializer(serializers.ModelSerializer):
     """Serializer for complete employee garnishment details."""
+    home_state = StateField()
     work_state = StateField()
     no_of_exemption_including_self = serializers.IntegerField(source='number_of_exemptions')
     filing_status = FilingStatusField()
@@ -36,7 +37,7 @@ class EmployeeGarnishmentDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeDetail
         fields = [
-            "ee_id", "work_state", "no_of_exemption_including_self",
+            "ee_id", "home_state", "work_state", "no_of_exemption_including_self",
             "filing_status", "age", "is_blind", "is_spouse_blind",
             "spouse_age", "no_of_student_default_loan", "statement_of_exemption_received_date",
             "garn_start_date", "support_second_family", "arrears_greater_than_12_weeks",

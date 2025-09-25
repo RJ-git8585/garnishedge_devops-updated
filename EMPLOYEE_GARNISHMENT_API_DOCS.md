@@ -4,19 +4,19 @@ This document describes the APIs for managing complete employee and garnishment 
 
 ## API Endpoints
 
-### 1. Get Employee and Garnishment Details by ee_id and case_id
+### 1. Get Employee and Garnishment Details by ee_id and client_id
 
-**Endpoint:** `GET /api/employee/garnishment-details/{ee_id}/{case_id}/`
+**Endpoint:** `GET /api/employee/garnishment-details/{ee_id}/{client_id}/`
 
-**Description:** Retrieves complete employee details along with garnishment order information based on employee ID and case ID.
+**Description:** Retrieves complete employee details along with garnishment order information based on employee ID and client ID.
 
 **URL Parameters:**
 - `ee_id` (required): Employee ID to fetch details for
-- `case_id` (required): Case ID to fetch specific garnishment order
+- `client_id` (required): Client ID to filter employee
 
 **Example Request:**
 ```
-GET /api/employee/garnishment-details/EE3FEMJN/C3FE4NL/
+GET /api/employee/garnishment-details/EE3FEMJN/CLIENT001/
 ```
 
 **Example Response:**
@@ -26,6 +26,7 @@ GET /api/employee/garnishment-details/EE3FEMJN/C3FE4NL/
     "message": "Employee and garnishment details fetched successfully",
     "data": {
         "ee_id": "EE3FEMJN",
+        "home_state": "kentucky",
         "work_state": "west virginia",
         "no_of_exemption_including_self": 1,
         "filing_status": "single",
@@ -60,13 +61,13 @@ GET /api/employee/garnishment-details/EE3FEMJN/C3FE4NL/
 
 ### 2. Update Employee Data
 
-**Endpoint:** `PUT /api/employee/garnishment-update/{ee_id}/{case_id}/`
+**Endpoint:** `PUT /api/employee/garnishment-update/{ee_id}/{client_id}/`
 
-**Description:** Updates employee details based on employee ID and case ID.
+**Description:** Updates employee details based on employee ID and client ID.
 
 **URL Parameters:**
 - `ee_id` (required): Employee ID to update
-- `case_id` (required): Case ID to verify garnishment order exists
+- `client_id` (required): Client ID to filter employee
 
 **Request Body:**
 ```json
@@ -84,7 +85,7 @@ GET /api/employee/garnishment-details/EE3FEMJN/C3FE4NL/
 
 **Example Request:**
 ```
-PUT /api/employee/garnishment-update/EE3FEMJN/C3FE4NL/
+PUT /api/employee/garnishment-update/EE3FEMJN/CLIENT001/
 Content-Type: application/json
 
 {
@@ -101,6 +102,7 @@ Content-Type: application/json
     "message": "Employee data updated successfully",
     "data": {
         "ee_id": "EE3FEMJN",
+        "home_state": "kentucky",
         "work_state": "west virginia",
         "no_of_exemption_including_self": 2,
         "filing_status": "single",
@@ -147,6 +149,7 @@ GET /api/employee/garnishment-list/?page=1&page_size=10&search=John
         "results": [
             {
                 "ee_id": "EE3FEMJN",
+                "home_state": "kentucky",
                 "work_state": "west virginia",
                 "no_of_exemption_including_self": 1,
                 "filing_status": "single",
@@ -199,6 +202,7 @@ All APIs return consistent error responses:
 
 ### Employee Fields
 - `ee_id`: Employee ID (unique)
+- `home_state`: Home state code
 - `work_state`: Work state code
 - `no_of_exemption_including_self`: Number of tax exemptions including self
 - `filing_status`: Tax filing status
@@ -226,12 +230,12 @@ All APIs return consistent error responses:
 
 ### Get Employee Details
 ```bash
-curl -X GET "http://localhost:8000/api/employee/garnishment-details/EE3FEMJN/C3FE4NL/"
+curl -X GET "http://localhost:8000/api/employee/garnishment-details/EE3FEMJN/CLIENT001/"
 ```
 
 ### Update Employee Data
 ```bash
-curl -X PUT "http://localhost:8000/api/employee/garnishment-update/EE3FEMJN/C3FE4NL/" \
+curl -X PUT "http://localhost:8000/api/employee/garnishment-update/EE3FEMJN/CLIENT001/" \
   -H "Content-Type: application/json" \
   -d '{
     "first_name": "John",
@@ -248,12 +252,13 @@ curl -X GET "http://localhost:8000/api/employee/garnishment-list/?search=John&pa
 
 ## Notes
 
-1. All APIs use case-insensitive matching for ee_id and case_id
+1. All APIs use case-insensitive matching for ee_id and client_id
 2. The update API supports partial updates - only provided fields will be updated
 3. Essential employee information with garnishment details is returned (no payroll data)
 4. All APIs include proper error handling and validation
 5. The list API supports pagination and search functionality
 6. All responses follow a consistent format with success/error indicators
 7. Garnishment data structure includes all garnishment orders for the employee grouped by type
-8. Both ee_id and case_id are required in URL path for detail and update operations
+8. Both ee_id and client_id are required in URL path for detail and update operations
 9. Payroll-related fields (gross_pay, wages, payroll_taxes, etc.) are excluded from responses
+10. Employee is filtered by both ee_id and client_id, garnishment orders are filtered by ee_id
