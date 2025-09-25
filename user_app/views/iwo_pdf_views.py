@@ -4,7 +4,7 @@ from vercel_blob import put
 import numpy as np
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
-from rest_framework.parsers import MultiPartParser, FormParser,JSONParser
+from rest_framework.parsers import MultiPartParser, FormParser
 import os
 from user_app.serializers import (IWOPDFFilesSerializer, WithholdingOrderDataSerializers)
 import logging
@@ -136,7 +136,7 @@ def clean_data_for_json(data):
         return data
 
 class ConvertExcelToJsonView(APIView):
-    parser_classes = [MultiPartParser, FormParser,JSONParser]
+    parser_classes = [MultiPartParser, FormParser]
 
     @swagger_auto_schema(
         manual_parameters=[
@@ -446,7 +446,7 @@ class ConvertExcelToJsonView(APIView):
             batch_id = f"B{int(time.time() % 1000):03d}{random.choice(string.ascii_uppercase)}"
 
             # Build JSON structure
-            output_json = {BatchDetail.BATCH_ID: batch_id, "cases": []}
+            output_json = {BatchDetail.BATCH_ID: batch_id, "payroll_data": []}
 
             # Loop over each row in the DataFrame
             for _, row in payroll_df.iterrows():
