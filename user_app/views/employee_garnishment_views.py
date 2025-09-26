@@ -104,12 +104,14 @@ class EmployeeGarnishmentDetailAPI(APIView):
             {"type": garn_type, "data": data_list}
             for garn_type, data_list in garnishment_data.items()
         ]
+        is_multiple_garnishment_type = True if len(garnishment_data_list) >1  else False
 
         # Build the complete data structure
         data = {
             "ee_id": employee.ee_id,
             "home_state": employee.home_state.state if employee.home_state else None,
             "work_state": employee.work_state.state if employee.work_state else None,
+            "is_multiple_garnishment_type": is_multiple_garnishment_type,
             "no_of_exemption_including_self": employee.number_of_exemptions,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
             "no_of_student_default_loan": employee.number_of_student_default_loan,
@@ -226,10 +228,12 @@ class EmployeeGarnishmentUpdateAPI(APIView):
             for garn_type, data_list in garnishment_data.items()
         ]
 
+        is_multiple_garnishment_type = True if len(garnishment_data_list) >1  else False
         # Build the complete data structure
         data = {
             "ee_id": employee.ee_id,
             "home_state": employee.home_state.state if employee.home_state else None,
+            "is_multiple_garnishment_type": is_multiple_garnishment_type,
             "work_state": employee.work_state.state if employee.work_state else None,
             "no_of_exemption_including_self": employee.number_of_exemptions,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
@@ -333,6 +337,7 @@ class EmployeeGarnishmentListAPI(APIView):
             # For the list API, we'll return a simplified version of the data
             # since we don't have specific case_id for each employee
             serializer_data = []
+
             for employee in employees:
                 # Get the first garnishment order for each employee
                 first_garnishment = employee.garnishments.first()
@@ -412,11 +417,13 @@ class EmployeeGarnishmentListAPI(APIView):
             for garn_type, data_list in garnishment_data.items()
         ]
 
+        is_multiple_garnishment_type = True if len(garnishment_data_list) >1  else False
         # Build the complete data structure
         data = {
             "ee_id": employee.ee_id,
             "work_state": employee.work_state.state if employee.work_state else None,
             "no_of_exemption_including_self": employee.number_of_exemptions,
+            "is_multiple_garnishment_type": is_multiple_garnishment_type,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
             "age": getattr(employee, 'age', 0),
             "is_blind": getattr(employee, 'is_blind', 0),
