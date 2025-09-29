@@ -162,7 +162,7 @@ class PostCalculationView(APIView):
             'garnishment_orders': garnishment_types
         })
 
-
+        print("enriched_case",enriched_case)
         return enriched_case
 
     def post(self, request, *args, **kwargs):
@@ -206,7 +206,6 @@ class PostCalculationView(APIView):
             
 
             cases_data = enriched_cases
-            print("cases_data",cases_data)
             
             # Log any missing employees but continue processing
             if not_found_employees:

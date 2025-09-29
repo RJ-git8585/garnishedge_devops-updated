@@ -181,7 +181,6 @@ class EmployeeRecord:
                 self.eeid, self.support_second_family, self.arrears_greater_than_12_weeks,
                 disposable_earnings, self.garnishment_data, issuing_state
             )
-            print(self.garnishment_data,"garnishment_data")
             
             self.ade = self.CSH.calculate_ade(disposable_earnings, withholding_limit)
             self.tcsa = self.CSH._support_amount(self.garnishment_data, CalculationFields.ORDERED_AMOUNT)
@@ -209,12 +208,12 @@ class EmployeeRecord:
             if garnishment_group.get('type') == 'spousal_and_medical_support':
                 for case_data in garnishment_group.get('data', []):
                     # Extract current_child_support from case data
-                    current_support = case_data.get('current_child_support', 0)
+                    current_support = case_data.get('ordered_amount', 0)
                     if current_support:
                         total_current_child_support += Decimal(str(current_support))
                     
                     # Extract child_support_arrear from case data
-                    child_arrear = case_data.get('child_support_arrear', 0)
+                    child_arrear = case_data.get('arrear_amount', 0)
                     if child_arrear:
                         total_child_support_arrear += Decimal(str(child_arrear))
         
@@ -251,10 +250,8 @@ class EmployeeRecord:
     def _calculate_withholding_amount(self) -> None:
         """Calculate actual withholding amount (minimum of ADE and AOW)."""
         try:
-            print("ade",self.ade)
-            print("amount_ordered_withheld",self.amount_ordered_withheld)
+
             self.withholding_amount = min(self.ade, self.amount_ordered_withheld)
-            print()
         except Exception as e:
             print(t.print_exc())
             logger.error(f"Error calculating withholding amount: {e}")
@@ -279,10 +276,8 @@ class CurrentSupportCalculator:
             if self.record.withholding_amount <= 0:
                 return Decimal("0")
             elif self.record.withholding_amount >= sum(tcsa) :
-                print("hii")
                 return self.record.CSH._calculate_each_amount(tcsa,"child support amount") 
             else:
-                print("hello")
                 if self.record.alloc_method == AllocationMethods.PRORATE:
                     # Prorate support amounts
                     cs_amounts = {
@@ -440,20 +435,7 @@ class WithholdingProcessor:
                     "total_withholding_amount": float(record.withholding_amount)
                 },
                 "deduction_details": deduction_results,
-                # "priority_processing": {
-                #     "total_priorities_available": len(priority_order),
-                #     "priorities_processed": len(deduction_results),
-                #     "priorities_skipped": len(priority_order) - len(deduction_results),
-                #     "priority_order": [
-                #         {
-                #             "order": i + 1,
-                #             "deduction_type": item.get('type', str(item)) if isinstance(item, dict) else str(item),
-                #             "state": item.get('state', '') if isinstance(item, dict) else '',
-                #             "processed": i < len(deduction_results)
-                #         }
-                #         for i, item in enumerate(priority_order)
-                #     ]
-                # },
+
                 "summary": summary
             }
             
@@ -587,9 +569,9 @@ class WithholdingProcessor:
                 case_id = case_data.get('case_id', f'CASE_{i+1}')
                 
                 if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
-                    requested_amount = Decimal(str(case_data.get('current_child_support', 0)))
+                    requested_amount = Decimal(str(case_data.get('ordered_amount', 0)))
                 else:  # CHILD_SUPPORT_ARREAR
-                    requested_amount = Decimal(str(case_data.get('child_support_arrear', 0)))
+                    requested_amount = Decimal(str(case_data.get('arrear_amount', 0)))
                 
                 if requested_amount <= 0:
                     # Add zero amount result for tracking
@@ -677,7 +659,6 @@ class WithholdingProcessor:
                 
                 # Convert string to DeductionType enum
                 deduction_type = self._get_deduction_type(priority_type)
-                print("deduction_type",deduction_type)
                 if not deduction_type:
                     continue
                 
@@ -702,9 +683,7 @@ class WithholdingProcessor:
                 else:
                     # Handle other deduction types as before
                     requested_amount = self._get_deduction_amount(record, deduction_type, cs_calculator)
-                    print("remaining_withholdingrequested_amount",requested_amount)
-                    print("requested_amount",requested_amount)
-                    
+ 
                     if requested_amount <= 0:
                         # Still add to results with 0 amounts for tracking
                         result = {
@@ -815,7 +794,6 @@ class WithholdingProcessor:
             if deduction_type in [ DeductionType.CURRENT_CHILD_SUPPORT]:
                 # Use calculator for current support
                 cs_amounts = cs_calculator.calculate_ordered()
-                print("cs_amounts",cs_amounts)
                 if isinstance(cs_amounts, dict):
                     return Decimal(str(sum(cs_amounts.values())))
                 return Decimal(str(cs_amounts))

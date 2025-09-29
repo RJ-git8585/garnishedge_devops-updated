@@ -1,10 +1,16 @@
 import logging
+import decimal
 from typing import Any, Dict, List, Optional
 from processor.garnishment_library.utils import StateAbbreviations,MultipleGarnishmentPriorityHelper,FinanceUtils
 from processor.garnishment_library.utils.response import CalculationResponse as CR
-from .federal_case import FederalTax
-from processor.garnishment_library.calculations import (StateTaxLevyCalculator, 
-                                                        FederalTax, ChildSupport, StudentLoanCalculator, ChildSupport,ChildSupportHelper,CreditorDebtCalculator)
+from processor.garnishment_library.calculations.state_tax import StateTaxLevyCalculator
+from processor.garnishment_library.calculations.ftb import ftb_ewot
+from processor.garnishment_library.calculations.bankruptcy import Bankruptcy
+from processor.garnishment_library.calculations.federal_case import FederalTax
+from processor.garnishment_library.calculations.child_support import ChildSupport, ChildSupportHelper
+from processor.garnishment_library.calculations.student_loan import StudentLoanCalculator
+from processor.garnishment_library.calculations.creditor_debt import CreditorDebtCalculator
+from processor.garnishment_library.calculations.deductions_priority import WithholdingProcessor
 from user_app.constants import (
     EmployeeFields as EE,
     CalculationFields as CF,
@@ -12,6 +18,7 @@ from user_app.constants import (
     GarnishmentTypeFields as GT,
 
 )
+from user_app.constants import ConfigDataKeys as CDK
 from processor.serializers import MultipleGarnPriorityOrderCRUDSerializer
 from decimal import Decimal
 import traceback as t 
@@ -44,12 +51,16 @@ class MultipleGarnishmentPriorityOrder:
     
     
     # --- Constants for Readability and Maintenance ---
-    MAX_CALCULATED_GARNISHMENTS = 2
     CCPA_LIMIT_PERCENTAGE = 0.25
     
     _CALCULATOR_FACTORIES = {
         GT.CHILD_SUPPORT: lambda record, config_data=None: MultipleGarnishmentPriorityHelper().child_support_helper(record),
-        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record, config_data=config_data.get(GT.FEDERAL_TAX_LEVY)),
+        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record,config_data={CDK.FEDERAL_STD_EXEMPT: config_data[CDK.FEDERAL_STD_EXEMPT]}),
+        GT.SPOUSAL_AND_MEDICAL_SUPPORT: lambda record, config_data=None: WithholdingProcessor().calculate(record),
+        GT.CHILD_SUPPORT_AMOUNT: lambda record, config_data=None: WithholdingProcessor().calculate( record),
+        GT.BANKRUPTCY_AMOUNT: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
+        GT.FRANCHISE_TAX_BOARD : lambda record, config_data=None: ftb_ewot().calculate(record, config_data[GT.FRANCHISE_TAX_BOARD]),
+        GT.BANKRUPTCY: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
         GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None: StudentLoanCalculator().calculate(record),
         GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY)),
         GT.CREDITOR_DEBT: lambda record, config_data=None: CreditorDebtCalculator().calculate(record, config_data=config_data.get(GT.CREDITOR_DEBT)),
@@ -137,17 +148,74 @@ class MultipleGarnishmentPriorityOrder:
                 total += self._sum_numeric_values(v)
         else:
             try:
+                # Skip None values and non-numeric types
+                if data is None:
+                    return total
                 # Attempt to convert to Decimal only if it's a number
                 if isinstance(data, (int, float, Decimal)):
                     total += Decimal(str(data))
-            except ( ValueError, TypeError):
+            except (ValueError, TypeError):
                 # Skip non-numeric values silently
                 pass
         return total
 
+    def _process_deduction_details(self, deduction_details, available_amount):
+        """
+        Process deduction details to apply priority-based deduction logic.
+        
+        Args:
+            deduction_details: List of deduction details with ordered_amount
+            available_amount: Amount available for garnishment
+            
+        Returns:
+            Updated deduction_details with deducted_amount, remaining_balance, 
+            fully_deducted, and amount_left_for_other_garn for ALL details
+        """
+        updated_details = []
+        remaining_funds = available_amount
+        
+        for detail in deduction_details:
+            ordered_amount = detail.get('ordered_amount', 0)
+            priority_order = detail.get('priority_order', 0)
+            
+            # Determine how much can be deducted
+            if remaining_funds >= ordered_amount:
+                deducted_amount = ordered_amount
+                remaining_balance = 0
+                fully_deducted = True
+                remaining_funds -= deducted_amount
+            else:
+                # If no funds left, set deducted amount to 0 but still process the detail
+                deducted_amount = max(0, remaining_funds)
+                remaining_balance = ordered_amount - deducted_amount
+                fully_deducted = False
+                remaining_funds = 0
+            
+            # Create updated detail
+            updated_detail = dict(detail)
+            updated_detail['deducted_amount'] = deducted_amount
+            updated_detail['remaining_balance'] = remaining_balance
+            updated_detail['fully_deducted'] = fully_deducted
+            updated_detail['amount_left_for_other_garn'] = remaining_funds
+            updated_details.append(updated_detail)
+        
+        return updated_details, remaining_funds
+
 
     def calculate(self) -> Dict[str, Any]:
-
+        """
+        Calculate multiple garnishments based on priority order.
+        
+        Key Logic:
+        1. Process garnishments in priority order (from database)
+        2. For each garnishment, compare available_for_garnishment with ordered amount
+        3. If sufficient funds: deduct fully and continue to next priority
+        4. If insufficient funds: deduct partially and set remaining priorities to 0
+        5. Track amount_left_for_other_garn for each garnishment result
+        
+        Returns:
+            Dict containing garnishment results with amount_left_for_other_garn field
+        """
         try:
             inputs = self._prepare_calculation_inputs()
             disposable_earnings = inputs["disposable_earnings"]
@@ -163,7 +231,7 @@ class MultipleGarnishmentPriorityOrder:
             return {"error": str(e)}
         
         twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 2)
-
+        print("rescords",self.record)
 
         available_for_garnishment = twenty_five_percent_of_de
         # print("available_for_garnishment",available_for_garnishment)
@@ -171,7 +239,13 @@ class MultipleGarnishmentPriorityOrder:
         
         # --- Prepare the list of garnishments to process ---
         active_order_types = {g_type.strip().lower() for g_type in garnishment_orders}
-        skip_types = {GT.FEDERAL_TAX_LEVY.lower(), GT.STATE_TAX_LEVY.lower()}
+        skip_types = set()
+        # Special handling for child_support and spousal_and_medical_support
+        # If both are present, skip child_support and only process spousal_and_medical_support
+        if (GT.CHILD_SUPPORT.lower() in active_order_types and 
+            GT.SPOUSAL_AND_MEDICAL_SUPPORT.lower() in active_order_types):
+            skip_types.add(GT.CHILD_SUPPORT.lower())
+            logger.info("Both child_support and spousal_and_medical_support present. Skipping child_support.")
         
         applicable_orders = sorted(
             [
@@ -181,28 +255,30 @@ class MultipleGarnishmentPriorityOrder:
             ],
             key=lambda x: x.get('priority_order', float('inf'))
         )
-        calculated_count = 0
         # --- Main Calculation Loop ---
         for item in applicable_orders:
             g_type = item.get('garnishment_type', '').strip().lower()
             if not g_type:
                 continue
 
-            # Check if we've reached the maximum calculated garnishments limit
-            if calculated_count >= self.MAX_CALCULATED_GARNISHMENTS:
-                # For remaining types after reaching the limit, return 0 amount
-                garnishment_results[g_type] = {"withholding_amt": 0,"calculation_status":"skipped_due_to_insufficient_fund"}
-                continue
             # Check if no funds available for garnishment
             if available_for_garnishment <= 0:
-                garnishment_results[g_type] = {"withholding_amt": 0,"calculation_status":"skipped_due_to_insufficient_fund"}
+                garnishment_results[g_type] = {
+                    "withholding_amt": 0,
+                    "calculation_status": "skipped_due_to_insufficient_fund",
+                    "amount_left_for_other_garn": 0.0
+                }
                 continue
 
             try:
                 calculator_fn = self._get_calculator(g_type)
                 if not calculator_fn:
                     logger.warning(f"No calculator found for type '{g_type}'.")
-                    garnishment_results[g_type] = {"withholding_amt": 0, "calculation_status": "calculator_missing"}
+                    garnishment_results[g_type] = {
+                        "withholding_amt": 0, 
+                        "calculation_status": "calculator_missing",
+                        "amount_left_for_other_garn": available_for_garnishment
+                    }
                     continue
                 
                 # Execute the calculation
@@ -221,17 +297,16 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     processed_result["twenty_five_percent_of_de"] = twenty_five_percent_of_de
                     amount_withheld = sum(processed_result.get("result_amt", {}).values()) + sum(processed_result.get("arrear_amt", {}).values())
-                    available_for_garnishment=float(result["amount_left_for_other_garn"])
-
-                    # If amount_left_for_other_garn is zero, apply the extra check
-                    if float(result["amount_left_for_other_garn"]) == 0:
-                        diff = round(twenty_five_percent_of_de - amount_withheld, 2)
-                        if diff > 0:
-                            available_for_garnishment = diff
-                        else:
-                            available_for_garnishment = 0
-                    else:
+                    
+                    # Update available_for_garnishment based on child support calculation
+                    if "amount_left_for_other_garn" in result:
                         available_for_garnishment = float(result["amount_left_for_other_garn"])
+                    else:
+                        available_for_garnishment -= amount_withheld
+                    
+                    # Ensure available_for_garnishment doesn't go below 0
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
 
                 elif g_type == GT.STUDENT_DEFAULT_LOAN:
                     processed_result = self.mg_helper.distribute_student_loan_amount(result, available_for_garnishment)
@@ -241,8 +316,10 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["withholding_amt"] = amount_withheld 
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
-                    # Add this line to update available funds
+                    # Update available funds and track remaining amount
                     available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
                 elif g_type == GT.CREDITOR_DEBT:
                     if isinstance(result, tuple):
                         result = result[0]
@@ -252,6 +329,125 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result = result
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     processed_result["calculation_status"] = "completed"
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+
+                elif g_type == GT.FRANCHISE_TAX_BOARD:
+                    processed_result = self.finance._convert_result_structure(result)
+                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    processed_result["calculation_status"] = "completed"
+                    processed_result["withholding_amt"] = amount_withheld
+                    processed_result["current_amount_withheld"] = available_for_garnishment
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                
+                elif g_type == GT.BANKRUPTCY:
+                    processed_result = self.finance._convert_result_structure(result)
+                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    processed_result["calculation_status"] = "completed"
+                    processed_result["withholding_amt"] = amount_withheld
+                    processed_result["current_amount_withheld"] = available_for_garnishment
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                
+                elif g_type == GT.FEDERAL_TAX_LEVY:
+                    processed_result = self.finance._convert_result_structure(result)
+                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    processed_result["calculation_status"] = "completed"
+                    processed_result["withholding_amt"] = amount_withheld
+                    processed_result["current_amount_withheld"] = available_for_garnishment
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+
+                elif g_type == GT.STATE_TAX_LEVY:
+                    processed_result = self.finance._convert_result_structure(result)
+                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    processed_result["calculation_status"] = "completed"
+                    processed_result["withholding_amt"] = amount_withheld
+                    processed_result["current_amount_withheld"] = available_for_garnishment
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+
+                elif g_type == GT.SPOUSAL_AND_MEDICAL_SUPPORT:
+                    # Handle the spousal_and_medical_support result structure
+                    if isinstance(result, dict) and result.get('success'):
+                        # Process deduction details with priority-based logic
+                        deduction_details = result.get('deduction_details', [])
+                        updated_deduction_details, remaining_funds = self._process_deduction_details(
+                            deduction_details, available_for_garnishment
+                        )
+                        
+                        # Calculate total amount withheld
+                        total_withheld = sum(d['deducted_amount'] for d in updated_deduction_details)
+                        
+                        # Format the result to preserve all calculation details
+                        processed_result = {
+                            "success": result.get('success', True),
+                            "employee_info": result.get('employee_info', {}),
+                            "calculations": result.get('calculations', {}),
+                            "deduction_details": updated_deduction_details,
+                            "summary": result.get('summary', {}),
+                            "withholding_amt": total_withheld,
+                            "current_amount_withheld": available_for_garnishment,
+                            "calculation_status": "completed"
+                        }
+                        
+                        # Update available funds and track remaining amount
+                        available_for_garnishment = remaining_funds
+                        processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                        
+                    else:
+                        # Fallback for unexpected result structure - preserve all data
+                        if isinstance(result, dict):
+                            processed_result = dict(result)  # Make a copy to preserve all data
+                            processed_result["calculation_status"] = "completed"
+                            processed_result["current_amount_withheld"] = available_for_garnishment
+                            
+                            # Extract withholding amount from various possible locations
+                            if 'calculations' in result and 'total_withholding_amount' in result['calculations']:
+                                amount_withheld = min(result['calculations']['total_withholding_amount'], available_for_garnishment)
+                            elif 'withholding_amt' in result:
+                                amount_withheld = min(result['withholding_amt'], available_for_garnishment)
+                            else:
+                                amount_withheld = self._sum_numeric_values(result.get('calculations', {}))
+                            processed_result["withholding_amt"] = amount_withheld
+                            
+                            # Update available funds and track remaining amount
+                            available_for_garnishment -= amount_withheld
+                            available_for_garnishment = max(0, available_for_garnishment)
+                            processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                        else:
+                            # If result is not a dict, use finance utility to convert
+                            processed_result = self.finance._convert_result_structure(result) if result else {}
+                            processed_result["calculation_status"] = "completed"
+                            processed_result["current_amount_withheld"] = available_for_garnishment
+                            amount_withheld = sum(processed_result.get("withholding_amt", {}).values()) if isinstance(processed_result.get("withholding_amt"), dict) else 0
+                            processed_result["withholding_amt"] = amount_withheld
+                            
+                            # Update available funds and track remaining amount
+                            available_for_garnishment -= amount_withheld
+                            available_for_garnishment = max(0, available_for_garnishment)
+                            processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                
 
                 else: 
                     base_amount = self._sum_numeric_values(result) if isinstance(result, dict) else 0
@@ -259,20 +455,22 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result = {"withholding_amt": amount_withheld}
                     processed_result["twenty_five_percent_of_de"] = twenty_five_percent_of_de
                     processed_result["calculation_status"] = "completed"
-
-
+                    
+                    # Update available funds and track remaining amount
+                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment = max(0, available_for_garnishment)
+                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
 
                 garnishment_results[g_type] = processed_result
-                # available_for_garnishment -= amount_withheld
-                calculated_count += 1
 
             except Exception as e:
-                import traceback as t
                 print(t.print_exc())
                 logger.exception(f"Error calculating garnishment '{g_type}' for state '{self.work_state}'.")
-                garnishment_results[g_type] = {"withholding_amt": 0, "calculation_status": "calculation_error", "error_details": str(e)}
-
-                # We still increment count as this counts as a processed attempt
-                calculated_count += 1   
+                garnishment_results[g_type] = {
+                    "withholding_amt": 0, 
+                    "calculation_status": "calculation_error", 
+                    "error_details": str(e),
+                    "amount_left_for_other_garn": available_for_garnishment
+                }
          
         return garnishment_results

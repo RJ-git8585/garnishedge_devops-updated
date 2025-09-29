@@ -44,8 +44,13 @@ class FinanceUtils:
                 converted[key] = float(value)
             elif isinstance(value, list):
                 converted[key] = [float(item) if isinstance(item, Decimal) else item for item in value]
+            elif value is None or value == 'None':
+                converted[key] = None
             else:
-                converted[key] = float(value)
+                try:
+                    converted[key] = float(value)
+                except (ValueError, TypeError):
+                    converted[key] = value
         return converted
 
 class ExemptAmount:
