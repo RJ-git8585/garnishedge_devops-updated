@@ -40,7 +40,7 @@ class FilingStatusField(serializers.Field):
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     # Unified fields (same for GET and POST/PUT)
-    client = ClientField()
+    client_id = ClientField(source='client')
     home_state = StateField()
     work_state = StateField()
     filing_status = FilingStatusField()
@@ -48,7 +48,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeDetail
         fields = [
-            "id", "ee_id", "client",
+            "id", "ee_id", "client_id",
             "first_name", "middle_name", "last_name",
             "ssn",
             "home_state", "work_state",
