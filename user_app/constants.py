@@ -31,8 +31,8 @@ class GarnishmentTypeFields:
     BANKRUPTCY='bankruptcy'
     FTB_RELATED_TYPES = {
                     "ftb_ewot": 9,
-                    "ftb_court": 11,      # Replace with actual ID
-                    "ftb_vehicle": 10     # Replace with actual ID
+                    "ftb_court": 10,      
+                    "ftb_vehicle": 11     
                 }
     
 
