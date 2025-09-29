@@ -174,14 +174,91 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-            # Update employee data
-            employee_data = serializer.validated_data
+            # Separate employee and garnishment order fields
+            employee_data = {}
+            garnishment_data = {}
             
-            if employee_data:
-                for field, value in employee_data.items():
-                    setattr(employee, field, value)
-                employee.save()
+            # Fields that belong to EmployeeDetail model
+            employee_fields = {
+                'first_name', 'last_name', 'home_state', 'work_state', 'number_of_exemptions',
+                'marital_status', 'number_of_student_default_loan', 'number_of_dependent_child',
+                'support_second_family', 'garnishment_fees_status', 'number_of_active_garnishment',
+                'is_active', 'filing_status'
+            }
+            
+            # Fields that belong to GarnishmentOrder model
+            garnishment_fields = {
+                'garnishment_type', 'is_consumer_debt', 'received_date', 'start_date',
+                'stop_date', 'ordered_amount', 'arrear_amount', 'arrear_greater_than_12_weeks'
+            }
+            
+            # Handle garnishment_data updates (special case)
+            garnishment_data_updates = {}
+            if 'garnishment_data' in serializer.validated_data:
+                garnishment_data_updates = serializer.validated_data.pop('garnishment_data')
+            
+            # Separate the data
+            for field, value in serializer.validated_data.items():
+                if field in employee_fields:
+                    employee_data[field] = value
+                elif field in garnishment_fields:
+                    garnishment_data[field] = value
+            
+            # Update employee and garnishment data in a transaction
+            with transaction.atomic():
+                # Update employee data
+                if employee_data:
+                    logger.info(f"Updating employee {ee_id} with data: {employee_data}")
+                    for field, value in employee_data.items():
+                        setattr(employee, field, value)
+                    employee.save()
+                    logger.info(f"Employee {ee_id} updated successfully. New values: {employee_data}")
+                
+                # Update garnishment order data
+                if garnishment_data:
+                    logger.info(f"Updating garnishment orders for employee {ee_id} with data: {garnishment_data}")
+                    # Update all garnishment orders for this employee
+                    garnishment_orders = employee.garnishments.all()
+                    for garnishment_order in garnishment_orders:
+                        for field, value in garnishment_data.items():
+                            setattr(garnishment_order, field, value)
+                        garnishment_order.save()
+                    logger.info(f"Garnishment orders for employee {ee_id} updated successfully. New values: {garnishment_data}")
+                
+                # Handle garnishment_data updates (update individual garnishment orders)
+                if garnishment_data_updates:
+                    logger.info(f"Updating garnishment data for employee {ee_id}: {garnishment_data_updates}")
+                    garnishment_orders = employee.garnishments.all()
+                    
+                    for garnishment_data_item in garnishment_data_updates:
+                        garnishment_type = garnishment_data_item.get('type')
+                        data_list = garnishment_data_item.get('data', [])
+                        
+                        # Find garnishment orders of this type
+                        matching_orders = garnishment_orders.filter(
+                            garnishment_type__type__iexact=garnishment_type
+                        )
+                        
+                        # Update each matching order with the data
+                        for i, order in enumerate(matching_orders):
+                            if i < len(data_list):
+                                data_item = data_list[i]
+                                if 'case_id' in data_item:
+                                    order.case_id = data_item['case_id']
+                                if 'ordered_amount' in data_item:
+                                    order.ordered_amount = data_item['ordered_amount']
+                                if 'arrear_amount' in data_item:
+                                    order.arrear_amount = data_item['arrear_amount']
+                                order.save()
+                    
+                    logger.info(f"Garnishment data for employee {ee_id} updated successfully")
+                
+                if not employee_data and not garnishment_data and not garnishment_data_updates:
+                    logger.warning(f"No valid data provided for employee {ee_id} update")
 
+            # Refresh the employee object from database to ensure we have the latest data
+            employee.refresh_from_db()
+            
             # Get the first garnishment order for building the data structure
             garnishment_order = employee.garnishments.first()
             
@@ -213,9 +290,10 @@ class EmployeeGarnishmentUpdateAPI(APIView):
         garnishment_data = {}
         for garn in all_garnishments:
             garn_type = garn.garnishment_type.type.lower()
+            print("garn_type",garn_type)
             if garn_type not in garnishment_data:
                 garnishment_data[garn_type] = []
-            
+
             garnishment_data[garn_type].append({
                 "case_id": garn.case_id,
                 "ordered_amount": float(garn.ordered_amount),
@@ -228,27 +306,24 @@ class EmployeeGarnishmentUpdateAPI(APIView):
             for garn_type, data_list in garnishment_data.items()
         ]
 
-        is_multiple_garnishment_type = True if len(garnishment_data_list) >1  else False
-        # Build the complete data structure
+        is_multiple_garnishment_type = True if len(garnishment_data_list) > 1 else False
+
+        # Build the complete data structure - matching the GET API structure
         data = {
             "ee_id": employee.ee_id,
             "home_state": employee.home_state.state if employee.home_state else None,
-            "is_multiple_garnishment_type": is_multiple_garnishment_type,
             "work_state": employee.work_state.state if employee.work_state else None,
+            "is_multiple_garnishment_type": is_multiple_garnishment_type,
             "no_of_exemption_including_self": employee.number_of_exemptions,
             "filing_status": employee.filing_status.name if employee.filing_status else None,
-            "age": getattr(employee, 'age', 0),
-            "is_blind": getattr(employee, 'is_blind', 0),
-            "is_spouse_blind": getattr(employee, 'is_spouse_blind', 0),
-            "spouse_age": getattr(employee, 'spouse_age', 0),
             "no_of_student_default_loan": employee.number_of_student_default_loan,
-            "statement_of_exemption_received_date": garnishment_order.received_date.strftime('%m/%d/%Y') if garnishment_order.received_date else "",
-            "garn_start_date": garnishment_order.start_date.strftime('%m/%d/%Y') if garnishment_order.start_date else "",
+            "statement_of_exemption_received_date": garnishment_order.received_date.strftime('%m/%d/%Y') if garnishment_order and garnishment_order.received_date else "",
+            "garn_start_date": garnishment_order.start_date.strftime('%m/%d/%Y') if garnishment_order and garnishment_order.start_date else "",
             "support_second_family": employee.support_second_family,
-            "arrears_greater_than_12_weeks": garnishment_order.arrear_greater_than_12_weeks,
+            "arrears_greater_than_12_weeks": garnishment_order.arrear_greater_than_12_weeks if garnishment_order else False,
             "no_of_dependent_child": employee.number_of_dependent_child,
-            "consumer_debt": garnishment_order.is_consumer_debt,
-            "non_consumer_debt": not garnishment_order.is_consumer_debt,
+            "consumer_debt": garnishment_order.is_consumer_debt if garnishment_order else False,
+            "non_consumer_debt": not garnishment_order.is_consumer_debt if garnishment_order else True,
             "garnishment_data": garnishment_data_list
         }
 

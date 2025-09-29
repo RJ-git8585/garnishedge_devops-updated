@@ -78,10 +78,7 @@ class CalculationDataView:
                     std_exempt = StdExemptions.objects.select_related('year', 'fs', 'pp').all()
                     std_serializer = StdExemptionSerializer(std_exempt, many=True)
 
-                    config_data[CDK.FEDERAL_STD_EXEMPT] = std_serializer.data
-
-                    print("config_data",config_data)
-                   
+                    config_data[CDK.FEDERAL_STD_EXEMPT] = std_serializer.data                   
                     
                     loaded_types.append(CDK.FEDERAL_STD_EXEMPT)
                 except Exception as e:
@@ -365,8 +362,7 @@ class CalculationDataView:
                 GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
             },
             CR.ER_DEDUCTION: {
-                GRF.GARNISHMENT_FEES: 0.0,
-                "total_employer_cost": 0.0
+                GRF.GARNISHMENT_FEES: 0.0
             }
         }
         
@@ -511,7 +507,6 @@ class CalculationDataView:
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(mde, 2)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(total_withhold_amt + garnishment_fees_amount, 2)
             
             return result
             
@@ -558,7 +553,7 @@ class CalculationDataView:
                 result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(float(withholding_amount)+ float(garnishment_fees_amount), 2)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(float(withholding_amount)+ float(garnishment_fees_amount), 2)
+
                 
                 # Federal tax specific metrics
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = CM.NA
@@ -656,7 +651,6 @@ class CalculationDataView:
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(total_student_loan_amt + garnishment_fees_amount, 2)
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                standardized_result[CR.ER_DEDUCTION]["total_employer_cost"] = round(total_student_loan_amt + garnishment_fees_amount, 2)
 
             standardized_result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
             standardized_result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(result[CRK.DISPOSABLE_EARNING], 2)
@@ -718,7 +712,6 @@ class CalculationDataView:
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
@@ -780,7 +773,6 @@ class CalculationDataView:
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
@@ -845,7 +837,6 @@ class CalculationDataView:
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(withholding_amount + garnishment_fees_amount, 2)
             
             return result
             
@@ -950,9 +941,6 @@ class CalculationDataView:
                 )
 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[CR.ER_DEDUCTION]["total_employer_cost"] = round(
-                    withholding_amount + garnishment_fees_amount, 2
-                )
             
             return result
             
@@ -1184,7 +1172,6 @@ class CalculationDataView:
             
             # Update employer deductions
             result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-            result[CR.ER_DEDUCTION]["total_employer_cost"] = round(total_withheld + garnishment_fees_amount, 2)
             
             return result
             

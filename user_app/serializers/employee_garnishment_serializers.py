@@ -38,10 +38,8 @@ class EmployeeGarnishmentDetailSerializer(serializers.ModelSerializer):
         model = EmployeeDetail
         fields = [
             "ee_id", "home_state", "work_state", "no_of_exemption_including_self",
-            "filing_status", "age", "is_blind", "is_spouse_blind",
-            "spouse_age", "no_of_student_default_loan", "statement_of_exemption_received_date",
-            "garn_start_date", "support_second_family", "arrears_greater_than_12_weeks",
-            "no_of_dependent_child", "consumer_debt", "non_consumer_debt", "garnishment_data"
+            "filing_status", "number_of_student_default_loan", "support_second_family",
+            "number_of_dependent_child", "garnishment_data"
         ]
         read_only_fields = ["ee_id", "garnishment_data"]
 
@@ -60,3 +58,19 @@ class EmployeeBasicUpdateSerializer(serializers.Serializer):
     garnishment_fees_status = serializers.BooleanField(required=False)
     number_of_active_garnishment = serializers.IntegerField(required=False)
     is_active = serializers.BooleanField(required=False)
+    
+    # Add support for filing_status field
+    filing_status = FilingStatusField(required=False)
+    
+    # Add support for garnishment order fields
+    garnishment_type = GarnishmentTypeField(required=False)
+    is_consumer_debt = serializers.BooleanField(required=False)
+    received_date = serializers.DateField(required=False)
+    start_date = serializers.DateField(required=False)
+    stop_date = serializers.DateField(required=False)
+    ordered_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    arrear_amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    arrear_greater_than_12_weeks = serializers.BooleanField(required=False)
+    
+    # Add support for garnishment_data updates
+    garnishment_data = GarnishmentDataSerializer(many=True, required=False)

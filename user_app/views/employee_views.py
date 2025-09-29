@@ -139,6 +139,7 @@ class EmployeeDetailAPIViews(APIView):
             else:
                 employees = EmployeeDetail.objects.all()
                 serializer = EmployeeDetailSerializer(employees, many=True)
+                print("serializer",serializer.data)
                 return ResponseHelper.success_response('All data fetched successfully', serializer.data)
         except Exception as e:
             return ResponseHelper.error_response(
@@ -562,12 +563,10 @@ class EmployeeDetailAPI(APIView):
         """
         try:
             employees = EmployeeDetail.objects.all().order_by("-created_at")
-            result = PaginationHelper.paginate_queryset(
-                employees, request, EmployeeDetailSerializer
-            )
+            result = EmployeeDetailSerializer(employees, many=True)
             return ResponseHelper.success_response(
                 message="Employees fetched successfully",
-                data=result,
+                data=result.data,
                 status_code=status.HTTP_200_OK
             )  
         except Exception as e:
