@@ -292,7 +292,7 @@ class CalculationDataView:
                 ],
                 "calculate": self.calculate_ewot
             },
-            "court_ordered_debt": {  
+            "ftb_court": {  
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
