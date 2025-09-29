@@ -390,7 +390,7 @@ class CalculationDataView:
             result = self._create_standardized_result(GT.CHILD_SUPPORT, record)
             
             if total_withhold_amt <= 0:
-                # Handle insufficient pay scenario with case IDs
+                # Handle insufficient pay scenario with case IDs    
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
                 
                 # Get case IDs for insufficient pay scenario
@@ -438,7 +438,7 @@ class CalculationDataView:
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(mde, 2)
             else:
                 # Calculate garnishment fees
-                garnishment_fees = self.get_garnishment_fees(record, total_withhold_amt, garn_fees)
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_withhold_amt)
                 garnishment_fees_amount = 0.0
                 
                 if isinstance(garnishment_fees, (int, float)):
@@ -535,14 +535,15 @@ class CalculationDataView:
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
             else:
                 # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, calculation_result, garn_fees)
+                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, calculation_result)
+                print("garnishment_fees",garnishment_fees)
                 garnishment_fees_amount = 0.0
                 
                 if isinstance(garnishment_fees, (int, float)):
-                    garnishment_fees_amount = round(garnishment_fees, 2)
-                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
-                    garnishment_fees_amount = round(float(garnishment_fees), 2)
-                
+                    garnishment_fees_amount = garnishment_fees
+                elif isinstance(garnishment_fees, str) :
+                    garnishment_fees_amount = garnishment_fees
+                print("garnishment_fees_amount",garnishment_fees_amount)
                 withholding_amount = round(calculation_result, 2)
                 
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
@@ -550,7 +551,6 @@ class CalculationDataView:
                 ]
                 result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
                 result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(float(withholding_amount)+ float(garnishment_fees_amount), 2)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
 
@@ -644,12 +644,12 @@ class CalculationDataView:
                 standardized_result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
             else:
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_student_loan_amt, garn_fees)
-                garnishment_fees_amount = round(garnishment_fees, 2) if isinstance(garnishment_fees, (int, float)) else 0.0
+                garnishment_fees=self.get_rounded_garnishment_fee(
+                work_state, record, total_student_loan_amt)
+                garnishment_fees_amount = garnishment_fees
                 
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_student_loan_amt, 2)
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                standardized_result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(total_student_loan_amt + garnishment_fees_amount, 2)
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
 
             standardized_result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
@@ -691,12 +691,14 @@ class CalculationDataView:
                 withholding_amount = round(calculation_result[CR.WITHHOLDING_AMT], 2)
                 
                 # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees =  self.get_rounded_garnishment_fee(
+                        work_state, record, result[CR.WITHHOLDING_AMT]
+                    )
                 garnishment_fees_amount = 0.0
                 
                 if isinstance(garnishment_fees, (int, float)):
                     garnishment_fees_amount = round(garnishment_fees, 2)
-                elif isinstance(garnishment_fees, str) and garnishment_fees.replace('.', '').replace('-', '').isdigit():
+                elif isinstance(garnishment_fees, str):
                     garnishment_fees_amount = round(float(garnishment_fees), 2)
                 
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
@@ -752,7 +754,8 @@ class CalculationDataView:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
                 # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees = self.get_rounded_garnishment_fee(
+                    work_state, record, result[CR.WITHHOLDING_AMT])
                 garnishment_fees_amount = 0.0
                 
                 if isinstance(garnishment_fees, (int, float)):
@@ -816,7 +819,7 @@ class CalculationDataView:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
                 # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, withholding_amount, garn_fees)
+                garnishment_fees = self.get_garnishment_fees(record, withholding_amount)
                 garnishment_fees_amount = 0.0
                 
                 if isinstance(garnishment_fees, (int, float)):
@@ -909,9 +912,7 @@ class CalculationDataView:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
                 # Calculate garnishment fees
-                garnishment_fees = self.get_rounded_garnishment_fee(
-                    work_state, record, withholding_amount, garn_fees
-                )
+                garnishment_fees = self.get_garnishment_fees(record, withholding_amount)
                 garnishment_fees_amount = 0.0
                 if isinstance(garnishment_fees, (int, float)):
                     garnishment_fees_amount = round(garnishment_fees, 2)
@@ -1147,9 +1148,9 @@ class CalculationDataView:
                     })
                     
                     total_withheld += type_total_withheld
-                        
+                    
             # Calculate garnishment fees
-            garnishment_fees = self.get_rounded_garnishment_fee(work_state, record, total_withheld, garn_fees)
+            garnishment_fees = self.get_garnishment_fees(record, total_withheld)
             garnishment_fees_amount = 0.0
             
             if isinstance(garnishment_fees, (int, float)):

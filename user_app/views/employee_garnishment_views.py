@@ -238,6 +238,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                         matching_orders = garnishment_orders.filter(
                             garnishment_type__type__iexact=garnishment_type
                         )
+
                         
                         # Update each matching order with the data
                         for i, order in enumerate(matching_orders):
@@ -255,6 +256,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                 
                 if not employee_data and not garnishment_data and not garnishment_data_updates:
                     logger.warning(f"No valid data provided for employee {ee_id} update")
+
 
             # Refresh the employee object from database to ensure we have the latest data
             employee.refresh_from_db()
@@ -290,7 +292,6 @@ class EmployeeGarnishmentUpdateAPI(APIView):
         garnishment_data = {}
         for garn in all_garnishments:
             garn_type = garn.garnishment_type.type.lower()
-            print("garn_type",garn_type)
             if garn_type not in garnishment_data:
                 garnishment_data[garn_type] = []
 

@@ -298,12 +298,25 @@ class ThresholdConditionSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+class StateField(serializers.Field):
+    """Custom field for handling State as read/write."""
+    def to_representation(self, value):
+        return value.state if value else None
+
+    def to_internal_value(self, data):
+        try:
+            from processor.models import State
+            return State.objects.get(state__iexact=data)
+        except State.DoesNotExist:
+            raise serializers.ValidationError(f"State '{data}' not found")
+
+
 class BaseGarnishmentTypeExemptRuleSerializer(serializers.ModelSerializer):
     """
     Base serializer for garnishment type specific ExemptRule operations.
     This class provides common functionality for all garnishment type specific serializers.
     """
-    state = serializers.CharField(source="state.state")  
+    state = StateField()
     garnishment_type = serializers.CharField(source="garnishment_type.type", read_only=True)
 
     class Meta:

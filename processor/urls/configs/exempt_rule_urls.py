@@ -12,5 +12,3 @@ urlpatterns = [
     path("rule/<str:garnishment_type>/", ExemptRuleAPIView.as_view()),
     path("rule/<str:garnishment_type>/<int:pk>/", ExemptRuleAPIView.as_view()),
 ]
-
-

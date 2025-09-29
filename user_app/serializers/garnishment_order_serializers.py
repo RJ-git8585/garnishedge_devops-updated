@@ -62,7 +62,6 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
     """
 
     ssn = EmployeeField(source="employee")   # map to model field "employee"
-    work_state = StateField()
     issuing_state = StateField()
     garnishment_type = GarnishmentTypeField()
 
@@ -72,7 +71,6 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "id",
             "case_id",
             "ssn",
-            "work_state",
             "issuing_state",
             "garnishment_type",
             "garnishment_fees",
@@ -89,6 +87,12 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "ordered_amount",
             "garnishing_authority",
             "withholding_amount",
+            "current_child_support",
+            "current_medical_support",
+            "medical_support_arrear",
+            "current_spousal_support",
+            "spousal_support_arrear",
+            "fips_code",
             "arrear_greater_than_12_weeks",
             "arrear_amount",
             "created_at",
