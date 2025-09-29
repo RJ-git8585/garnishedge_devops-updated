@@ -492,12 +492,13 @@ class GarnishmentOrderAPI(APIView):
     def get(self, request):
         try:
             orders = GarnishmentOrder.objects.all().order_by("-created_at")
-            result = PaginationHelper.paginate_queryset(
-                orders, request, GarnishmentOrderSerializer
-            )
+            # result = PaginationHelper.paginate_queryset(
+            #     orders, request, GarnishmentOrderSerializer
+            # )
+            serializer = GarnishmentOrderSerializer(orders, many=True)
             return ResponseHelper.success_response(
                 message="Garnishment orders fetched successfully",
-                data=result,
+                data=serializer.data,
                 status_code=status.HTTP_200_OK
             )
         except Exception as e:
