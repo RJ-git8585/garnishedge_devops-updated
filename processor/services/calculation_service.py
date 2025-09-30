@@ -648,7 +648,6 @@ class CalculationDataView:
                 garnishment_fees_amount = garnishment_fees
                 
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_student_loan_amt, 2)
-                standardized_result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
 
             standardized_result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
@@ -670,8 +669,9 @@ class CalculationDataView:
         try:
             state_tax_view = StateTaxLevyCalculator()
             work_state = record.get(EE.WORK_STATE)
+            payroll_taxes = record.get(PT.PAYROLL_TAXES)
             calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY])
-            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
             
             if calculation_result == CommonConstants.NOT_FOUND:
                 return self._create_standardized_result(GT.STATE_TAX_LEVY, record, error_message=f"State tax levy {EM.CONFIGURATION_NOT_FOUND}")
@@ -728,6 +728,7 @@ class CalculationDataView:
         try:
             creditor_debt_calculator = CreditorDebtCalculator()
             work_state = record.get(EE.WORK_STATE)
+            payroll_taxes = record.get(PT.PAYROLL_TAXES)
             calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
@@ -737,7 +738,7 @@ class CalculationDataView:
             elif calculation_result == CommonConstants.NOT_PERMITTED:
                 return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message=f"Creditor debt {EM.GARNISHMENT_NOT_PERMITTED}")
                 
-            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
+            total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
             
             # Create standardized result
             result = self._create_standardized_result(GT.CREDITOR_DEBT, record)

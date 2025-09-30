@@ -26,7 +26,7 @@ class GarnishmentOrder(models.Model):
     fips_code = models.CharField(max_length=255,blank=True, null=True)
 
     payee = models.CharField(max_length=255,blank=True, null=True)
-    override_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    override_amount = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
 
     override_start_date = models.DateField(blank=True, null=True)
     override_stop_date = models.DateField(blank=True, null=True)
