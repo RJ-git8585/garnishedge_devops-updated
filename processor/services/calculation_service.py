@@ -578,7 +578,6 @@ class CalculationDataView:
                 work_state).calculate_md(record)
             loan_amt = result[CRK.STUDENT_LOAN_AMT]
 
-
             if len(loan_amt) == 1:
                 if isinstance(loan_amt, (int, float,list,dict)):
                     record[CR.AGENCY] = [{
@@ -660,6 +659,7 @@ class CalculationDataView:
             
             return standardized_result
         except Exception as e:
+            print(t.print_exc())
             logger.error(f"{EM.ERROR_CALCULATING} student loan: {e}")
             return self._create_standardized_result(GT.STUDENT_DEFAULT_LOAN, record, error_message=f"{EM.ERROR_CALCULATING} student loan: {e}")
 
