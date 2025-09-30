@@ -60,8 +60,6 @@ class PostCalculationView(APIView):
                     )
                 ).get(ee_id__iexact=ee_id)
 
-                print("employee",employee)
-
                 # Build enriched case data
                 enriched_case = self._build_enriched_case_from_employee(case, employee)
                 enriched_cases.append(enriched_case)
@@ -97,12 +95,20 @@ class PostCalculationView(APIView):
         
         for garnishment in garnishment_orders:
             # Sum up deduction values from all garnishment orders
-            deductions['current_child_support'] += float(garnishment.current_child_support or 0)
-            deductions['current_medical_support'] += float(garnishment.current_medical_support or 0)
-            deductions['current_spousal_support'] += float(garnishment.current_spousal_support or 0)
-            deductions['medical_support_arrear'] += float(garnishment.medical_support_arrear or 0)
-            deductions['spousal_support_arrear'] += float(garnishment.spousal_support_arrear or 0)
-            deductions['fees'] += float(garnishment.garnishment_fees or 0)
+            if garnishment.garnishment_type.type.lower() == "spousal_and_medical_support":
+                deductions['current_child_support'] = float(garnishment.current_child_support or 0)
+                deductions['current_medical_support'] = float(garnishment.current_medical_support or 0)
+                deductions['current_spousal_support'] = float(garnishment.current_spousal_support or 0)
+                deductions['medical_support_arrear'] = float(garnishment.medical_support_arrear or 0)
+                deductions['spousal_support_arrear'] = float(garnishment.spousal_support_arrear or 0)
+                deductions['fees'] += float(garnishment.garnishment_fees or 0)
+            else:
+                deductions['current_child_support'] = float(0)
+                deductions['current_medical_support'] = float(0)
+                deductions['current_spousal_support'] = float(0)
+                deductions['medical_support_arrear'] = float(0)
+                deductions['spousal_support_arrear'] = float(0)
+                deductions['fees'] += float(0)
         
         # For fields not available in GarnishmentOrder model, try to get from case data
         if case_data:
@@ -178,7 +184,6 @@ class PostCalculationView(APIView):
             'support_second_family': employee.support_second_family,
             'no_of_dependent_child': employee.number_of_dependent_child,
             'arrears_greater_than_12_weeks': first_garnishment.arrear_greater_than_12_weeks if first_garnishment else False,
-            'ftb_type': None,  # This field doesn't exist in the models, setting to None
             'deductions': deductions,
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types

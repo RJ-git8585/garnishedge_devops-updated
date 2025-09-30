@@ -514,6 +514,7 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                     disposable_earning, exempt_amt_config)
             
         except Exception as e:
+            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_arizona: {str(e)}"

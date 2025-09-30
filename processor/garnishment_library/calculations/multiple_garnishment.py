@@ -231,7 +231,6 @@ class MultipleGarnishmentPriorityOrder:
             return {"error": str(e)}
         
         twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 2)
-        print("rescords",self.record)
 
         available_for_garnishment = twenty_five_percent_of_de
         # print("available_for_garnishment",available_for_garnishment)

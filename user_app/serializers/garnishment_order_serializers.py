@@ -28,22 +28,30 @@ class CustomDateField(serializers.DateField):
         if data is None or data == '' or data == 'null':
             return None
         
-        try:
-            # Try to parse MM-DD-YYYY format
-            if isinstance(data, str) and len(data.split('-')) == 3:
-                parts = data.split('-')
-                if len(parts[0]) == 2 and len(parts[1]) == 2 and len(parts[2]) == 4:
-                    # MM-DD-YYYY format
-                    month, day, year = parts
-                    date_obj = datetime.strptime(f"{month}-{day}-{year}", "%m-%d-%Y")
-                    return date_obj.date()
-            
-            # If not MM-DD-YYYY format, try default parsing
-            return super().to_internal_value(data)
-        except (ValueError, TypeError):
+        if not isinstance(data, str):
             raise serializers.ValidationError(
-                "Date has wrong format. Use MM-DD-YYYY format (e.g., 01-20-2024)."
+                "Date must be a string. Use MM-DD-YYYY format (e.g., 01-20-2024)."
             )
+        
+        # Try different date formats
+        date_formats = [
+            "%m-%d-%Y",  # MM-DD-YYYY
+            "%Y-%m-%d",  # YYYY-MM-DD (standard format)
+            "%m/%d/%Y",  # MM/DD/YYYY
+            "%Y/%m/%d",  # YYYY/MM/DD
+        ]
+        
+        for date_format in date_formats:
+            try:
+                date_obj = datetime.strptime(data, date_format)
+                return date_obj.date()
+            except ValueError:
+                continue
+        
+        # If none of the formats work, raise validation error
+        raise serializers.ValidationError(
+            "Date has wrong format. Use MM-DD-YYYY format (e.g., 01-20-2024)."
+        )
 
 
 class EmployeeField(serializers.Field):
@@ -53,11 +61,17 @@ class EmployeeField(serializers.Field):
 
     def to_internal_value(self, data):
         try:
+            # First try to get a single employee
             return EmployeeDetail.objects.get(ssn=data)
         except EmployeeDetail.DoesNotExist:
             raise serializers.ValidationError(
                 {"employee": f"Employee with SSN '{data}' not found"}
             )
+        except EmployeeDetail.MultipleObjectsReturned:
+            # If multiple employees with same SSN, get the first one
+            # You might want to add additional logic here to determine which one to use
+            employees = EmployeeDetail.objects.filter(ssn=data)
+            return employees.first()
 
 
 class StateField(serializers.Field):
@@ -71,6 +85,10 @@ class StateField(serializers.Field):
             raise serializers.ValidationError(
                 {"state": f"State '{data}' not found"}
             )
+        except State.MultipleObjectsReturned:
+            # If multiple states with same name, get the first one
+            states = State.objects.filter(state__iexact=data)
+            return states.first()
 
 
 class GarnishmentTypeField(serializers.Field):
@@ -84,6 +102,10 @@ class GarnishmentTypeField(serializers.Field):
             raise serializers.ValidationError(
                 {"garnishment_type": f"Garnishment type '{data}' not found"}
             )
+        except GarnishmentType.MultipleObjectsReturned:
+            # If multiple garnishment types with same name, get the first one
+            garnishment_types = GarnishmentType.objects.filter(type__iexact=data)
+            return garnishment_types.first()
 
 
 # ---------- Serializer ----------
@@ -120,6 +142,10 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
                 validated_data['employee'] = employee
             except EmployeeDetail.DoesNotExist:
                 raise serializers.ValidationError({"ee_id": "Employee with this ee_id not found"})
+            except EmployeeDetail.MultipleObjectsReturned:
+                # If multiple employees with same ee_id, get the first one
+                employees = EmployeeDetail.objects.filter(ee_id=validated_data.pop('ee_id'))
+                validated_data['employee'] = employees.first()
         
         return super().create(validated_data)
     
@@ -131,6 +157,10 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
                 validated_data['employee'] = employee
             except EmployeeDetail.DoesNotExist:
                 raise serializers.ValidationError({"ee_id": "Employee with this ee_id not found"})
+            except EmployeeDetail.MultipleObjectsReturned:
+                # If multiple employees with same ee_id, get the first one
+                employees = EmployeeDetail.objects.filter(ee_id=validated_data.pop('ee_id'))
+                validated_data['employee'] = employees.first()
         
         return super().update(instance, validated_data)
 

@@ -200,22 +200,10 @@ class EmployeeRecord:
             raise WithholdingDeductionError(f"ADE calculation failed: {e}")
     
     def _extract_garnishment_data_amounts(self) -> Tuple[Decimal, Decimal]:
-        """Extract current_child_support and child_support_arrear from garnishment_data."""
-        total_current_child_support = Decimal("0")
-        total_child_support_arrear = Decimal("0")
-        
-        for garnishment_group in self.garnishment_data:
-            if garnishment_group.get('type') == 'spousal_and_medical_support':
-                for case_data in garnishment_group.get('data', []):
-                    # Extract current_child_support from case data
-                    current_support = case_data.get('ordered_amount', 0)
-                    if current_support:
-                        total_current_child_support += Decimal(str(current_support))
-                    
-                    # Extract child_support_arrear from case data
-                    child_arrear = case_data.get('arrear_amount', 0)
-                    if child_arrear:
-                        total_child_support_arrear += Decimal(str(child_arrear))
+        """Extract current_child_support and child_support_arrear from deductions block."""
+        # Use the values from the EmployeeRecord which are already populated from deductions
+        total_current_child_support = self.current_child_support
+        total_child_support_arrear = self.child_support_arrear
         
         return total_current_child_support, total_child_support_arrear
 
@@ -363,7 +351,7 @@ class PriorityOrderRepository:
             ).order_by('priority_order')
             
             if not pri_order_qs.exists():
-                logger.warning(f"No priority order found for state: {self.work_state}")
+                logger.warning(f"No priority order found for state:")
                 return []
                 
             serializer = PriorityDeductionSerializer(pri_order_qs, many=True)
@@ -524,101 +512,57 @@ class WithholdingProcessor:
         remaining_withholding: Decimal,
         priority_order: int
     ) -> List[Dict[str, Any]]:
-        """Process individual child support cases instead of aggregating them."""
+        """Process child support cases using deductions block values."""
         results = []
         
         try:
-            # Get the individual case amounts from garnishment data
-            garnishment_cases = []
-            for garnishment_group in record.garnishment_data:
-                if garnishment_group.get('type') == 'spousal_and_medical_support':
-                    garnishment_cases = garnishment_group.get('data', [])
-                    break
+            # Use values from deductions block instead of garnishment_data
+            if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
+                requested_amount = record.current_child_support
+                print("requested_amount",requested_amount)
+                case_id = "CURRENT_CHILD_SUPPORT"
+            else:  # CHILD_SUPPORT_ARREAR
+                requested_amount = record.child_support_arrear
+                print("requested_amount",requested_amount)
+                case_id = "CHILD_SUPPORT_ARREAR"
             
-            if not garnishment_cases:
-                # Fallback to calculator if no garnishment data
-                if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
-                    cs_amounts = cs_calculator.calculate_ordered()
-                else:  # CHILD_SUPPORT_ARREAR
-                    arrear_amounts = cs_calculator.calculate_arrear()
-                    cs_amounts = arrear_amounts
-                
-                if isinstance(cs_amounts, dict):
-                    for i, (key, amount) in enumerate(cs_amounts.items()):
-                        case_id = f"CALCULATOR_CASE_{i+1}"  # Prefix to distinguish from garnishment data cases
-                        requested_amount = Decimal(str(amount))
-                        print("remaining_withholding",remaining_withholding)
-                        deduction_amount = min(remaining_withholding, requested_amount)
-                        
-                        remaining_withholding = Decimal(str(remaining_withholding))
-                        print("deduction_amount",deduction_amount)
-                        deduction_amount = Decimal(str(deduction_amount))
-                        remaining_withholding -= deduction_amount
-                        
-                        result = {
-                            "deduction_type": deduction_type.value,
-                            "priority_order": priority_order,
-                            "case_id": case_id,
-                            "ordered_amount": float(requested_amount),
-                            "deducted_amount": float(deduction_amount),
-                            "remaining_balance": float(Decimal(str(requested_amount)) - Decimal(str(deduction_amount))),
-                            "fully_deducted": deduction_amount >= requested_amount,
-                            "source": "calculator_fallback"
-                        }
-                        results.append(result)
-                return results
-            
-            # Process each individual case from garnishment data
-            for i, case_data in enumerate(garnishment_cases):
-                case_id = case_data.get('case_id', f'CASE_{i+1}')
-                
-                if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
-                    requested_amount = Decimal(str(case_data.get('ordered_amount', 0)))
-                
-                else:  # CHILD_SUPPORT_ARREAR
-                    requested_amount = Decimal(str(case_data.get('arrear_amount', 0)))
-                
-                if requested_amount <= 0:
-                    # Add zero amount result for tracking
-                    result = {
-                        "deduction_type": deduction_type.value,
-                        "priority_order": priority_order,
-                        "case_id": case_id,
-                        "ordered_amount": 0.0,
-                        "deducted_amount": 0.0,
-                        "remaining_balance": 0.0,
-                        "fully_deducted": True,
-                        "skipped": True,
-                        "reason": "No amount requested for this case"
-                    }
-                    results.append(result)
-                    continue
-                
-                # Calculate actual deduction amount for this case
-                deduction_amount = min(remaining_withholding, requested_amount)
-                
-                # Ensure both values are Decimal for consistent arithmetic
-                remaining_withholding = Decimal(str(remaining_withholding))
-                deduction_amount = Decimal(str(deduction_amount))
-                remaining_withholding -= deduction_amount
-                
-                # Create individual case result
+            if requested_amount <= 0:
+                # Add zero amount result for tracking
                 result = {
                     "deduction_type": deduction_type.value,
                     "priority_order": priority_order,
                     "case_id": case_id,
-                    "ordered_amount": float(requested_amount),
-                    "deducted_amount": float(deduction_amount),
-                    "remaining_balance": float(Decimal(str(requested_amount)) - Decimal(str(deduction_amount))),
-                    "fully_deducted": deduction_amount >= requested_amount,
-                    "source": "garnishment_data"
+                    "ordered_amount": 0.0,
+                    "deducted_amount": 0.0,
+                    "remaining_balance": 0.0,
+                    "fully_deducted": True,
+                    "skipped": True,
+                    "reason": "No amount requested for this case"
                 }
-                
                 results.append(result)
-                
-                # If no more withholding available, break
-                if remaining_withholding <= 0:
-                    break
+                return results
+            
+            # Calculate actual deduction amount for this case
+            deduction_amount = min(remaining_withholding, requested_amount)
+            
+            # Ensure both values are Decimal for consistent arithmetic
+            remaining_withholding = Decimal(str(remaining_withholding))
+            deduction_amount = Decimal(str(deduction_amount))
+            remaining_withholding -= deduction_amount
+            
+            # Create individual case result
+            result = {
+                "deduction_type": deduction_type.value,
+                "priority_order": priority_order,
+                "case_id": case_id,
+                "ordered_amount": float(requested_amount),
+                "deducted_amount": float(deduction_amount),
+                "remaining_balance": float(Decimal(str(requested_amount)) - Decimal(str(deduction_amount))),
+                "fully_deducted": deduction_amount >= requested_amount,
+                "source": "deductions_block"
+            }
+            
+            results.append(result)
             
             return results
             

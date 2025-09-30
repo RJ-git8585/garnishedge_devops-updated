@@ -9,7 +9,7 @@ class Client(models.Model):
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="clients")
     pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE, related_name="clients")
     legal_name = models.CharField(max_length=255)
-    dba = models.CharField(max_length=255)
+    dba = models.CharField(max_length=255,blank=True, null=True)
     service_type =  models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
