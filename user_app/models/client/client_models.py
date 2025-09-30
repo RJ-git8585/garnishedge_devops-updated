@@ -23,9 +23,3 @@ class Client(models.Model):
         db_table = "client"
 
 
-    def save(self, *args, **kwargs):
-        if self.tax_id and len(self.tax_id) != 64:
-            self.tax_id = HashValue.hash_value(self.tax_id)
-        super().save(*args, **kwargs)
-
-
