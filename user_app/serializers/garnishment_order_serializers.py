@@ -103,6 +103,7 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
     issued_date = CustomDateField(allow_null=True, required=False)
     received_date = CustomDateField(allow_null=True, required=False)
     start_date = CustomDateField(allow_null=True, required=False)
+    stop_date = CustomDateField(allow_null=True, required=False)
     override_start_date = CustomDateField(allow_null=True, required=False)
     override_stop_date = CustomDateField(allow_null=True, required=False)
     paid_till_date = CustomDateField(allow_null=True, required=False)
