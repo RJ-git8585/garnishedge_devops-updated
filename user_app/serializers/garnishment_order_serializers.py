@@ -89,6 +89,7 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "withholding_amount",
             "current_child_support",
             "current_medical_support",
+            "child_support_arrear",
             "medical_support_arrear",
             "current_spousal_support",
             "spousal_support_arrear",

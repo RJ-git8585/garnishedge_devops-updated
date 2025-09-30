@@ -226,21 +226,23 @@ class EmployeeRecord:
             garnishment_current_support, garnishment_child_arrear = self._extract_garnishment_data_amounts()
             
             # Use garnishment data values if available, otherwise use record values
+            # Ensure all values are Decimal to avoid type mismatch
             current_child_support_amount = garnishment_current_support if garnishment_current_support > 0 else self.current_child_support
             child_support_arrear_amount = garnishment_child_arrear if garnishment_child_arrear > 0 else self.child_support_arrear
             
+            # Convert all values to Decimal to ensure type consistency
             self.amount_ordered_withheld = (
-                current_child_support_amount +
-                self.current_medical_support +
-                self.current_spousal_support +
-                child_support_arrear_amount +
-                self.medical_support_arrear +
-                self.spousal_support_arrear +
-                self.fees +
-                self.house_payment +
-                self.insurance_payment +
-                self.remaining_child_support_arrear +
-                self.remaining_spousal_support_arrear
+                Decimal(str(current_child_support_amount)) +
+                Decimal(str(self.current_medical_support)) +
+                Decimal(str(self.current_spousal_support)) +
+                Decimal(str(child_support_arrear_amount)) +
+                Decimal(str(self.medical_support_arrear)) +
+                Decimal(str(self.spousal_support_arrear)) +
+                Decimal(str(self.fees)) +
+                Decimal(str(self.house_payment)) +
+                Decimal(str(self.insurance_payment)) +
+                Decimal(str(self.remaining_child_support_arrear)) +
+                Decimal(str(self.remaining_spousal_support_arrear))
             )
 
         except Exception as e:
@@ -545,9 +547,11 @@ class WithholdingProcessor:
                     for i, (key, amount) in enumerate(cs_amounts.items()):
                         case_id = f"CALCULATOR_CASE_{i+1}"  # Prefix to distinguish from garnishment data cases
                         requested_amount = Decimal(str(amount))
+                        print("remaining_withholding",remaining_withholding)
                         deduction_amount = min(remaining_withholding, requested_amount)
                         
                         remaining_withholding = Decimal(str(remaining_withholding))
+                        print("deduction_amount",deduction_amount)
                         deduction_amount = Decimal(str(deduction_amount))
                         remaining_withholding -= deduction_amount
                         
@@ -570,6 +574,7 @@ class WithholdingProcessor:
                 
                 if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
                     requested_amount = Decimal(str(case_data.get('ordered_amount', 0)))
+                
                 else:  # CHILD_SUPPORT_ARREAR
                     requested_amount = Decimal(str(case_data.get('arrear_amount', 0)))
                 

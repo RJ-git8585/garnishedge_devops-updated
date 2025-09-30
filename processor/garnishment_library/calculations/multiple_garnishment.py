@@ -150,14 +150,14 @@ class MultipleGarnishmentPriorityOrder:
             try:
                 # Skip None values and non-numeric types
                 if data is None:
-                    return total
+                    return float(total)
                 # Attempt to convert to Decimal only if it's a number
                 if isinstance(data, (int, float, Decimal)):
                     total += Decimal(str(data))
             except (ValueError, TypeError):
                 # Skip non-numeric values silently
                 pass
-        return total
+        return float(total)
 
     def _process_deduction_details(self, deduction_details, available_amount):
         """
@@ -302,7 +302,7 @@ class MultipleGarnishmentPriorityOrder:
                     if "amount_left_for_other_garn" in result:
                         available_for_garnishment = float(result["amount_left_for_other_garn"])
                     else:
-                        available_for_garnishment -= amount_withheld
+                        available_for_garnishment -= float(amount_withheld)
                     
                     # Ensure available_for_garnishment doesn't go below 0
                     available_for_garnishment = max(0, available_for_garnishment)
@@ -317,7 +317,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
                 elif g_type == GT.CREDITOR_DEBT:
@@ -331,7 +331,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["calculation_status"] = "completed"
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
 
@@ -344,7 +344,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
                 
@@ -357,7 +357,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
                 
@@ -370,7 +370,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
 
@@ -383,7 +383,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
 
@@ -432,7 +432,7 @@ class MultipleGarnishmentPriorityOrder:
                             processed_result["withholding_amt"] = amount_withheld
                             
                             # Update available funds and track remaining amount
-                            available_for_garnishment -= amount_withheld
+                            available_for_garnishment -= float(amount_withheld)
                             available_for_garnishment = max(0, available_for_garnishment)
                             processed_result["amount_left_for_other_garn"] = available_for_garnishment
                         else:
@@ -444,7 +444,7 @@ class MultipleGarnishmentPriorityOrder:
                             processed_result["withholding_amt"] = amount_withheld
                             
                             # Update available funds and track remaining amount
-                            available_for_garnishment -= amount_withheld
+                            available_for_garnishment -= float(amount_withheld)
                             available_for_garnishment = max(0, available_for_garnishment)
                             processed_result["amount_left_for_other_garn"] = available_for_garnishment
                 
@@ -457,7 +457,7 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["calculation_status"] = "completed"
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= amount_withheld
+                    available_for_garnishment -= float(amount_withheld)
                     available_for_garnishment = max(0, available_for_garnishment)
                     processed_result["amount_left_for_other_garn"] = available_for_garnishment
 

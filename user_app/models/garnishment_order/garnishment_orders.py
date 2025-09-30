@@ -48,6 +48,9 @@ class GarnishmentOrder(models.Model):
     
     medical_support_arrear =models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+        
+    child_support_arrear =models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
     
     spousal_support_arrear =models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)

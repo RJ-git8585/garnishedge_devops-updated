@@ -75,6 +75,46 @@ class PostCalculationView(APIView):
 
         return enriched_cases, not_found_employees
 
+    def _extract_deductions_from_garnishment_orders(self, garnishment_orders, case_data=None):
+        """
+        Extract and aggregate deduction details from garnishment orders.
+        Sums up values across all garnishment orders for the employee.
+        Falls back to case data for fields not available in garnishment orders.
+        """
+        deductions = {
+            'current_child_support': 0,
+            'current_medical_support': 0,
+            'current_spousal_support': 0,
+            'medical_support_arrear': 0,
+            'spousal_support_arrear': 0,
+            'fees': 0,
+            'child_support_arrear': 0,
+            'house_payment': 0,
+            'insurance_payment': 0,
+            'remaining_child_support_arrear': 0,
+            'remaining_spousal_support_arrear': 0
+        }
+        
+        for garnishment in garnishment_orders:
+            # Sum up deduction values from all garnishment orders
+            deductions['current_child_support'] += float(garnishment.current_child_support or 0)
+            deductions['current_medical_support'] += float(garnishment.current_medical_support or 0)
+            deductions['current_spousal_support'] += float(garnishment.current_spousal_support or 0)
+            deductions['medical_support_arrear'] += float(garnishment.medical_support_arrear or 0)
+            deductions['spousal_support_arrear'] += float(garnishment.spousal_support_arrear or 0)
+            deductions['fees'] += float(garnishment.garnishment_fees or 0)
+        
+        # For fields not available in GarnishmentOrder model, try to get from case data
+        if case_data:
+            deductions['child_support_arrear'] = case_data.get('child_support_arrear', 0)
+            deductions['house_payment'] = case_data.get('house_payment', 0)
+            deductions['insurance_payment'] = case_data.get('insurance_payment', 0)
+            deductions['remaining_child_support_arrear'] = case_data.get('remaining_child_support_arrear', 0)
+            deductions['remaining_spousal_support_arrear'] = case_data.get('remaining_spousal_support_arrear', 0)
+        
+        logger.debug(f"Extracted deductions from garnishment orders: {deductions}")
+        return deductions
+
     def _build_enriched_case_from_employee(self, case, employee):
         """
         Build enriched case data by merging employee and garnishment information.
@@ -119,26 +159,8 @@ class PostCalculationView(APIView):
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
         
-        # Extract deductions from payroll data if available
-        deductions = {}
-        if 'deductions' in case:
-            # If deductions are already provided in the payroll data, use them
-            deductions = case['deductions']
-        else:
-            # Build deductions from individual fields if they exist in the case data
-            deductions = {
-                'current_child_support': case.get('current_child_support', 0),
-                'current_medical_support': case.get('current_medical_support', 0),
-                'current_spousal_support': case.get('current_spousal_support', 0),
-                'medical_support_arrear': case.get('medical_support_arrear', 0),
-                'spousal_support_arrear': case.get('spousal_support_arrear', 0),
-                'fees': case.get('fees', 0),
-                'child_support_arrear': case.get('child_support_arrear', 0),
-                'house_payment': case.get('house_payment', 0),
-                'insurance_payment': case.get('insurance_payment', 0),
-                'remaining_child_support_arrear': case.get('remaining_child_support_arrear', 0),
-                'remaining_spousal_support_arrear': case.get('remaining_spousal_support_arrear', 0)
-            }
+        # Extract deductions from garnishment orders
+        deductions = self._extract_deductions_from_garnishment_orders(garnishment_orders, case)
         
         # Add employee-specific fields
         enriched_case.update({
@@ -204,7 +226,6 @@ class PostCalculationView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-
             cases_data = enriched_cases
             
             # Log any missing employees but continue processing
