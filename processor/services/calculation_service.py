@@ -354,7 +354,7 @@ class CalculationDataView:
                 GRF.NET_WITHHOLDING: 0.0
             },
             GRF.CALCULATION_METRICS: {
-                GRF.DISPOSABLE_EARNINGS: 0.0,
+                CM.DISPOSABLE_EARNING: 0.0,
                 GRF.ALLOWABLE_DISPOSABLE_EARNINGS: 0.0,
                 GRF.TOTAL_MANDATORY_DEDUCTIONS: 0.0,
                 GRF.WITHHOLDING_BASIS: CM.NA,
@@ -1009,6 +1009,7 @@ class CalculationDataView:
                             cases = child_support_garnishment.get(GDK.DATA, [])
                             result_amounts_list = list(result_amounts.values())
                             arrear_amounts_list = list(arrear_amounts.values())
+                            total_withheld_amount = sum(result_amounts_list) + sum(arrear_amounts_list)
                             
                             for i, (key, amount) in enumerate(result_amounts.items()):
                                 case_id = cases[i].get(EE.CASE_ID, f"{GRF.CASE_PREFIX}{i}") if i < len(cases) else f"{GRF.CASE_PREFIX}{i}"
@@ -1092,6 +1093,8 @@ class CalculationDataView:
                             GRF.CASE_ID: case_id
                         })
                         type_total_withheld = withholding_amount
+                        garnishment_fees_amount = self.get_rounded_garnishment_fee(
+                    work_state, record, type_total_withheld)
                         
                         # Add detailed calculation information to the result
                         detailed_result = {
@@ -1099,11 +1102,14 @@ class CalculationDataView:
                             GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                            GRF.GARNISHMENT_FEES : garnishment_fees_amount,
+
                             # Preserve all detailed calculation information
                             "success": type_result.get("success", True),
                             "calculations": type_result.get("calculations", {}),
                             "deduction_details": type_result.get("deduction_details", []),
                             "summary": type_result.get("summary", {})
+                            
                         }
                         
                         # Add garnishment type to result with detailed information
@@ -1114,6 +1120,9 @@ class CalculationDataView:
                     # Handle other garnishment types (creditor debt, etc.)
                     else:
                         withholding_amount = type_result.get(CR.WITHHOLDING_AMT, 0)
+                        withholding_basis =type_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                        withholding_cap =type_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                        
                         
                         # Extract case_id from garnishment_data
                         case_id = self._extract_case_id_from_garnishment_data(record, garnishment_type)
@@ -1123,22 +1132,46 @@ class CalculationDataView:
                             GRF.CASE_ID: case_id
                         })
                         type_total_withheld = withholding_amount
-                    
+                        type_withholding_basis = withholding_basis
+                        type_withholding_cap = withholding_cap
+
+
+                    if garnishment_type in [GRF.CREDITOR_DEBT, GRF.STATE_TAX_LEVY]:
+                        garnishment_fees_amount = self.get_rounded_garnishment_fee(
+                    work_state, record, withholding_amount)
+                        result[GRF.GARNISHMENT_TYPES].append({
+                            GRF.GARNISHMENT_TYPE: garnishment_type,
+                            GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                            GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                            GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                            CR.WITHHOLDING_BASIS: type_withholding_basis,
+                            CR.WITHHOLDING_CAP: type_withholding_cap   ,
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                            GRF.GARNISHMENT_FEES: garnishment_fees_amount
+                        })
+
+                    else:
+                        garnishment_fees_amount = self.get_rounded_garnishment_fee(
+                    work_state, record, type_total_withheld)
                     # Add garnishment type to result
-                    result[GRF.GARNISHMENT_TYPES].append({
-                        GRF.GARNISHMENT_TYPE: garnishment_type,
-                        GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
-                        GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
-                        GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed')
-                    })
+                        result[GRF.GARNISHMENT_TYPES].append({
+                                GRF.GARNISHMENT_TYPE: garnishment_type,
+                                GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                                GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                                GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                                CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                                GRF.GARNISHMENT_FEES: garnishment_fees_amount
+ 
+                            })
+                        
                     
                     total_withheld += type_total_withheld
                     
             # Calculate garnishment fees
             garnishment_fees_amount = 0.0
                 # Calculate garnishment fees
-            garnishment_fees_amount = self.get_rounded_garnishment_fee(
-                    work_state, record, calculation_result[CR.WITHHOLDING_AMT])
+            # garnishment_fees_amount = self.get_rounded_garnishment_fee(
+            #         work_state, record, calculation_result[CR.WITHHOLDING_AMT])
             
             # Update garnishment details
             result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_withheld, 2)
@@ -1148,17 +1181,22 @@ class CalculationDataView:
             # Update calculation metrics
             if GT.CHILD_SUPPORT in calculation_result:
                 child_support_result = calculation_result[GT.CHILD_SUPPORT]
-                result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(child_support_result.get(CRK.DE, 0), 2)
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(child_support_result.get(CRK.ADE, 0), 2)
+                result[GRF.CALCULATION_METRICS][CRK.DISPOSABLE_EARNING] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
+            elif GT.SPOUSAL_AND_MEDICAL_SUPPORT in calculation_result:
+                spousal_and_medical_support_result = calculation_result[GT.SPOUSAL_AND_MEDICAL_SUPPORT]
+                result[GRF.CALCULATION_METRICS][CRK.DISPOSABLE_EARNING] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
+                result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(spousal_and_medical_support_result["calculations"].get('allowable_disposable_earnings', 0), 2)
             
             result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
+            result[GRF.CALCULATION_METRICS][CRK.TWENTY_FIVE_PERCENT_OF_DE] = round(calculation_result[CRK.TWENTY_FIVE_PERCENT_OF_DE], 2)
+
             
             # Update employer deductions
-            result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-            
             return result
             
         except Exception as e:
+            print(t.print_exc())
             logger.error(f"{EM.ERROR_CALCULATING_MULTIPLE_GARNISHMENT} {e}")
             return self._create_standardized_result("multiple_garnishment", record, error_message=f"{EM.ERROR_CALCULATING_MULTIPLE_GARNISHMENT} {e}")
                 

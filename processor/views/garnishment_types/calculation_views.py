@@ -97,6 +97,7 @@ class PostCalculationView(APIView):
             # Sum up deduction values from all garnishment orders
             if garnishment.garnishment_type.type.lower() == "spousal_and_medical_support":
                 deductions['current_child_support'] = float(garnishment.current_child_support or 0)
+                deductions['child_support_arrear'] = float(garnishment.child_support_arrear or 0)
                 deductions['current_medical_support'] = float(garnishment.current_medical_support or 0)
                 deductions['current_spousal_support'] = float(garnishment.current_spousal_support or 0)
                 deductions['medical_support_arrear'] = float(garnishment.medical_support_arrear or 0)
@@ -108,11 +109,11 @@ class PostCalculationView(APIView):
                 deductions['current_spousal_support'] = float(0)
                 deductions['medical_support_arrear'] = float(0)
                 deductions['spousal_support_arrear'] = float(0)
+                deductions['child_support_arrear'] = float(0)
                 deductions['fees'] += float(0)
         
         # For fields not available in GarnishmentOrder model, try to get from case data
         if case_data:
-            deductions['child_support_arrear'] = case_data.get('child_support_arrear', 0)
             deductions['house_payment'] = case_data.get('house_payment', 0)
             deductions['insurance_payment'] = case_data.get('insurance_payment', 0)
             deductions['remaining_child_support_arrear'] = case_data.get('remaining_child_support_arrear', 0)
@@ -131,7 +132,6 @@ class PostCalculationView(APIView):
         garnishment_types = []
 
         logger.debug(f"Employee {employee.ee_id} has {garnishment_orders.count()} garnishment orders")
-
         for garnishment in garnishment_orders:
             garn_type = garnishment.garnishment_type.type
             logger.debug(f"Processing garnishment type: {garn_type}")
@@ -189,7 +189,6 @@ class PostCalculationView(APIView):
             'garnishment_orders': garnishment_types
         })
 
-        print("enriched_case",enriched_case)
         return enriched_case
 
     def post(self, request, *args, **kwargs):

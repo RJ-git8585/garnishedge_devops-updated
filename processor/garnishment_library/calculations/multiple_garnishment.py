@@ -216,6 +216,7 @@ class MultipleGarnishmentPriorityOrder:
         Returns:
             Dict containing garnishment results with amount_left_for_other_garn field
         """
+        
         try:
             inputs = self._prepare_calculation_inputs()
             disposable_earnings = inputs["disposable_earnings"]
@@ -230,7 +231,7 @@ class MultipleGarnishmentPriorityOrder:
             logger.error(f"Halting calculation due to a setup error: {e}")
             return {"error": str(e)}
         
-        twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 2)
+        twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 1)
 
         available_for_garnishment = twenty_five_percent_of_de
         # print("available_for_garnishment",available_for_garnishment)
@@ -282,10 +283,10 @@ class MultipleGarnishmentPriorityOrder:
                 
                 # Execute the calculation
                 result = calculator_fn()
-                
                 # --- Process the result based on garnishment type ---
                 amount_withheld = 0
                 processed_result = {}
+
 
                 if g_type == GT.CHILD_SUPPORT:
                     #processed_result = self.mg_helper.distribute_child_support_amount(result, available_for_garnishment)
@@ -295,96 +296,97 @@ class MultipleGarnishmentPriorityOrder:
                     processed_result["calculation_status"] = "completed"
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     processed_result["twenty_five_percent_of_de"] = twenty_five_percent_of_de
-                    amount_withheld = sum(processed_result.get("result_amt", {}).values()) + sum(processed_result.get("arrear_amt", {}).values())
-                    
+                    amount_withheld = round(sum(processed_result.get("result_amt", {}).values()) + sum(processed_result.get("arrear_amt", {}).values()), 1)
                     # Update available_for_garnishment based on child support calculation
+
                     if "amount_left_for_other_garn" in result:
-                        available_for_garnishment = float(result["amount_left_for_other_garn"])
+                        available_for_garnishment = round(float(result["amount_left_for_other_garn"]), 1)
                     else:
-                        available_for_garnishment -= float(amount_withheld)
+                        available_for_garnishment -= amount_withheld
+
                     
                     # Ensure available_for_garnishment doesn't go below 0
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
 
                 elif g_type == GT.STUDENT_DEFAULT_LOAN:
                     processed_result = self.mg_helper.distribute_student_loan_amount(result, available_for_garnishment)
                     processed_result= self.finance._convert_result_structure(processed_result)
-                    amount_withheld = sum(processed_result.get("student_loan_amt", {}).values())
+                    amount_withheld = round(sum(processed_result.get("student_loan_amt", {}).values()), 1)
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld 
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
                 elif g_type == GT.CREDITOR_DEBT:
                     if isinstance(result, tuple):
                         result = result[0]
                     base_amount = result.get("withholding_amt", 0)
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     result["withholding_amt"] = amount_withheld
                     processed_result = result
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     processed_result["calculation_status"] = "completed"
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
 
                 elif g_type == GT.FRANCHISE_TAX_BOARD:
                     processed_result = self.finance._convert_result_structure(result)
                     base_amount = sum(processed_result.get("withholding_amt", {}).values())
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
                 
                 elif g_type == GT.BANKRUPTCY:
                     processed_result = self.finance._convert_result_structure(result)
                     base_amount = sum(processed_result.get("withholding_amt", {}).values())
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
                 
                 elif g_type == GT.FEDERAL_TAX_LEVY:
                     processed_result = self.finance._convert_result_structure(result)
                     base_amount = sum(processed_result.get("withholding_amt", {}).values())
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
 
                 elif g_type == GT.STATE_TAX_LEVY:
                     processed_result = self.finance._convert_result_structure(result)
                     base_amount = sum(processed_result.get("withholding_amt", {}).values())
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
                     processed_result["current_amount_withheld"] = available_for_garnishment
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
 
                 elif g_type == GT.SPOUSAL_AND_MEDICAL_SUPPORT:
                     # Handle the spousal_and_medical_support result structure
@@ -396,7 +398,7 @@ class MultipleGarnishmentPriorityOrder:
                         )
                         
                         # Calculate total amount withheld
-                        total_withheld = sum(d['deducted_amount'] for d in updated_deduction_details)
+                        total_withheld = round(sum(d['deducted_amount'] for d in updated_deduction_details), 1)
                         
                         # Format the result to preserve all calculation details
                         processed_result = {
@@ -411,7 +413,7 @@ class MultipleGarnishmentPriorityOrder:
                         }
                         
                         # Update available funds and track remaining amount
-                        available_for_garnishment = remaining_funds
+                        available_for_garnishment = round(remaining_funds, 1)
                         processed_result["amount_left_for_other_garn"] = available_for_garnishment
                         
                     else:
@@ -423,42 +425,42 @@ class MultipleGarnishmentPriorityOrder:
                             
                             # Extract withholding amount from various possible locations
                             if 'calculations' in result and 'total_withholding_amount' in result['calculations']:
-                                amount_withheld = min(result['calculations']['total_withholding_amount'], available_for_garnishment)
+                                amount_withheld = round(min(result['calculations']['total_withholding_amount'], available_for_garnishment), 1)
                             elif 'withholding_amt' in result:
-                                amount_withheld = min(result['withholding_amt'], available_for_garnishment)
+                                amount_withheld = round(min(result['withholding_amt'], available_for_garnishment), 1)
                             else:
-                                amount_withheld = self._sum_numeric_values(result.get('calculations', {}))
+                                amount_withheld = round(self._sum_numeric_values(result.get('calculations', {})), 1)
                             processed_result["withholding_amt"] = amount_withheld
                             
                             # Update available funds and track remaining amount
-                            available_for_garnishment -= float(amount_withheld)
+                            available_for_garnishment -= amount_withheld
                             available_for_garnishment = max(0, available_for_garnishment)
-                            processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                            processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
                         else:
                             # If result is not a dict, use finance utility to convert
                             processed_result = self.finance._convert_result_structure(result) if result else {}
                             processed_result["calculation_status"] = "completed"
                             processed_result["current_amount_withheld"] = available_for_garnishment
-                            amount_withheld = sum(processed_result.get("withholding_amt", {}).values()) if isinstance(processed_result.get("withholding_amt"), dict) else 0
+                            amount_withheld = round(sum(processed_result.get("withholding_amt", {}).values()), 1) if isinstance(processed_result.get("withholding_amt"), dict) else 0
                             processed_result["withholding_amt"] = amount_withheld
                             
                             # Update available funds and track remaining amount
-                            available_for_garnishment -= float(amount_withheld)
+                            available_for_garnishment -= amount_withheld
                             available_for_garnishment = max(0, available_for_garnishment)
-                            processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                            processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
                 
 
                 else: 
                     base_amount = self._sum_numeric_values(result) if isinstance(result, dict) else 0
-                    amount_withheld = min(base_amount, available_for_garnishment) if base_amount > 0 else 0
+                    amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result = {"withholding_amt": amount_withheld}
                     processed_result["twenty_five_percent_of_de"] = twenty_five_percent_of_de
                     processed_result["calculation_status"] = "completed"
                     
                     # Update available funds and track remaining amount
-                    available_for_garnishment -= float(amount_withheld)
+                    available_for_garnishment -= amount_withheld
                     available_for_garnishment = max(0, available_for_garnishment)
-                    processed_result["amount_left_for_other_garn"] = available_for_garnishment
+                    processed_result["amount_left_for_other_garn"] = round(available_for_garnishment, 1)
 
                 garnishment_results[g_type] = processed_result
 
@@ -471,5 +473,6 @@ class MultipleGarnishmentPriorityOrder:
                     "error_details": str(e),
                     "amount_left_for_other_garn": available_for_garnishment
                 }
-         
+        garnishment_results["twenty_five_percent_of_de"] = round(twenty_five_percent_of_de, 1)
+        garnishment_results["disposable_earning"] = round(disposable_earnings, 1)
         return garnishment_results

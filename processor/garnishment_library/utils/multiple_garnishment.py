@@ -4,7 +4,8 @@ from user_app.constants import (
     EmployeeFields as EE,
     CalculationFields as CF,
     PayrollTaxesFields as PT,
-    PayPeriodFields as PP
+    PayPeriodFields as PP,
+    GarnishmentTypeFields as GT
 )
 from .common import AllocationMethodResolver,ExemptAmount,FinanceUtils
 from .child_support import Helper
@@ -252,6 +253,21 @@ class MultipleGarnishmentPriorityHelper:
         if garnishment_data is not None and not isinstance(garnishment_data, list):
             raise DataValidationError("Garnishment data must be a list or None")
 
+    def _get_garnishment_amount(self,data, garnishment_type, field):
+        """
+        Get the total amount (ordered_amount or arrear_amount)
+        for a given garnishment type from the dataset.
+        
+        :param data: list of dicts (your garnishment data)
+        :param garnishment_type: str -> e.g. "Child_Support"
+        :param field: str -> either "ordered_amount" or "arrear_amount"
+        :return: float -> total amount for that type
+        """
+        for item in data:
+            if item["type"].lower() == garnishment_type.lower():
+                return [d.get(field, 0.0) for d in item["data"]]
+        return 0.0
+
     def child_support_helper(self, record: Dict) -> Dict:
         """
         Calculate child support garnishment amounts with comprehensive error handling.
@@ -312,10 +328,12 @@ class MultipleGarnishmentPriorityHelper:
                 raise CalculationError(f"Error during basic calculations: {e}")
             
             # Get support amounts
-            try:
-                support_amount = Helper().get_support_amounts_by_type(garnishment_data, CF.ORDERED_AMOUNT)
 
-                arrear_amount = Helper().get_support_amounts_by_type(garnishment_data, CF.ARREAR_AMOUNT)
+            try:
+
+                support_amount = self._get_garnishment_amount(garnishment_data, GT.CHILD_SUPPORT, "ordered_amount")
+                arrear_amount = self._get_garnishment_amount(garnishment_data, GT.CHILD_SUPPORT, "arrear_amount")
+
                 
                 if not isinstance(support_amount, list):
                     support_amount = []
@@ -331,6 +349,7 @@ class MultipleGarnishmentPriorityHelper:
             total_arrear_amount = sum(arrear_amount)
             sum_of_order_amount = total_child_support_amount + total_arrear_amount
             total_withholding_amount = min(sum_of_order_amount, diff_of_de_and_exempt_amount, ade)
+
             
             try:
                 withholding_amount = cs_helper.calculate_twa(support_amount, arrear_amount)
@@ -356,10 +375,8 @@ class MultipleGarnishmentPriorityHelper:
                 cs_amounts, ar_amounts = {}, {}
             cs_amounts=FinanceUtils()._convert_result_structure(cs_amounts)
             ar_amounts=FinanceUtils()._convert_result_structure(ar_amounts)
-        
             total_withholding_amount= FinanceUtils()._convert_result_structure({"total_withholding_amount":total_withholding_amount})
             amount_left_for_other_garn = de_twenty_five_percent-total_withholding_amount['total_withholding_amount'] if total_withholding_amount['total_withholding_amount'] > 0 else 0
-
             result= {
                 "result_amt": cs_amounts,
                 "arrear_amt": ar_amounts,
