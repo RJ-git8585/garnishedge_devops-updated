@@ -11,7 +11,7 @@ from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerial
 )
 from user_app.serializers import EmployeeDetailSerializer
 
-from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,ftb_ewot,WithholdingProcessor,Bankruptcy,
+from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FTB,WithholdingProcessor,Bankruptcy,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
 from user_app.constants import (
     EmployeeFields as EE,
@@ -102,7 +102,7 @@ class CalculationDataView:
                 #     logger.error(f"Error loading {GT.CHILD_SUPPORT} config: {e}")
 
             
-            if "bankruptcy" in garnishment_types:
+            if GT.BANKRUPTCY in garnishment_types:
                 try:
                     queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=7)
 
@@ -314,19 +314,19 @@ class CalculationDataView:
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
-                "calculate": self.calculate_ewot
+                "calculate": self.calculate_ftb
             },
             "ftb_court": {  
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
-                "calculate": self.calculate_ewot
+                "calculate": self.calculate_ftb
             },
             "ftb_vehicle": {  
                 "fields": [
                     EE.GROSS_PAY, EE.WORK_STATE, EE.PAY_PERIOD, EE.FILING_STATUS
                 ],
-                "calculate": self.calculate_ewot
+                "calculate": self.calculate_ftb
             },
 
         }
@@ -861,7 +861,7 @@ class CalculationDataView:
             return self._create_standardized_result(GT.BANKRUPTCY, record, error_message=f"{EM.ERROR_CALCULATING} bankruptcy: {e}")
         
     
-    def calculate_ewot(self, record, config_data, garn_fees=None):
+    def calculate_ftb(self, record, config_data, garn_fees=None):
         """
         Calculate FTB EWOT/Court/Vehicle garnishment with standardized result structure.
         """
@@ -883,7 +883,7 @@ class CalculationDataView:
                     error_message=f"{EM.CONFIG_DATA_MISSING} '{garnishment_type}' {EM.CONFIG_DATA_MISSING_END}"
                 )
 
-            creditor_debt_calculator = ftb_ewot()
+            creditor_debt_calculator = FTB()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
             calculation_result = creditor_debt_calculator.calculate(

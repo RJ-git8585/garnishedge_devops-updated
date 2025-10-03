@@ -64,7 +64,7 @@ class FTBStateTaxLevyFormulas():
                 f"Exception in _general_ftb_debt_logic: {str(e)}"
             )
               
-class ftb_ewot(FTBStateTaxLevyFormulas):
+class FTB(FTBStateTaxLevyFormulas):
     def calculate(self, record, config_data):
         """
         Main entry point for creditor debt calculation.
