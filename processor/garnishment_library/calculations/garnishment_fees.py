@@ -36,21 +36,18 @@ class GarFeesRulesEngine:
         
         return serializer.data
 
-    def _get_filtered_rule(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _get_filtered_rule(self, garnishment_type: str, pay_period: str) -> Optional[Dict[str, Any]]:
         """
         Filters rules based on state, pay period, and garnishment type.
         """
         try:
-            gar_type = record.get("garnishment_data", [{}])[0]
-            garn_type = gar_type.get(
-                EmployeeFields.GARNISHMENT_TYPE, "").strip().lower()
-            pay_period = record.get(
-                EmployeeFields.PAY_PERIOD, "").strip().lower()
+            garn_type = garnishment_type.strip().lower()
+            pay_period_lower = pay_period.strip().lower()
 
             if self._filtered_rules is None:
                 self._filtered_rules = [
                     item for item in self._load_rules()
-                    if item.get("pay_period", "").strip().lower() == pay_period
+                    if item.get("pay_period", "").strip().lower() == pay_period_lower
                     and item.get("garnishment_type", "").strip().lower() == garn_type
                 ]
             return self._filtered_rules[0] if self._filtered_rules else None
@@ -58,11 +55,11 @@ class GarFeesRulesEngine:
             logger.error(f"Error filtering rules: {e}")
             return None
 
-    def find_rule(self, record: Dict[str, Any]) -> Optional[str]:
+    def find_rule(self, garnishment_type: str, pay_period: str) -> Optional[str]:
         """
-        Finds the rule name for the given record.
+        Finds the rule name for the given garnishment type and pay period.
         """
-        item = self._get_filtered_rule(record)
+        item = self._get_filtered_rule(garnishment_type, pay_period)
         return item.get("rule") if item else None
 
     def get_payable_name(self, rule_name: str,garn_fees:List[Dict[str, Any]]=None) -> Optional[str]:
@@ -90,20 +87,20 @@ class GarFeesRulesEngine:
             logger.error(f"Error calculating rule: {e}")
             return 0.0
 
-    def apply_rule(self, record: Dict[str, Any], withhold_amt: float,gar_fees=None) -> Any:
+    def apply_rule(self, garnishment_type: str, pay_period: str, withhold_amt: float, garn_fees=None) -> Any:
         """
-        Applies the appropriate rule to the record.
+        Applies the appropriate rule based on garnishment type and pay period.
         """
-        rule_name = self.find_rule(record)
+        rule_name = self.find_rule(garnishment_type, pay_period)
         if not rule_name:
-            logger.warning("No rule found for the given record.")
+            logger.warning("No rule found for the given garnishment type and pay period.")
             return "No applicable rule found"
         rule_func = self.rule_map.get(rule_name)
         if not rule_func:
             logger.error(f"Rule '{rule_name}' is not implemented.")
             return f"Rule '{rule_name}' is not implemented."
         try:
-            return rule_func(record, withhold_amt)
+            return rule_func(garnishment_type, pay_period, withhold_amt)
         except Exception as e:
             logger.error(f"Error applying rule '{rule_name}': {e}")
             return f"Error applying rule '{rule_name}': {e}"
@@ -111,8 +108,8 @@ class GarFeesRulesEngine:
     def undefined_rule(self, *args, **kwargs):
         return "This rule is not defined."
 
-    def Rule_1(self, record, withhold_amt):
-        item = self._get_filtered_rule(record)
+    def Rule_1(self, garnishment_type, pay_period, withhold_amt):
+        item = self._get_filtered_rule(garnishment_type, pay_period)
         if item:
             try:
                 amount = item.get('amount', 0)
@@ -125,12 +122,12 @@ class GarFeesRulesEngine:
 
     def Rule_2(self, *_): return "No Provision"
 
-    def Rule_3(self, record, withhold_amt):
-        item = self._get_filtered_rule(record)
+    def Rule_3(self, garnishment_type, pay_period, withhold_amt):
+        item = self._get_filtered_rule(garnishment_type, pay_period)
         if not item:
             return "Rule 3 data not found"
         try:
-            garn_type = item.get("type", "").strip().lower()
+            garn_type = garnishment_type.strip().lower()
             amt = withhold_amt * 0.10
             if garn_type == GarnishmentTypeFields.STATE_TAX_LEVY:
                 return amt if amt < 50 else 0
@@ -141,16 +138,16 @@ class GarFeesRulesEngine:
             logger.error(f"Error in Rule_3: {e}")
             return "Error in Rule 3"
 
-    def Rule_4(self, _, withhold_amt):
+    def Rule_4(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.020)}, Payable by {self.get_payable_name('Rule_4')}"
 
-    def Rule_5(self, _, withhold_amt):
+    def Rule_5(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.030, 12)}, Payable by {self.get_payable_name('Rule_5')}"
 
-    def Rule_6(self, _, withhold_amt):
+    def Rule_6(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.020, 8)}, Payable by {self.get_payable_name('Rule_6')}"
 
-    def Rule_7(self, _, withhold_amt):
+    def Rule_7(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.010, 2)}, Payable by {self.get_payable_name('Rule_7')}"
 
     def Rule_8(self, *_):
@@ -166,10 +163,10 @@ class GarFeesRulesEngine:
     def Rule_12(
         self, *_): return "$2 for each deduction taken after levy expiry/release"
 
-    def Rule_13(self, _, withhold_amt):
+    def Rule_13(self, garnishment_type, pay_period, withhold_amt):
         return f"${round(withhold_amt * 0.02, 1)}, Payable by {self.get_payable_name('Rule_13')}"
 
-    def Rule_14(self, _, withhold_amt):
+    def Rule_14(self, garnishment_type, pay_period, withhold_amt):
         return f"${round(withhold_amt * 0.02, 1)}, Payable by {self.get_payable_name('Rule_14')}"
 
     def Rule_15(self, *_): return "$5 from landlord amount"
@@ -178,7 +175,7 @@ class GarFeesRulesEngine:
 
     def Rule_17(self, *_): return "$15 paid by creditor"
 
-    def Rule_18(self, _, withhold_amt):
+    def Rule_18(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.050, 5)}, Payable by {self.get_payable_name('Rule_18')}"
 
     def Rule_19(self, *_): return "May deduct $5.00 for state employees"
@@ -197,5 +194,5 @@ class GarFeesRulesEngine:
 
     def Rule_25(self, *_): return "Rule 25 is not defined"
 
-    def Rule_26(self, _, withhold_amt):
+    def Rule_26(self, garnishment_type, pay_period, withhold_amt):
         return f"${self.calculate_rule(withhold_amt, 0.01)}, Payable by {self.get_payable_name('Rule_26')}"

@@ -70,7 +70,7 @@ class Migration(migrations.Migration):
                 ("case_id", models.CharField(blank=True, max_length=255, null=True)),
                 (
                     "withholding_cap",
-                    models.CharField(blank=True, max_length=25005, null=True),
+                    models.CharField(blank=True, max_length=250, null=True),
                 ),
                 (
                     "withholding_basis",
@@ -515,7 +515,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "lower_threshold_amount",
-                    models.DecimalField(decimal_places=4, max_digits=250),
+                    models.DecimalField(decimal_places=4, max_digits=10),
                 ),
                 (
                     "multiplier_ut",
@@ -529,7 +529,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "upper_threshold_amount",
-                    models.DecimalField(decimal_places=4, max_digits=250),
+                    models.DecimalField(decimal_places=4, max_digits=10),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),

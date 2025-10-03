@@ -6,7 +6,7 @@ class CreditorDebtAppliedRule(models.Model):
 
     ee_id = models.CharField(max_length=255, blank=True, null=True)
     case_id = models.CharField(max_length=255, blank=True, null=True)
-    withholding_cap = models.CharField(max_length=25005, blank=True, null=True)
+    withholding_cap = models.CharField(max_length=250, blank=True, null=True)
     withholding_basis = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

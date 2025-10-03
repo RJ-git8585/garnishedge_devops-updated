@@ -491,7 +491,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "federal_income_tax",
-                    models.DecimalField(decimal_places=2, max_digits=250),
+                    models.DecimalField(decimal_places=2, max_digits=10),
                 ),
                 (
                     "local_tax",
@@ -514,7 +514,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deduction_medical_insurance",
-                    models.DecimalField(decimal_places=2, max_digits=250),
+                    models.DecimalField(decimal_places=2, max_digits=10),
                 ),
                 (
                     "deduction_401k",
@@ -524,7 +524,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deduction_union_dues",
-                    models.DecimalField(decimal_places=2, max_digits=250),
+                    models.DecimalField(decimal_places=2, max_digits=10),
                 ),
                 (
                     "deduction_voluntary",

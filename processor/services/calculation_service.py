@@ -46,7 +46,9 @@ class CalculationDataView:
         """
         config_data = {}
         loaded_types = []
+
         
+
         
         try:
             if GT.STATE_TAX_LEVY in garnishment_types:
@@ -78,9 +80,9 @@ class CalculationDataView:
                     std_exempt = StdExemptions.objects.select_related('year', 'fs', 'pp').all()
                     std_serializer = StdExemptionSerializer(std_exempt, many=True)
 
-                    config_data[CDK.FEDERAL_STD_EXEMPT] = std_serializer.data                   
+                    config_data[GT.FEDERAL_TAX_LEVY] = std_serializer.data                   
                     
-                    loaded_types.append(CDK.FEDERAL_STD_EXEMPT)
+                    loaded_types.append(GT.FEDERAL_TAX_LEVY)
                 except Exception as e:
                     logger.error(f"Error loading {GT.FEDERAL_TAX_LEVY} config: {e}")
 
@@ -131,7 +133,6 @@ class CalculationDataView:
             
         except Exception as e:
             logger.error(f"Critical error preloading config data: {e}", exc_info=True) 
-
         return config_data
     
     def preload_garnishment_fees(self) -> list:
@@ -207,13 +208,25 @@ class CalculationDataView:
         is_deductible = self.is_garnishment_fee_deducted(record)
         employee_id = record.get(EE.EMPLOYEE_ID)
         work_state = record.get(EE.WORK_STATE)
+        
+        # Extract required fields for garnishment fees
+        garnishment_type = ""
+        pay_period = record.get(EE.PAY_PERIOD, "")
+        
+        try:
+            garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+            if garnishment_data:
+                garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+        except (IndexError, KeyError):
+            logger.warning(f"No garnishment data found for employee {employee_id}")
+        
         try:
             if is_deductible is None:
                 fees = GarFeesRulesEngine(work_state).apply_rule(
-                    record, total_withhold_amt)
+                    garnishment_type, pay_period, total_withhold_amt)
                 return f"{fees}, {employee_id} is not registered. Please register the employee first to suspend garnishment fees calculation."
             elif is_deductible:
-                return GarFeesRulesEngine(work_state).apply_rule(record, total_withhold_amt)
+                return GarFeesRulesEngine(work_state).apply_rule(garnishment_type, pay_period, total_withhold_amt)
             else:
                 employee_data = self._get_employee_details(employee_id)
                 suspended_date = employee_data.get(
@@ -230,8 +243,19 @@ class CalculationDataView:
         Applies garnishment fee rule and rounds the result if it is numeric.
         """
         try:
+            # Extract required fields for garnishment fees
+            garnishment_type = ""
+            pay_period = record.get(EE.PAY_PERIOD, "")
+            
+            try:
+                garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+                if garnishment_data:
+                    garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            except (IndexError, KeyError):
+                logger.warning(f"No garnishment data found for employee {record.get(EE.EMPLOYEE_ID)}")
+            
             fee = GarFeesRulesEngine(work_state).apply_rule(
-                record, withholding_amt)
+                garnishment_type, pay_period, withholding_amt)
             if isinstance(fee, (int, float)):
                 return round(fee, 2)
             return fee
@@ -354,7 +378,7 @@ class CalculationDataView:
                 GRF.NET_WITHHOLDING: 0.0
             },
             GRF.CALCULATION_METRICS: {
-                CM.DISPOSABLE_EARNING: 0.0,
+                GRF.DISPOSABLE_EARNINGS: 0.0,
                 GRF.ALLOWABLE_DISPOSABLE_EARNINGS: 0.0,
                 GRF.TOTAL_MANDATORY_DEDUCTIONS: 0.0,
                 GRF.WITHHOLDING_BASIS: CM.NA,
@@ -952,11 +976,12 @@ class CalculationDataView:
             return {"error": f"{EM.ERROR_CALCULATING} franchise tax board: {e}"}
 
 
-    def calculate_multiple_garnishment(self, record, config_data=None, garn_fees=None):
+    def calculate_multiple_garnishment(self, record, config_data, garn_fees=None):
         """
         Calculate multiple garnishment with standardized result structure.
         """
         try:
+            # print("config_data_cal",config_data)
             # Create standardized result for multiple garnishment
             result = self._create_standardized_result("multiple_garnishment", record)
             result["garnishment_types"] = []
@@ -970,6 +995,7 @@ class CalculationDataView:
             
             work_state = record.get(EE.WORK_STATE)
             calculation_result = multiple_garnishment.calculate()
+            print("calculation_result",calculation_result)
 
             if calculation_result == CommonConstants.NOT_FOUND:
                 result[GRF.CALCULATION_STATUS] = GRF.NOT_FOUND
@@ -1182,10 +1208,10 @@ class CalculationDataView:
             if GT.CHILD_SUPPORT in calculation_result:
                 child_support_result = calculation_result[GT.CHILD_SUPPORT]
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(child_support_result.get(CRK.ADE, 0), 2)
-                result[GRF.CALCULATION_METRICS][CRK.DISPOSABLE_EARNING] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
+                result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
             elif GT.SPOUSAL_AND_MEDICAL_SUPPORT in calculation_result:
                 spousal_and_medical_support_result = calculation_result[GT.SPOUSAL_AND_MEDICAL_SUPPORT]
-                result[GRF.CALCULATION_METRICS][CRK.DISPOSABLE_EARNING] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
+                result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CRK.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(spousal_and_medical_support_result["calculations"].get('allowable_disposable_earnings', 0), 2)
             
             result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
@@ -1231,6 +1257,7 @@ class CalculationDataView:
                 EE.WORK_STATE)).get_state_name_and_abbr()
             ee_id = case_info.get(EE.EMPLOYEE_ID)
             is_multiple_garnishment_type=case_info.get("is_multiple_garnishment_type")
+            print("is_multiple_garnishment_type",is_multiple_garnishment_type)
             if is_multiple_garnishment_type ==True:
                 calculated_result=self.calculate_multiple_garnishment(case_info,config_data,garn_fees)
             else:

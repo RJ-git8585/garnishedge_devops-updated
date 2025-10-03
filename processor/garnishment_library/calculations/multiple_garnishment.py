@@ -55,7 +55,7 @@ class MultipleGarnishmentPriorityOrder:
     
     _CALCULATOR_FACTORIES = {
         GT.CHILD_SUPPORT: lambda record, config_data=None: MultipleGarnishmentPriorityHelper().child_support_helper(record),
-        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record,config_data={CDK.FEDERAL_STD_EXEMPT: config_data[CDK.FEDERAL_STD_EXEMPT]}),
+        GT.FEDERAL_TAX_LEVY: lambda record, config_data=None: FederalTax().calculate(record,config_data[GT.FEDERAL_TAX_LEVY]),
         GT.SPOUSAL_AND_MEDICAL_SUPPORT: lambda record, config_data=None: WithholdingProcessor().calculate(record),
         GT.CHILD_SUPPORT_AMOUNT: lambda record, config_data=None: WithholdingProcessor().calculate( record),
         GT.BANKRUPTCY_AMOUNT: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
@@ -74,6 +74,7 @@ class MultipleGarnishmentPriorityOrder:
         self.record = record
         self.config_data=config_data
         self.work_state = self.record.get(EE.WORK_STATE)
+
         
         if not self.work_state:
             raise InsufficientDataError("Required field 'work_state' is missing from the record.")
@@ -89,6 +90,7 @@ class MultipleGarnishmentPriorityOrder:
             work_state_name = StateAbbreviations(self.work_state).get_state_name_and_abbr()
             if not work_state_name:
                 raise ValueError("Could not resolve state name from abbreviation.")
+            
             
             pri_order_qs = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type').filter(
                 state__state__iexact=work_state_name
@@ -109,7 +111,6 @@ class MultipleGarnishmentPriorityOrder:
     def _get_calculator(self, garnishment_type: str) -> Optional[callable]:
 
         factory = self._CALCULATOR_FACTORIES.get(garnishment_type.lower())
-        # print("factory",factory(self.record,self.config_data))
         
         if not factory:
             return None
@@ -286,6 +287,7 @@ class MultipleGarnishmentPriorityOrder:
                 # --- Process the result based on garnishment type ---
                 amount_withheld = 0
                 processed_result = {}
+                print("result",result)
 
 
                 if g_type == GT.CHILD_SUPPORT:
@@ -364,7 +366,8 @@ class MultipleGarnishmentPriorityOrder:
                 
                 elif g_type == GT.FEDERAL_TAX_LEVY:
                     processed_result = self.finance._convert_result_structure(result)
-                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    print("processed_result",processed_result)
+                    base_amount = processed_result.get("withholding_amt")
                     amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld

@@ -284,6 +284,6 @@ curl -X POST http://localhost:8000/garnishment/calculation/ \
 
 The API is documented using Swagger/OpenAPI. Access the interactive documentation at:
 
-- Swagger UI: `http://localhost:8000/api/docs/swagger/`
-- ReDoc: `http://localhost:8000/api/docs/redoc/`
+- Swagger UI: `http://localhost:8000/swagger/`
+- ReDoc: `http://localhost:8000/redoc/`
 

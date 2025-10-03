@@ -15,12 +15,12 @@ class StateTaxLevyExemptAmtConfig(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True)
     condition_expression_lt = models.CharField(max_length=1200,null=True, blank=True)
     lower_threshold_amount = models.DecimalField(
-        max_digits=250, decimal_places=4)
+        max_digits=10, decimal_places=4)
     multiplier_ut = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     condition_expression_ut = models.CharField(max_length=1200,null=True, blank=True)
     upper_threshold_amount = models.DecimalField(
-        max_digits=250, decimal_places=4)
+        max_digits=10, decimal_places=4)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

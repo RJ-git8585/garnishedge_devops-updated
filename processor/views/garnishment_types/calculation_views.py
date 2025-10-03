@@ -188,7 +188,7 @@ class PostCalculationView(APIView):
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
-
+        print("enriched_case",enriched_case)
         return enriched_case
 
     def post(self, request, *args, **kwargs):
@@ -306,6 +306,7 @@ class PostCalculationView(APIView):
                     if is_multi_case:
                         # For multi-garnishment cases, get case-specific types
                         case_types = calculation_service.get_case_garnishment_types(case_info)
+                        print("case_types",case_types)
                         case_config = calculation_service.filter_config_for_case(full_config_data, case_types)
                         
                         logger.debug(f"Multi-garnishment case detected for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}: {case_types}")

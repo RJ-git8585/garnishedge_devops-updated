@@ -11,7 +11,7 @@ class Payroll(models.Model):
     net_pay = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     federal_income_tax = models.DecimalField(
-        max_digits=250, decimal_places=2)
+        max_digits=10, decimal_places=2)
     local_tax = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     medicare_tax = models.DecimalField(
@@ -20,11 +20,11 @@ class Payroll(models.Model):
     deduction_sdi = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     deduction_medical_insurance = models.DecimalField(
-        max_digits=250, decimal_places=2)
+        max_digits=10, decimal_places=2)
     deduction_401k = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     deduction_union_dues = models.DecimalField(
-        max_digits=250, decimal_places=2)
+        max_digits=10, decimal_places=2)
     deduction_voluntary = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     type = models.CharField(max_length=255)
