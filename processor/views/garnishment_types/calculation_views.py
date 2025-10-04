@@ -160,13 +160,14 @@ class PostCalculationView(APIView):
             logger.info(f"Employee {employee.ee_id} has no garnishment orders - will enrich with empty garnishment data")
 
         # Get the first garnishment order for some fields (issuing_state, etc.)
-        first_garnishment = garnishment_orders.first() if garnishment_orders.exists() else None
+        first_garnishment = garnishment_orders[0]
 
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
         
         # Extract deductions from garnishment orders
         deductions = self._extract_deductions_from_garnishment_orders(garnishment_orders, case)
+
         
         # Add employee-specific fields
         enriched_case.update({
@@ -177,7 +178,7 @@ class PostCalculationView(APIView):
             'is_multiple_garnishment_type': len(garnishment_types) > 1,
             'no_of_student_default_loan': employee.number_of_student_default_loan,
             'filing_status': employee.filing_status.name if employee.filing_status else None,
-            'statement_of_exemption_received_date': first_garnishment.received_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.received_date else None,
+            'statement_of_exemption_received_date': first_garnishment.received_date.strftime('%m-%d-%Y') if first_garnishment.received_date else None,
             'garn_start_date': first_garnishment.start_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.start_date else None,
             'non_consumer_debt': not first_garnishment.is_consumer_debt if first_garnishment else False,
             'consumer_debt': first_garnishment.is_consumer_debt if first_garnishment else False,
@@ -188,7 +189,7 @@ class PostCalculationView(APIView):
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
-        print("enriched_case",enriched_case)
+
         return enriched_case
 
     def post(self, request, *args, **kwargs):
@@ -306,7 +307,6 @@ class PostCalculationView(APIView):
                     if is_multi_case:
                         # For multi-garnishment cases, get case-specific types
                         case_types = calculation_service.get_case_garnishment_types(case_info)
-                        print("case_types",case_types)
                         case_config = calculation_service.filter_config_for_case(full_config_data, case_types)
                         
                         logger.debug(f"Multi-garnishment case detected for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}: {case_types}")
@@ -347,8 +347,6 @@ class PostCalculationView(APIView):
                             logger.warning(f"No result returned for employee {ee_id_for_log}")
                             
                     except Exception as e:
-                        import traceback as t
-                        print(t.print_exc())
                         error_message = f"Error processing garnishment for employee {ee_id_for_log}: {str(e)}"
                         logger.error(error_message, exc_info=True)
                         

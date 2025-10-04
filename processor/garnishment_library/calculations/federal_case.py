@@ -92,7 +92,7 @@ class FederalTaxCalculation:
             normalized_status = self._normalize_filing_status(filing_status)
             exemptions_query = 6 if exemptions > 5 else exemptions
             
-            for row in std_data.get('federal_std_exempt', []):
+            for row in std_data:
                 try:
                     row_exemptions = int(row.get('num_exemptions'))
                 except (TypeError, ValueError):
@@ -151,8 +151,13 @@ class FederalTax(FederalTaxCalculation):
             # add_dep = self.get_additional_exempt_for_dependent(pay_period,filing_status,statement_of_exemption_received_date,age, is_blind,spouse_age,is_spouse_blind, add_exempt_data) if spouse_age >= 65 or is_spouse_blind else Decimal('0.00')
             total_exemption = standard_amt
             deduction = max(Decimal('0.00'), round(net_pay - total_exemption, 2))
-            return deduction
+            
+            # Return proper dict structure for multiple garnishment compatibility
+            return {
+                "withholding_amt": deduction
+            }
 
         except Exception as e:
+            print(t.print_exc())
             logger.error("Federal tax calculation failed: %s\n%s", str(e), t.format_exc())
             raise APIException(f"Federal tax calculation failed: {str(e)}")
