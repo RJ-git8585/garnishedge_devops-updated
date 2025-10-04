@@ -256,6 +256,7 @@ class MultipleGarnishmentPriorityOrder:
             ],
             key=lambda x: x.get('priority_order', float('inf'))
         )
+        print("applicable_orders",applicable_orders)
         # --- Main Calculation Loop ---
         for item in applicable_orders:
             g_type = item.get('garnishment_type', '').strip().lower()
@@ -340,7 +341,7 @@ class MultipleGarnishmentPriorityOrder:
 
                 elif g_type == GT.FRANCHISE_TAX_BOARD:
                     processed_result = self.finance._convert_result_structure(result)
-                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    base_amount = processed_result.get("withholding_amt")
                     amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
@@ -353,7 +354,7 @@ class MultipleGarnishmentPriorityOrder:
                 
                 elif g_type == GT.BANKRUPTCY:
                     processed_result = self.finance._convert_result_structure(result)
-                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    base_amount = processed_result.get("withholding_amt")
                     amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld
@@ -366,7 +367,6 @@ class MultipleGarnishmentPriorityOrder:
                 
                 elif g_type == GT.FEDERAL_TAX_LEVY:
                     processed_result = self.finance._convert_result_structure(result)
-                    print("processed_result",processed_result)
                     base_amount = processed_result.get("withholding_amt")
                     amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
@@ -380,7 +380,7 @@ class MultipleGarnishmentPriorityOrder:
 
                 elif g_type == GT.STATE_TAX_LEVY:
                     processed_result = self.finance._convert_result_structure(result)
-                    base_amount = sum(processed_result.get("withholding_amt", {}).values())
+                    base_amount = processed_result.get("withholding_amt")
                     amount_withheld = round(min(base_amount, available_for_garnishment), 1) if base_amount > 0 else 0
                     processed_result["calculation_status"] = "completed"
                     processed_result["withholding_amt"] = amount_withheld

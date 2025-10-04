@@ -722,7 +722,6 @@ class CalculationDataView:
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.STATE_TAX_LEVY}
                 ]
                 result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
                 result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
@@ -1023,6 +1022,16 @@ class CalculationDataView:
                     type_withholding_amounts = []
                     type_total_withheld = 0.0
                     
+                    # Check if there's an error in this garnishment type calculation
+                    calculation_status = type_result.get(GRF.CALCULATION_STATUS, "")
+                    has_error_details = "error_details" in type_result
+                    is_calculation_error = calculation_status == "calculation_error"
+                    
+                    # Extract error details if present
+                    error_details = None
+                    if has_error_details or is_calculation_error:
+                        error_details = type_result.get("error_details", "")
+                    
                     # Handle child support specific structure
                     if garnishment_type == GT.CHILD_SUPPORT:
                         result_amounts = type_result.get(CRK.RESULT_AMT, {})
@@ -1079,6 +1088,27 @@ class CalculationDataView:
                                 })
                                 type_total_withheld += amount
                     
+                    # Add child support result with error details if present
+                    if garnishment_type == GT.CHILD_SUPPORT:
+                        garnishment_fees_amount = self.get_rounded_garnishment_fee(
+                        work_state, garnishment_type, pay_period, total_withheld_amount)
+                        child_support_result = {
+                            GRF.GARNISHMENT_TYPE: garnishment_type,
+                            GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                            GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                            GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                            GRF.GARNISHMENT_FEES : garnishment_fees_amount,
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0)
+                        }
+                        
+                        # Add error details if present
+                        if error_details is not None:
+                            child_support_result["error_details"] = error_details
+                            
+                        result[GRF.GARNISHMENT_TYPES].append(child_support_result)
+                        total_withheld += type_total_withheld
+                        continue
+                    
                     # Handle student loan specific structure
                     elif garnishment_type == GT.STUDENT_DEFAULT_LOAN:
                         student_loan_amounts = type_result.get(CRK.STUDENT_LOAN_AMT, {})
@@ -1113,6 +1143,28 @@ class CalculationDataView:
                                 })
                                 type_total_withheld += amount
                     
+                    # Add student loan result with error details if present
+                    elif garnishment_type == GT.STUDENT_DEFAULT_LOAN:
+                        garnishment_fees_amount = self.get_rounded_garnishment_fee(
+                    work_state, garnishment_type, pay_period, type_total_withheld)
+                        
+                        student_loan_result = {
+                            GRF.GARNISHMENT_TYPE: garnishment_type,
+                            GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                            GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                            GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                            GRF.GARNISHMENT_FEES : garnishment_fees_amount,
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0)
+                        }
+                        
+                        # Add error details if present
+                        if error_details is not None:
+                            student_loan_result["error_details"] = error_details
+                            
+                        result[GRF.GARNISHMENT_TYPES].append(student_loan_result)
+                        total_withheld += type_total_withheld
+                        continue
+                    
                     # Handle spousal_and_medical_support with detailed priority information
                     elif garnishment_type == GT.SPOUSAL_AND_MEDICAL_SUPPORT:
                         # Preserve all the detailed calculation information
@@ -1136,6 +1188,7 @@ class CalculationDataView:
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             GRF.GARNISHMENT_FEES : garnishment_fees_amount,
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
 
                             # Preserve all detailed calculation information
                             "success": type_result.get("success", True),
@@ -1144,6 +1197,10 @@ class CalculationDataView:
                             "summary": type_result.get("summary", {})
                             
                         }
+                        
+                        # Add error details if present
+                        if error_details is not None:
+                            detailed_result["error_details"] = error_details
                         
                         # Add garnishment type to result with detailed information
                         result[GRF.GARNISHMENT_TYPES].append(detailed_result)
@@ -1172,30 +1229,43 @@ class CalculationDataView:
                     if garnishment_type in [GRF.CREDITOR_DEBT, GRF.STATE_TAX_LEVY]:
                         garnishment_fees_amount = self.get_rounded_garnishment_fee(
                     work_state, garnishment_type, pay_period, withholding_amount)
-                        result[GRF.GARNISHMENT_TYPES].append({
+                        
+                        garnishment_result = {
                             GRF.GARNISHMENT_TYPE: garnishment_type,
                             GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             CR.WITHHOLDING_BASIS: type_withholding_basis,
-                            CR.WITHHOLDING_CAP: type_withholding_cap   ,
+                            CR.WITHHOLDING_CAP: type_withholding_cap,
                             CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
                             GRF.GARNISHMENT_FEES: garnishment_fees_amount
-                        })
+                        }
+                        
+                        # Add error details if present
+                        if error_details is not None:
+                            garnishment_result["error_details"] = error_details
+                            
+                        result[GRF.GARNISHMENT_TYPES].append(garnishment_result)
 
                     else:
                         garnishment_fees_amount = self.get_rounded_garnishment_fee(
                     work_state, garnishment_type, pay_period, type_total_withheld)
-                    # Add garnishment type to result
-                        result[GRF.GARNISHMENT_TYPES].append({
-                                GRF.GARNISHMENT_TYPE: garnishment_type,
-                                GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
-                                GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
-                                GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
-                                CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
-                                GRF.GARNISHMENT_FEES: garnishment_fees_amount
- 
-                            })
+                    
+                        # Add garnishment type to result
+                        garnishment_result = {
+                            GRF.GARNISHMENT_TYPE: garnishment_type,
+                            GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                            GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                            GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                            GRF.GARNISHMENT_FEES: garnishment_fees_amount
+                        }
+                        
+                        # Add error details if present
+                        if error_details is not None:
+                            garnishment_result["error_details"] = error_details
+                            
+                        result[GRF.GARNISHMENT_TYPES].append(garnishment_result)
                         
                     
                     total_withheld += type_total_withheld
