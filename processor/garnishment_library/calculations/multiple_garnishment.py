@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from processor.garnishment_library.utils import StateAbbreviations,MultipleGarnishmentPriorityHelper,FinanceUtils
 from processor.garnishment_library.utils.response import CalculationResponse as CR
 from processor.garnishment_library.calculations.state_tax import StateTaxLevyCalculator
-from processor.garnishment_library.calculations.ftb import ftb_ewot
+from processor.garnishment_library.calculations.ftb import FTB
 from processor.garnishment_library.calculations.bankruptcy import Bankruptcy
 from processor.garnishment_library.calculations.federal_case import FederalTax
 from processor.garnishment_library.calculations.child_support import ChildSupport, ChildSupportHelper
@@ -59,7 +59,7 @@ class MultipleGarnishmentPriorityOrder:
         GT.SPOUSAL_AND_MEDICAL_SUPPORT: lambda record, config_data=None: WithholdingProcessor().calculate(record),
         GT.CHILD_SUPPORT_AMOUNT: lambda record, config_data=None: WithholdingProcessor().calculate( record),
         GT.BANKRUPTCY_AMOUNT: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
-        GT.FRANCHISE_TAX_BOARD : lambda record, config_data=None: ftb_ewot().calculate(record, config_data[GT.FRANCHISE_TAX_BOARD]),
+        GT.FRANCHISE_TAX_BOARD : lambda record, config_data=None: FTB().calculate(record, config_data[GT.FRANCHISE_TAX_BOARD]),
         GT.BANKRUPTCY: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
         GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None: StudentLoanCalculator().calculate(record),
         GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY)),
