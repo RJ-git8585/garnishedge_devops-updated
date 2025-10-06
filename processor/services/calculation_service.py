@@ -564,7 +564,7 @@ class CalculationDataView:
                     garnishment_fees_amount = garnishment_fees
                 elif isinstance(garnishment_fees, str) :
                     garnishment_fees_amount = garnishment_fees
-                withholding_amount = round(calculation_result, 2)
+                withholding_amount = round(calculation_result["withholding_amt"], 2)
                 
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.FEDERAL_TAX_LEVY}
@@ -582,6 +582,7 @@ class CalculationDataView:
             return result
             
         except Exception as e:
+            # print(t.print_exc())
             logger.error(f"{EM.ERROR_CALCULATING} federal tax: {e}")
             return self._create_standardized_result(GT.FEDERAL_TAX_LEVY, record, error_message=f"{EM.ERROR_CALCULATING} federal tax: {e}")
 

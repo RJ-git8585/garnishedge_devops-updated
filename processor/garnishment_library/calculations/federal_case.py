@@ -23,6 +23,7 @@ class FilingStatusFields:
 class FederalTaxCalculation:
     """
     Handles federal tax exemption calculations based on employee and spouse details.
+    
     """
 
     def _get_year_from_date(self, date_string):
@@ -158,6 +159,6 @@ class FederalTax(FederalTaxCalculation):
             }
 
         except Exception as e:
-            print(t.print_exc())
+            
             logger.error("Federal tax calculation failed: %s\n%s", str(e), t.format_exc())
             raise APIException(f"Federal tax calculation failed: {str(e)}")
