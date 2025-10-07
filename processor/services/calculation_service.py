@@ -62,10 +62,16 @@ class CalculationDataView:
 
             if GT.CREDITOR_DEBT in garnishment_types:
                 try:
-                    queryset = ThresholdAmount.objects.select_related('config').all()
-                    serializer = ThresholdAmountSerializer(queryset, many=True)
+
+                    queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=5)
+                    config_ids = queryset.values_list("id", flat=True)
+                    # Get ThresholdAmount records linked to those configs
+                    threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
+                    serializer = ThresholdAmountSerializer(threshold_qs, many=True)
                     config_data[GT.CREDITOR_DEBT] = serializer.data
+                    
                     loaded_types.append(GT.CREDITOR_DEBT)
+                    logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
                     logger.error(f"Error loading {GT.CREDITOR_DEBT} config: {e}")
                     

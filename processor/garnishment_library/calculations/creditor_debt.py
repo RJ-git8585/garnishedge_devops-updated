@@ -39,7 +39,7 @@ class CreditorDebtHelper():
             """
             Helper to fetch the correct config for the state, pay period, and optionally debt type.
             """
-
+            print("state.lower()",state.lower())
             debt_type = None
             if is_consumer_debt:
                 debt_type = "consumer"
@@ -72,6 +72,7 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
+            print("config_data",config_data)
             lower_threshold_amount = float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
@@ -88,6 +89,7 @@ class CreditorDebtHelper():
                 return UtilityClass.build_response(
                     upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
+            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
@@ -158,6 +160,7 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
     def cal_alaska(self,home_state, disposable_earning, config_data):
         try:
             if home_state == ST.ALASKA.lower():
+                
                 return self._minimum_wage_threshold_compare(disposable_earning, config_data)
                 
             elif home_state != ST.ALASKA.lower():
@@ -520,6 +523,8 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         Main entry point for creditor debt calculation.
         Determines the state and applies the appropriate formula.
         """
+
+        print("record",record)
         pay_period = record.get(EmployeeFields.PAY_PERIOD).lower()
         gross_pay = record.get(EmployeeFields.GROSS_PAY)
         home_state = StateAbbreviations(record.get(EmployeeFields.HOME_STATE)).get_state_name_and_abbr()

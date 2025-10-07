@@ -4,7 +4,7 @@ from .exempt_rule import ExemptRule
 class ExemptConfig(models.Model):
     rule =models.ForeignKey('processor.ExemptRule', on_delete=models.CASCADE,db_index=True)
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE,db_index=True)
-    is_home_state_resident = models.BooleanField(null=True, blank=True)
+    home_state = models.CharField(max_length=100,null=True, blank=True)
     pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE,db_index=True)
     garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE,db_index=True)
     debt_type = models.CharField(max_length=100,null=True, blank=True)

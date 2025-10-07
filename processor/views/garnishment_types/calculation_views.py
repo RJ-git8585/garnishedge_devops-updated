@@ -241,6 +241,8 @@ class PostCalculationView(APIView):
                     )
             
             cases_data = enriched_cases
+
+            # print("cases_data",cases_data)
             
             # Log any missing employees but continue processing
             if not_found_employees:
