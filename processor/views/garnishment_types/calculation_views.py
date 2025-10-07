@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -160,7 +161,7 @@ class PostCalculationView(APIView):
             logger.info(f"Employee {employee.ee_id} has no garnishment orders - will enrich with empty garnishment data")
 
         # Get the first garnishment order for some fields (issuing_state, etc.)
-        first_garnishment = garnishment_orders[0]
+        first_garnishment = garnishment_orders.first()
 
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
@@ -178,9 +179,9 @@ class PostCalculationView(APIView):
             'is_multiple_garnishment_type': len(garnishment_types) > 1,
             'no_of_student_default_loan': employee.number_of_student_default_loan,
             'filing_status': employee.filing_status.name if employee.filing_status else None,
-            'statement_of_exemption_received_date': first_garnishment.received_date.strftime('%m-%d-%Y') if first_garnishment.received_date else None,
+            'statement_of_exemption_received_date': first_garnishment.received_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.received_date else None,
             'garn_start_date': first_garnishment.start_date.strftime('%m-%d-%Y') if first_garnishment and first_garnishment.start_date else None,
-            'non_consumer_debt': not first_garnishment.is_consumer_debt if first_garnishment else False,
+            'non_consumer_debt': (not first_garnishment.is_consumer_debt) if first_garnishment else False,
             'consumer_debt': first_garnishment.is_consumer_debt if first_garnishment else False,
             'support_second_family': employee.support_second_family,
             'no_of_dependent_child': employee.number_of_dependent_child,
@@ -193,8 +194,16 @@ class PostCalculationView(APIView):
         return enriched_case
 
     def post(self, request, *args, **kwargs):
-        batch_id = request.data.get(BatchDetail.BATCH_ID)
-        cases_data = request.data.get("payroll_data", [])
+        try:
+            batch_id = request.data.get(BatchDetail.BATCH_ID)
+            cases_data = request.data.get("payroll_data", [])
+        except ParseError:
+            return Response(
+                {
+                    "error": "Invalid JSON body. Send 'Content-Type: application/json' with 'batch_id' and 'payroll_data'."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Input validation
         if not batch_id:
@@ -398,6 +407,5 @@ class PostCalculationView(APIView):
         if is_payroll_input and not_found_employees:
             response_data["not_found_employees"] = not_found_employees
             response_data["summary"]["missing_employees"] = len(not_found_employees)
-
         return Response(response_data, status=status.HTTP_200_OK)
 

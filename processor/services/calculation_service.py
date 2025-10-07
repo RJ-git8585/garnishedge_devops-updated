@@ -665,7 +665,7 @@ class CalculationDataView:
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
             else:
                 garnishment_fees=self.get_rounded_garnishment_fee(
-                work_state, record, total_student_loan_amt)
+                    work_state, garnishment_type, pay_period, total_student_loan_amt)
                 garnishment_fees_amount = garnishment_fees
                 
                 standardized_result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_student_loan_amt, 2)

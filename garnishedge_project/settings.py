@@ -73,9 +73,9 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'garnishedge_project.urls'
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "https://garnishment-backend.onrender.com",
+CORS_ALLOWED_ORIGINS = [   
+     "http://localhost:5173",
+    "https://garnishment-backend.onrender.com"
 ]
 
 
