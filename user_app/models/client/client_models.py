@@ -7,7 +7,6 @@ class Client(models.Model):
     client_id = models.CharField(max_length=50, unique=True)
     peo = models.ForeignKey(PEO, on_delete=models.CASCADE, related_name="clients")
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="clients")
-    pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE, related_name="clients")
     legal_name = models.CharField(max_length=255)
     dba = models.CharField(max_length=255,blank=True, null=True)
     service_type =  models.CharField(max_length=255, blank=True, null=True)

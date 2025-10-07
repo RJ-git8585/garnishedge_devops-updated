@@ -26,17 +26,6 @@ class StateField(serializers.Field):
             raise serializers.ValidationError({self.field_name: f"State '{data}' not found"})
 
 
-class PayPeriodField(serializers.Field):
-    def to_representation(self, value: PayPeriod):
-        return value.name if value else None
-
-    def to_internal_value(self, data):
-        try:
-            return PayPeriod.objects.get(name__iexact=data)
-        except PayPeriod.DoesNotExist:
-            raise serializers.ValidationError({self.field_name: f"PayPeriod '{data}' not found"})
-
-
 # ---------- Serializer ----------
 class ClientSerializer(serializers.ModelSerializer):
     """
@@ -47,7 +36,6 @@ class ClientSerializer(serializers.ModelSerializer):
 
     peo = PEOField()
     state = StateField()
-    pay_period = PayPeriodField()
 
     class Meta:
         model = Client
@@ -56,7 +44,6 @@ class ClientSerializer(serializers.ModelSerializer):
             "client_id",
             "peo",
             "state",
-            "pay_period",
             "legal_name",
             "dba",
             "service_type",

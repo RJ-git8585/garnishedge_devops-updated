@@ -523,8 +523,6 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         Main entry point for creditor debt calculation.
         Determines the state and applies the appropriate formula.
         """
-
-        print("record",record)
         pay_period = record.get(EmployeeFields.PAY_PERIOD).lower()
         gross_pay = record.get(EmployeeFields.GROSS_PAY)
         home_state = StateAbbreviations(record.get(EmployeeFields.HOME_STATE)).get_state_name_and_abbr()

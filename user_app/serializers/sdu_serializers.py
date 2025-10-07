@@ -5,12 +5,16 @@ from processor.models.shared_model.state import State
 
 class StateNameField(serializers.PrimaryKeyRelatedField):
     """
-    Custom field to accept state name and convert to State instance.
+    Accepts state full name or state code (abbreviation) and returns a State instance.
     """
     def to_internal_value(self, data):
         try:
-            # Accept either state name or abbreviation 
-            state = State.objects.filter(state__iexact=data).first() or State.objects.filter(abbreviation__iexact=data).first()
+            normalized = (data or "").strip()
+            # Accept either state name or state code (e.g., 'Alabama' or 'AL')
+            state = (
+                State.objects.filter(state__iexact=normalized).first()
+                or State.objects.filter(state_code__iexact=normalized).first()
+            )
             if not state:
                 raise serializers.ValidationError(f"State '{data}' not found.")
             return state
@@ -18,27 +22,30 @@ class StateNameField(serializers.PrimaryKeyRelatedField):
             raise serializers.ValidationError(f"State '{data}' not found.")
 
     def to_representation(self, value):
-        # Return the state name for output
-        return value.state if value else None
+        # Return the state name for output; handle PKOnlyObject or raw PKs
+        if value is None:
+            return None
+        # If we already have a State instance with 'state' attribute
+        if hasattr(value, 'state'):
+            return value.state
+        # DRF may give a PKOnlyObject or a raw PK; resolve to name
+        pk_value = getattr(value, 'pk', value)
+        state = State.objects.filter(pk=pk_value).only('state').first()
+        return state.state if state else pk_value
 
 
 class SDUSerializer(serializers.ModelSerializer):
-    # Accept state name (or abbreviation) and convert to State instance
-    state = serializers.SlugRelatedField(
-        slug_field='state',  
-        queryset=State.objects.all()
+    # Accept state name or code and convert to State instance
+    state = StateNameField(queryset=State.objects.all())
+    # Accept GarnishmentOrder by its case_id string
+    case_id = serializers.SlugRelatedField(
+        slug_field='case_id',
+        queryset=GarnishmentOrder.objects.all()
     )
 
     class Meta:
         model = SDU
         fields = ['id', 'payee', 'state', 'case_id', 'address', 'contact', 'fips_code', 'is_active']
 
-    def validate_order(self, value):
-        """
-        Ensure the order exists in the GarnishmentOrder table.
-        """
-        if not GarnishmentOrder.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError("Order not found.")
-        return value
 
 
