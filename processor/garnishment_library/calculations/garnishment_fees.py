@@ -71,8 +71,7 @@ class GarFeesRulesEngine:
                 if item.get("rule", "").strip().title() == rule_name:
                     return item.get("payable_by")
         except Exception as e:
-            # import traceback as t
-            # print("rr",t.print_exc())
+
             logger.error(
                 f"Error getting payable name for rule {rule_name}: {e}")
         return None

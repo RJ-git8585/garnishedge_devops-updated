@@ -582,7 +582,6 @@ class CalculationDataView:
             return result
             
         except Exception as e:
-            # print(t.print_exc())
             logger.error(f"{EM.ERROR_CALCULATING} federal tax: {e}")
             return self._create_standardized_result(GT.FEDERAL_TAX_LEVY, record, error_message=f"{EM.ERROR_CALCULATING} federal tax: {e}")
 

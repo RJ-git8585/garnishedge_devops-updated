@@ -88,7 +88,6 @@ class CreditorDebtHelper():
                 return UtilityClass.build_response(
                     upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
-            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
@@ -125,7 +124,6 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
-            print("config_data",config_data)
             lower_threshold_amount =float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
@@ -144,8 +142,6 @@ class CreditorDebtHelper():
                 withholding_amount = upper_threshold_percent * disposable_earning
                 return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
-            import traceback as t
-            t.print_exc()
 
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
@@ -161,7 +157,6 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
 
     def cal_alaska(self,home_state, disposable_earning, config_data):
         try:
-            print("config_data",config_data)
             if home_state == ST.ALASKA.lower():
                 return self._minimum_wage_threshold_compare(disposable_earning, config_data)
                 
@@ -171,7 +166,6 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
         except Exception as e:
-            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_alaska: {str(e)}"
@@ -514,7 +508,6 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                     disposable_earning, exempt_amt_config)
             
         except Exception as e:
-            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_arizona: {str(e)}"
@@ -609,7 +602,6 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
 
         except Exception as e:
             import traceback as t
-            print("dddd",t.print_exc())
             return Response(
                 {
                     "error": f"Exception in CreditorDebtCalculator.calculate: {str(e)}",

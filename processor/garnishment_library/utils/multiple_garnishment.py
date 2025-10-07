@@ -455,7 +455,7 @@ class MultipleGarnishmentPriorityHelper:
             
         except Exception as e:
             import traceback as t
-            # print(t.print_exc())
+
             raise CalculationError(f"Error calculating prorated amounts: {e}")
         
 

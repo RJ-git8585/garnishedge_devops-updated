@@ -235,7 +235,6 @@ class MultipleGarnishmentPriorityOrder:
         twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 1)
 
         available_for_garnishment = twenty_five_percent_of_de
-        # print("available_for_garnishment",available_for_garnishment)
         garnishment_results = {}
         
         # --- Prepare the list of garnishments to process ---
@@ -256,7 +255,6 @@ class MultipleGarnishmentPriorityOrder:
             ],
             key=lambda x: x.get('priority_order', float('inf'))
         )
-        print("applicable_orders",applicable_orders)
         # --- Main Calculation Loop ---
         for item in applicable_orders:
             g_type = item.get('garnishment_type', '').strip().lower()
@@ -288,7 +286,6 @@ class MultipleGarnishmentPriorityOrder:
                 # --- Process the result based on garnishment type ---
                 amount_withheld = 0
                 processed_result = {}
-                print("result",result)
 
 
                 if g_type == GT.CHILD_SUPPORT:
@@ -468,7 +465,6 @@ class MultipleGarnishmentPriorityOrder:
                 garnishment_results[g_type] = processed_result
 
             except Exception as e:
-                print(t.print_exc())
                 logger.exception(f"Error calculating garnishment '{g_type}' for state '{self.work_state}'.")
                 garnishment_results[g_type] = {
                     "withholding_amt": 0, 

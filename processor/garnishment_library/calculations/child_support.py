@@ -374,6 +374,5 @@ class ChildSupport(SingleChild, MultipleChild):
             else:
                 return MultipleChild(self.work_state).calculate(record)
         except Exception as e:
-            print(t.print_exc())
            
             raise ValueError(f"Error in ChildSupport calculation: {str(e)}")

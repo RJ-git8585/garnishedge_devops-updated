@@ -195,7 +195,6 @@ class EmployeeRecord:
             self.alloc_method = AllocationMethodResolver(self.work_state).get_allocation_method()
             
         except Exception as e:
-            print(t.print_exc())
             logger.error(f"Error calculating allowable disposable earnings: {e}")
             raise WithholdingDeductionError(f"ADE calculation failed: {e}")
     
@@ -243,7 +242,6 @@ class EmployeeRecord:
 
             self.withholding_amount = min(self.ade, self.amount_ordered_withheld)
         except Exception as e:
-            print(t.print_exc())
             logger.error(f"Error calculating withholding amount: {e}")
             raise WithholdingDeductionError(f"Withholding amount calculation failed: {e}")
 
@@ -279,7 +277,6 @@ class CurrentSupportCalculator:
                 elif self.record.alloc_method == AllocationMethods.DEVIDEEQUALLY:
                     # Divide equally among orders
                     split_amt = round(self.record.ade / len(tcsa), 2) if tcsa else 0
-                    print("split_amt",split_amt)
                     cs_amounts = {f"child support amount{i+1}": split_amt if gross_pay > 0 else 0
                         for i in range(len(tcsa))
                     }
@@ -289,7 +286,6 @@ class CurrentSupportCalculator:
                         "Invalid allocation method for garnishment.")
                 
         except Exception as e:
-            print(t.print_exc())
             raise ValueError(f"Error in CurrentSupportCalculator.calculate_ordered: {str(e)}")
 
     def calculate_arrear(self) -> Decimal:
@@ -299,7 +295,6 @@ class CurrentSupportCalculator:
             gross_pay=self.record.gross_pay
             ade=self.record._calculate_withholding_amount()
             taa=self.record.taa
-            print("taa",taa)
             wa=self.record.wa
             if self.record.withholding_amount <= 0:
                 return Decimal("0")
@@ -329,7 +324,6 @@ class CurrentSupportCalculator:
                     raise ValueError(
                         "Invalid allocation method for garnishment.")
         except Exception as e:
-            print(t.print_exc())
             raise ValueError(f"Error in CurrentSupportCalculator.calculate_arrear: {str(e)}")
 
 
@@ -500,7 +494,6 @@ class WithholdingProcessor:
                 remaining_spousal_support_arrear=validated_data.get('remaining_spousal_support_arrear', Decimal("0"))
             )
         except Exception as e:
-            print(t.print_exc())
             logger.error(f"Error creating employee record: {e}")
             raise InvalidDataError(f"Failed to create employee record: {e}")
     
@@ -519,19 +512,14 @@ class WithholdingProcessor:
             # Use values from deductions block instead of garnishment_data
             if deduction_type == DeductionType.CURRENT_CHILD_SUPPORT:
                 requested_amount = record.current_child_support
-                print("requested_amount",requested_amount)
-                case_id = "CURRENT_CHILD_SUPPORT"
             else:  # CHILD_SUPPORT_ARREAR
                 requested_amount = record.child_support_arrear
-                print("requested_amount",requested_amount)
-                case_id = "CHILD_SUPPORT_ARREAR"
             
             if requested_amount <= 0:
                 # Add zero amount result for tracking
                 result = {
                     "deduction_type": deduction_type.value,
                     "priority_order": priority_order,
-                    "case_id": case_id,
                     "ordered_amount": 0.0,
                     "deducted_amount": 0.0,
                     "remaining_balance": 0.0,
@@ -554,7 +542,6 @@ class WithholdingProcessor:
             result = {
                 "deduction_type": deduction_type.value,
                 "priority_order": priority_order,
-                "case_id": case_id,
                 "ordered_amount": float(requested_amount),
                 "deducted_amount": float(deduction_amount),
                 "remaining_balance": float(Decimal(str(requested_amount)) - Decimal(str(deduction_amount))),
@@ -572,7 +559,6 @@ class WithholdingProcessor:
             return [{
                 "deduction_type": deduction_type.value,
                 "priority_order": priority_order,
-                "case_id": "ERROR",
                 "ordered_amount": 0.0,
                 "deducted_amount": 0.0,
                 "remaining_balance": 0.0,
@@ -673,7 +659,6 @@ class WithholdingProcessor:
                     self.logger.debug(f"Processed {deduction_type.value}: "
                                     f"${deduction_amount} of ${requested_amount} requested")
             except Exception as e:
-                print(t.print_exc())
                 self.logger.error(f"Error processing priority {priority_type}: {e}")
 
                 failed_result = {

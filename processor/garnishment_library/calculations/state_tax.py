@@ -357,7 +357,7 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             return CC.NOT_FOUND
 
         except Exception as e:
-            print(t.print_exc())
+
             logger.error(f"Error in state tax levy calculation: {e}")
             return Response(
                 {

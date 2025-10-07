@@ -139,7 +139,7 @@ class EmployeeDetailAPIViews(APIView):
             else:
                 employees = EmployeeDetail.objects.all()
                 serializer = EmployeeDetailSerializer(employees, many=True)
-                print("serializer",serializer.data)
+
                 return ResponseHelper.success_response('All data fetched successfully', serializer.data)
         except Exception as e:
             return ResponseHelper.error_response(
