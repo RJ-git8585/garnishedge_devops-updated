@@ -91,7 +91,7 @@ class FederalTaxCalculation:
             year = str(self._get_year_from_date(statement_of_exemption_received_date))
 
             normalized_status = self._normalize_filing_status(filing_status)
-            exemptions_query = 6 if exemptions > 5 else exemptions
+            exemptions_query = exemptions
             
             for row in std_data:
                 try:

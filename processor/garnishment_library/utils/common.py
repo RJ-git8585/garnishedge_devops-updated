@@ -9,7 +9,7 @@ import traceback as t
 from typing import Dict
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass
-
+from processor.models import State
 FMW_RATE = 7.25
 PAY_PERIOD_MULTIPLIER = {
     PP.WEEKLY: 30,
@@ -174,7 +174,6 @@ class StateAbbreviations:
     Utility for converting state abbreviations to full state names.
 
     """
-
     def __init__(self, abbreviation):
         self.abbreviation = abbreviation.lower()
 
@@ -182,27 +181,15 @@ class StateAbbreviations:
         """
         Returns the full state name for a given abbreviation, or the input if not found.
         """
-        state_abbreviations = {
-            "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas",
-            "ca": "california", "co": "colorado", "ct": "connecticut", "de": "delaware",
-            "fl": "florida", "ga": "georgia", "hi": "hawaii", "id": "idaho",
-            "il": "illinois", "in": "indiana", "ia": "iowa", "ks": "kansas",
-            "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland",
-            "ma": "massachusetts", "mi": "michigan", "mn": "minnesota", "ms": "mississippi",
-            "mo": "missouri", "mt": "montana", "ne": "nebraska", "nv": "nevada",
-            "nh": "new hampshire", "nj": "new jersey", "nm": "new mexico", "ny": "new york",
-            "nc": "north carolina", "nd": "north dakota", "oh": "ohio", "ok": "oklahoma",
-            "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
-            "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah",
-            "vt": "vermont", "va": "virginia", "wa": "washington", "wv": "west virginia",
-            "wi": "wisconsin", "wy": "wyoming"
-        }
-        if len(self.abbreviation) != 2:
-            state_name = self.abbreviation
-        else:
-            state_name = state_abbreviations.get(
-                self.abbreviation, self.abbreviation)
-        return state_name
+        try:
+            if len(self.abbreviation) != 2:
+                state_name = self.abbreviation
+            else:
+                state_name = State.objects.get(state_code=self.abbreviation).state
+                print("state_name", state_name)
+            return state_name.lower()
+        except Exception as e:
+            raise ValueError(f"Error getting state name and abbreviation: {e}")
     
 
 class PaginationHelper:

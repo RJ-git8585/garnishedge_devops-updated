@@ -26,6 +26,11 @@ from processor.models import MultipleGarnPriorityOrders
 
 
 
+# Configure logging similar to deductions_priority.py
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +110,7 @@ class MultipleGarnishmentPriorityOrder:
         
         except Exception as e:
             # Catch specific ORM/serializer errors if possible, e.g., ValidationError
+            logger.error(f"Error in MultipleGarnishmentPriorityOrder._get_priority_order: {str(e)}\n{t.format_exc()}")
             logger.error(f"Failed to fetch priority order for state '{self.work_state}': {e}")
             raise PriorityOrderError(f"Database error fetching priority order for {self.work_state}.") from e
 
@@ -225,12 +231,15 @@ class MultipleGarnishmentPriorityOrder:
             
             if not garnishment_orders or not isinstance(garnishment_orders, list):
                 logger.info("No garnishment orders found in record. Nothing to calculate.")
-                return {"status": "No garnishment orders provided."}
+                return {"success": False, "status": "No garnishment orders provided.", "error_type": "NoGarnishmentOrders"}
             
             priority_list = self._get_priority_order()
         except GarnishmentError as e:
             logger.error(f"Halting calculation due to a setup error: {e}")
-            return {"error": str(e)}
+            return {"success": False, "error": str(e), "error_type": type(e).__name__}
+        except Exception as e:
+            logger.exception(f"Unexpected error preparing calculation inputs for state '{self.work_state}'")
+            return {"success": False, "error": str(e), "error_type": type(e).__name__}
         
         twenty_five_percent_of_de = round(self.CCPA_LIMIT_PERCENTAGE * disposable_earnings, 1)
 
@@ -465,8 +474,6 @@ class MultipleGarnishmentPriorityOrder:
                 garnishment_results[g_type] = processed_result
 
             except Exception as e:
-                import traceback as t
-                print(t.print_exc())
                 logger.exception(f"Error calculating garnishment '{g_type}' for state '{self.work_state}'.")
                 garnishment_results[g_type] = {
                     "withholding_amt": 0, 
@@ -476,4 +483,5 @@ class MultipleGarnishmentPriorityOrder:
                 }
         garnishment_results["twenty_five_percent_of_de"] = round(twenty_five_percent_of_de, 1)
         garnishment_results["disposable_earning"] = round(disposable_earnings, 1)
+        garnishment_results["success"] = True
         return garnishment_results

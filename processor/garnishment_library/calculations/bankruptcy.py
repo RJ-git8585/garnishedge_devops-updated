@@ -10,17 +10,24 @@ from user_app.constants import (
     CommonConstants as CC,
     EmployeeFields as EE,
     GarnishmentTypeFields as GT,
-    FilingStatusFields
 )
 from processor.garnishment_library.utils import StateAbbreviations
 from processor.garnishment_library.calculations import ChildSupportHelper
 from processor.garnishment_library.calculations import CreditorDebtHelper
-from rest_framework import status
+import logging
+
+logger = logging.getLogger(__name__)
+
+#Config Details
+BANKRUPTCY_LIMIT_PERCENTAGE = 0.25
+
+
+
+
 
 class StateWiseFTBStateTaxLevyFormulas():
     """
     State-specific formulas for FTB state tax levy calculations.
-
     """
 
 
@@ -62,7 +69,6 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
             CSH = ChildSupportHelper(record.get(EE.WORK_STATE))
             pay_period = record.get(EE.PAY_PERIOD).lower()
             gross_pay = record.get(EE.GROSS_PAY)
-            #home_state = StateAbbreviations(record.get(EE.HOME_STATE)).get_state_name_and_abbr()
             child_support_amount = record.get(GT.CHILD_SUPPORT_AMOUNT, 0)
             spousal_support_amount = record.get(GT.SPOUSAL_SUPPORT_AMOUNT, 0)
             bankruptcy_amount = record.get(GT.BANKRUPTCY_AMOUNT, 0)
@@ -90,8 +96,7 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
             allowable_bankruptcy_amount = de - (child_support_amount + spousal_support_amount)
             if allowable_bankruptcy_amount < 0:
                 allowable_bankruptcy_amount = 0
-
-            available_for_bankruptcy = 0.25 * allowable_bankruptcy_amount
+            available_for_bankruptcy = BANKRUPTCY_LIMIT_PERCENTAGE * allowable_bankruptcy_amount
             if exempt_amt_config and isinstance(exempt_amt_config, dict):
                 federal_min_wage_threshold = float(exempt_amt_config.get("lower_threshold_amount", 0) or 0)
             elif isinstance(exempt_amt_config, (int, float)):
@@ -112,7 +117,6 @@ class Bankruptcy(StateWiseFTBStateTaxLevyFormulas):
                 withholding_amount = min(available_for_bankruptcy, bankruptcy_amount)
                 return UtilityClass.build_response(
                     withholding_amount, de, CM.DE_BANKRUPTCY_LE_UPPER, f"Min({available_for_bankruptcy}, {bankruptcy_amount})")
-                    # withholding_amount = min(available_for_bankruptcy, bankruptcy_amount)
 
         except Exception as e:
             raise ValueError(f"Error in Bankruptcy calculation: {str(e)}")

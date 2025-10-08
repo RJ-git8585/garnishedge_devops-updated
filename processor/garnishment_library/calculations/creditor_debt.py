@@ -39,21 +39,25 @@ class CreditorDebtHelper():
             """
             Helper to fetch the correct config for the state, pay period, and optionally debt type.
             """
-            print("state.lower()",state.lower())
             debt_type = None
             if is_consumer_debt:
                 debt_type = "consumer"
             elif non_consumer_debt:
                 debt_type = "non consumer"
+
+            if home_state.lower()=="alaska":
+                home_state ="alaska"
+            else:
+                home_state ="None"
             garn_start_date =self._gar_start_date_check(garn_start_date)
-            try:
+            try:    
                 return next(
                         ( i for i in config_data
                             if i[EmployeeFields.STATE].lower() == state.lower()
                             and i[EmployeeFields.PAY_PERIOD].lower() == pay_period.lower()
                             and (i.get("debt_type") is None or i.get("debt_type").lower() == debt_type or not i.get("debt_type")) 
                             and (i.get("start_gt_5dec24") is None or i.get("start_gt_5dec24") == garn_start_date)
-                            and (i.get("home_state") is None or i.get("home_state").lower() == home_state.lower())
+                            and (i.get("home_state") == home_state)
                             and (i.get("ftb_type" ) == ftb_type or i.get("ftb_type" ) is None) 
                         ),
                         None
@@ -72,7 +76,6 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
-            print("config_data",config_data)
             lower_threshold_amount = float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
@@ -114,7 +117,8 @@ class CreditorDebtHelper():
                     f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))"
                 )
         except Exception as e:
-
+            import traceback as t
+            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _minimum_wage_threshold_compare: {str(e)}"
@@ -169,6 +173,8 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
         except Exception as e:
+            import traceback as t
+            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_alaska: {str(e)}"
@@ -515,7 +521,11 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_arizona: {str(e)}"
             )
+
 class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
+
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
 
 
     def calculate(self, record, config_data):
@@ -543,7 +553,6 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
         mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
         disposable_earning = cs_helper.calculate_de(gross_pay, mandatory_deductions)
-
         garn_start_date=record.get(EmployeeFields.GARN_START_DATE)
         
         
@@ -604,7 +613,6 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                     return CC.NOT_FOUND
 
         except Exception as e:
-            import traceback as t
             return Response(
                 {
                     "error": f"Exception in CreditorDebtCalculator.calculate: {str(e)}",

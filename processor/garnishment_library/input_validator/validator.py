@@ -287,7 +287,6 @@ class WithholdingInputValidator(BaseValidator):
             ValidationRule("pay_period", FieldType.STRING, required=False),
             ValidationRule("filing_status", FieldType.STRING, required=False),
             ValidationRule("net_pay", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
-            ValidationRule("is_blind", FieldType.BOOLEAN, required=False, default_value=False),
             ValidationRule("statement_of_exemption_received_date", FieldType.STRING, required=False),
             ValidationRule("garn_start_date", FieldType.STRING, required=False),
             ValidationRule("non_consumer_debt", FieldType.BOOLEAN, required=False, default_value=False),
@@ -349,22 +348,51 @@ class PayrollInputValidator(BaseValidator):
     def get_validation_rules(self) -> List[ValidationRule]:
         """Define validation rules for payroll calculations."""
         return [
-            ValidationRule("employee_id", FieldType.STRING, required=True, min_length=1, max_length=50),
-            ValidationRule("pay_period_start", FieldType.STRING, required=True),  # ISO date format
-            ValidationRule("pay_period_end", FieldType.STRING, required=True),    # ISO date format
+            # Client and Employee identification
+            ValidationRule("client_id", FieldType.STRING, required=True, min_length=1, max_length=50),
+            ValidationRule("ee_id", FieldType.STRING, required=True, min_length=1, max_length=50),
+            
+            # Pay period information
+            ValidationRule("pay_period", FieldType.STRING, required=True, 
+                         allowed_values=["Weekly", "Bi-weekly", "Semi-monthly", "Monthly", "Daily"], 
+                         min_length=1, max_length=20),
+            ValidationRule("payroll_date", FieldType.STRING, required=True),  
+            ValidationRule("pay_period_start", FieldType.STRING, required=False), 
+            ValidationRule("pay_period_end", FieldType.STRING, required=False),   
             
             # Earnings
-            ValidationRule("regular_hours", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
-            ValidationRule("overtime_hours", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
-            ValidationRule("hourly_rate", FieldType.DECIMAL, required=False, min_value=Decimal("0")),
-            ValidationRule("salary", FieldType.DECIMAL, required=False, min_value=Decimal("0")),
+            ValidationRule("wages", FieldType.DECIMAL, required=True, min_value=Decimal("0")),
+            ValidationRule("commission_and_bonus", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("non_accountable_allowances", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("gross_pay", FieldType.DECIMAL, required=True, min_value=Decimal("0")),
+            ValidationRule("net_pay", FieldType.DECIMAL, required=True, min_value=Decimal("0")),
+            
+            # Legacy earnings fields for backward compatibility
             ValidationRule("commission", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
             ValidationRule("bonus", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
             
-            # Deductions
+            # Payroll taxes (as dictionary)
+            ValidationRule("payroll_taxes", FieldType.DICT, required=False, default_value={}),
+            
+            # Individual tax components (for backward compatibility)
+            ValidationRule("federal_income_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("state_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("local_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("medicare_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("social_security_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("wilmington_tax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("california_sdi", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            
+            # Pre-tax deductions
+            ValidationRule("medical_insurance_pretax", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("life_insurance", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("retirement_401k", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("industrial_insurance", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            ValidationRule("union_dues", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
+            
+            # Legacy deduction fields for backward compatibility
             ValidationRule("health_insurance", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
             ValidationRule("dental_insurance", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
-            ValidationRule("retirement_401k", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
             ValidationRule("other_deductions", FieldType.DECIMAL, required=False, min_value=Decimal("0"), default_value=Decimal("0")),
         ]
 

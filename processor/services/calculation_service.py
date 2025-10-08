@@ -46,9 +46,6 @@ class CalculationDataView:
         """
         config_data = {}
         loaded_types = []
-
-        
-
         
         try:
             if GT.STATE_TAX_LEVY in garnishment_types:
@@ -69,10 +66,12 @@ class CalculationDataView:
                     threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
                     serializer = ThresholdAmountSerializer(threshold_qs, many=True)
                     config_data[GT.CREDITOR_DEBT] = serializer.data
-                    
+
                     loaded_types.append(GT.CREDITOR_DEBT)
                     logger.info(f"Successfully loaded config for types: {loaded_types}")
                 except Exception as e:
+                    import traceback as t
+                    print(t.print_exc())
                     logger.error(f"Error loading {GT.CREDITOR_DEBT} config: {e}")
                     
             if GT.FEDERAL_TAX_LEVY in garnishment_types:
@@ -579,7 +578,6 @@ class CalculationDataView:
                 result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-
                 
                 # Federal tax specific metrics
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = CM.NA

@@ -9,6 +9,15 @@ from user_app.constants import (
     PayPeriodFields as PP
 )
 import traceback as t
+import logging
+
+logger = logging.getLogger(__name__)
+
+#Configure Details
+DE_LOWER_LIMIT_PERCENTAGE = 0.10
+DE_MID_LIMIT_PERCENTAGE = 0.15
+DE_UPPER_LIMIT_PERCENTAGE = 0.25
+
 
 class StudentLoan:
     """
@@ -39,7 +48,7 @@ class StudentLoan:
                     "student_loan_amt": "Student loan withholding cannot be applied because Disposable Earnings are less than or equal to the exempt amount."
                 }
 
-            deduction = min(de * 0.15, de * 0.25, de - fmw)
+            deduction = min(de * DE_MID_LIMIT_PERCENTAGE, de *DE_UPPER_LIMIT_PERCENTAGE, de - fmw)
             return {"student_loan_amt": {"student_loan_amt1": round(deduction, 2)}, "disposable_earning": de}
 
         except Exception as e:
@@ -60,8 +69,8 @@ class StudentLoan:
                 msg = "Student loan withholding cannot be applied because Disposable Earnings are less than or equal to the exempt amount."
                 return {"student_loan_amt": {"student_loan_amt1": msg, "student_loan_amt2": msg}, "disposable_earning": de}
 
-            return {"student_loan_amt": {"student_loan_amt1": round(de * 0.15, 2),
-                                         "student_loan_amt2": round(de * 0.10, 2)}, "disposable_earning": de}
+            return {"student_loan_amt": {"student_loan_amt1": round(de * DE_MID_LIMIT_PERCENTAGE, 2),
+                                         "student_loan_amt2": round(de * DE_LOWER_LIMIT_PERCENTAGE, 2)}, "disposable_earning": de}
 
         except Exception as e:
             return {"student_loan_amt": {
@@ -98,7 +107,6 @@ class StudentLoanCalculator:
             elif count and count > 1:
                 return student_loan.get_multiple_student_amount(state_name,pay_period, wages,commission_and_bonus,non_accountable_allowances,payroll_taxes)
             else:
-                
                 return {"student_loan_amt": {"student_loan_amt1": 0}, "disposable_earning": 0}
 
         except Exception as e:

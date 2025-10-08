@@ -8,6 +8,8 @@ from user_app.constants import (
 )
 import traceback as t
 from processor.garnishment_library.utils import Helper
+
+
 class ChildSupportHelper:
     """
     Handles child support garnishment calculations, including disposable earnings,
@@ -120,8 +122,6 @@ class ChildSupportHelper:
             garnishment_data (list): Garnishment data for calculating order count
         """
         try:
-            # Get rule object from DB
-            
             rule_obj = WLIdentifier().get_state_rule(self.work_state)
             rule_number = rule_obj.rule
             ordered_amounts = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)
