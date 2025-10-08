@@ -108,11 +108,14 @@ class EmployeeFields:
     NET_PAY = 'net_pay'
     AGE = 'age'
     IS_BLIND = 'is_blind'
-    SSN = 'social_security_number'
+    SSN = 'ssn'
+    NUMBER_OF_ACTIVE_GARNISHMENT = 'number_of_active_garnishment'
     IS_SPOUSE_BLIND = 'is_spouse_blind'
     SUPPORT_SECOND_FAMILY = 'support_second_family'
     NO_OF_STUDENT_DEFAULT_LOAN = 'no_of_student_default_loan'
     NO_OF_EXEMPTION_INCLUDING_SELF = 'no_of_exemption_including_self'
+    NUMBER_OF_EXEMPTIONS = 'number_of_exemptions'
+    NUMBER_OF_STUDENT_DEFAULT_LOAN = 'number_of_student_default_loan'
     ARREARS_GREATER_THAN_12_WEEKS = 'arrears_greater_than_12_weeks'
     NO_OF_EXEMPTION = "no_of_exemption"
     GARNISHMENT_TYPE = "type"
@@ -120,6 +123,7 @@ class EmployeeFields:
     EXEMPTION_AMOUNT = "exemption_amount"
     DIST_CODE = "dist_code"
     NO_OF_DEPENDENT_EXEMPTION = "no_of_dependent_exemption"
+    NUMBER_OF_DEPENDENT_CHILD = 'number_of_dependent_child'
     NO_OF_DEPENDENT_CHILD = "no_of_dependent_child"
     IS_CASE_OF_NON_TAX_LEVY = "is_case_of_non_tax_levy"
     IS_CASE_OF_INCOME_TAX_LEVY = "is_case_of_income_tax_levy"
@@ -135,6 +139,10 @@ class ChildSupportFields:
     PRORATE = "prorate"
     DEVIDEEQUALLY = "divide equally"
 
+class CommonFields:
+    CREATED_AT = 'created_at'
+    UPDATED_AT = 'updated_at'
+    IS_ACTIVE = 'is_active'
 
 class PriorityOrderFields:
     CURRENT_SUPPORT = "current_support"

@@ -22,9 +22,8 @@ from user_app.constants import (
     CalculationFields as CA,
     PayrollTaxesFields as PT,
     CalculationResponseFields as CR,
-    CommonConstants,
-    ResponseMessages,
-    BatchDetail
+    CommonFields as CF
+
 )
 from django.db.models import Prefetch, F
 
@@ -72,27 +71,29 @@ class EmployeeImportView(APIView):
                 return Response({"error": "Unsupported file format. Please upload a CSV or Excel file."}, status=status.HTTP_400_BAD_REQUEST)
 
             employees = []
+
+
             for _, row in df.iterrows():
                 try:
                     employee_data = {
                         EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
-                        EE.CASE_ID: row.get(EE.CASE_ID),
-                        EE.AGE: row.get(EE.AGE),
+                        EE.CLIENT_ID: row.get(EE.CLIENT_ID),
+                        EE.FIRST_NAME: row.get(EE.FIRST_NAME),
+                        EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
+                        EE.LAST_NAME: row.get(EE.LAST_NAME),
                         EE.SSN: row.get(EE.SSN),
-                        EE.IS_BLIND: row.get(EE.IS_BLIND),
                         EE.HOME_STATE: row.get(EE.HOME_STATE),
                         EE.WORK_STATE: row.get(EE.WORK_STATE),
                         EE.GENDER: row.get(EE.GENDER),
-                        EE.PAY_PERIOD: row.get(EE.PAY_PERIOD),
-                        EE.NO_OF_EXEMPTION_INCLUDING_SELF: row.get(EE.NO_OF_EXEMPTION_INCLUDING_SELF),
+                        EE.NUMBER_OF_EXEMPTIONS: row.get(EE.NUMBER_OF_EXEMPTIONS),
                         EE.FILING_STATUS: row.get(EE.FILING_STATUS),
                         EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
-                        EE.NO_OF_STUDENT_DEFAULT_LOAN: row.get(EE.NO_OF_STUDENT_DEFAULT_LOAN),
+                        EE.NUMBER_OF_STUDENT_DEFAULT_LOAN: row.get(EE.NUMBER_OF_STUDENT_DEFAULT_LOAN),
+                        EE.NUMBER_OF_DEPENDENT_CHILD: row.get(EE.NUMBER_OF_DEPENDENT_CHILD),
                         EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
-                        EE.SPOUSE_AGE: row.get(EE.SPOUSE_AGE),
-                        EE.IS_SPOUSE_BLIND: row.get(EE.IS_SPOUSE_BLIND),
                         EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
                         EE.GARNISHMENT_FEES_SUSPENDED_TILL: row.get(EE.GARNISHMENT_FEES_SUSPENDED_TILL),
+                        EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT),
                     }
                     serializer = EmployeeDetailSerializer(data=employee_data)
                     if serializer.is_valid():
@@ -446,12 +447,13 @@ class ExportEmployeeDataView(APIView):
             ws = wb.active
             ws.title = "Employee Data"
 
+
             # Define headers using constants where available
             header_fields = [
-                EE.EMPLOYEE_ID, EE.SSN, EE.AGE, EE.GENDER, EE.HOME_STATE, EE.WORK_STATE,
-                EE.CASE_ID, EE.PAY_PERIOD, EE.IS_BLIND, EE.MARITAL_STATUS, EE.FILING_STATUS, EE.SPOUSE_AGE,
-                EE.IS_SPOUSE_BLIND, EE.NO_OF_EXEMPTION_INCLUDING_SELF, EE.SUPPORT_SECOND_FAMILY,
-                EE.NO_OF_STUDENT_DEFAULT_LOAN, EE.GARNISHMENT_FEES_STATUS, EE.GARNISHMENT_FEES_SUSPENDED_TILL
+                EE.EMPLOYEE_ID, EE.SSN,EE.CLIENT_ID, EE.FIRST_NAME, EE.MIDDLE_NAME, EE.LAST_NAME, EE.GENDER, EE.HOME_STATE, EE.WORK_STATE,
+                EE.PAY_PERIOD, EE.MARITAL_STATUS, EE.FILING_STATUS,'number_of_exemption',
+                EE.SUPPORT_SECOND_FAMILY,'number_of_dependent_child',  
+                'number_of_student_default_loan', EE.GARNISHMENT_FEES_STATUS, EE.GARNISHMENT_FEES_SUSPENDED_TILL, EE.NUMBER_OF_ACTIVE_GARNISHMENT, CF.IS_ACTIVE, CF.CREATED_AT, CF.UPDATED_AT
             ]
             ws.append(header_fields)
 
