@@ -45,10 +45,10 @@ class CreditorDebtHelper():
             elif non_consumer_debt:
                 debt_type = "non consumer"
 
-            if home_state.lower()=="alaska":
-                home_state ="alaska"
+            if home_state and home_state.lower() == "alaska":
+                home_state = "alaska"
             else:
-                home_state ="None"
+                home_state = None
             garn_start_date =self._gar_start_date_check(garn_start_date)
             try:    
                 return next(
