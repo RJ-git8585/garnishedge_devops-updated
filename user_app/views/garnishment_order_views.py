@@ -73,46 +73,110 @@ class GarnishmentOrderImportView(APIView):
                     {"error": "Unsupported file format. Please upload a CSV or Excel file."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            orders = []
+            
+            added_orders = []
+            updated_orders = []
+            
             for _, row in df.iterrows():
                 try:
                     order_data = {
+                        EE.CASE_ID: row.get(EE.CASE_ID),
+                        "ssn": row.get("ssn"),
+                        "ee_id": row.get("ee_id"),
+                        "issuing_state": row.get("issuing_state"),
+                        "garnishment_type": row.get("garnishment_type"),
+                        "garnishment_fees": row.get("garnishment_fees"),
+                        "payee": row.get("payee"),
+                        "override_amount": row.get("override_amount"),
+                        "override_start_date": row.get("override_start_date"),
+                        "override_stop_date": row.get("override_stop_date"),
+                        "paid_till_date": row.get("paid_till_date"),
+                        "is_consumer_debt": row.get("is_consumer_debt"),
+                        "issued_date": row.get("issued_date"),
+                        "received_date": row.get("received_date"),
                         "start_date": row.get("start_date"),
-                        "end_date": row.get("end_date"),
-                        "amount": row.get("amount"),
+                        "stop_date": row.get("stop_date"),
+                        "ordered_amount": row.get("ordered_amount"),
+                        "garnishing_authority": row.get("garnishing_authority"),
+                        "withholding_amount": row.get("withholding_amount"),
+                        "current_child_support": row.get("current_child_support"),
+                        "current_medical_support": row.get("current_medical_support"),
+                        "child_support_arrear": row.get("child_support_arrear"),
+                        "medical_support_arrear": row.get("medical_support_arrear"),
+                        "current_spousal_support": row.get("current_spousal_support"),
+                        "spousal_support_arrear": row.get("spousal_support_arrear"),
+                        "fips_code": row.get("fips_code"),
                         "arrear_greater_than_12_weeks": row.get("arrear_greater_than_12_weeks"),
                         "arrear_amount": row.get("arrear_amount"),
-                        "record_updated": row.get("record_updated"),
-                        "case_id": row.get("case_id"),
-                        "work_state": row.get("work_state"),
-                        "type": row.get("type"),
-                        "sdu": row.get("sdu"),
-                        "eeid": row.get("eeid"),
-                        "fein": row.get("fein")
                     }
-                    serializer = GarnishmentOrderSerializer(data=order_data)
-                    if serializer.is_valid():
-                        orders.append(serializer.save())
+                    
+                    # Check if case_id exists
+                    case_id = order_data.get("case_id")
+                    if not case_id:
+                        # Skip rows without case_id
+                        continue
+                    
+                    # Try to find existing order by case_id
+                    existing_order = GarnishmentOrder.objects.filter(case_id=case_id).first()
+                    
+                    if existing_order:
+                        # Update existing order
+                        serializer = GarnishmentOrderSerializer(
+                            existing_order, 
+                            data=order_data, 
+                            partial=True
+                        )
+                        if serializer.is_valid():
+                            serializer.save()
+                            updated_orders.append(case_id)
+                        else:
+                            return Response(
+                                {"error": f"Validation error for case_id {case_id}", "details": serializer.errors},
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
                     else:
-                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        # Create new order
+                        serializer = GarnishmentOrderSerializer(data=order_data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            added_orders.append(case_id)
+                        else:
+                            return Response(
+                                {"error": f"Validation error for case_id {case_id}", "details": serializer.errors},
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+                            
                 except Exception as row_e:
                     return Response(
                         {"error": f"Error processing row: {str(row_e)}"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-            return Response(
-                {"message": "File processed successfully",
-                    "status_code": status.HTTP_201_CREATED},
-                status=status.HTTP_201_CREATED
-            )
+            # Build response message
+            response_data = {
+                "message": "File processed successfully",
+                "status_code": status.HTTP_201_CREATED,
+            }
+            
+            if added_orders:
+                response_data["added_orders"] = added_orders
+                response_data["added_count"] = len(added_orders)
+            
+            if updated_orders:
+                response_data["updated_orders"] = updated_orders
+                response_data["updated_count"] = len(updated_orders)
+            
+            if not added_orders and not updated_orders:
+                response_data["message"] = "No valid data to process"
+                response_data["status_code"] = status.HTTP_200_OK
+                return Response(response_data, status=status.HTTP_200_OK)
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             # logger.error(f"Error importing garnishment orders: {e}")
-            return ValueError(
-                {'error': str(
-                    e), "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR},
+            return Response(
+                {'error': str(e), "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
@@ -445,10 +509,8 @@ class ExportGarnishmentOrderDataView(APIView):
 
             # Define header fields (use constants where available)
             header_fields = [
-                "eeid", "fein", EE.CASE_ID, EE.WORK_STATE, EE.GARNISHMENT_TYPE, "sdu",
-                "start_date", "end_date", "amount", EE.ARREARS_GREATER_THAN_12_WEEKS,
-                CA.ARREAR_AMOUNT, "record_updated"
-            ]
+            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state",EE.GARNISHMENT_TYPE,"garnishment_fees","payee","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","garnishing_authority","withholding_amount","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code",EE.ARREARS_GREATER_THAN_12_WEEKS,CA.ARREAR_AMOUNT,"created_at","updated_at"]
+
             ws.append(header_fields)
 
             # Write data rows to the worksheet
