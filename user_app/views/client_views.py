@@ -6,13 +6,14 @@ from drf_yasg import openapi
 from user_app.models import Client
 from user_app.serializers import ClientSerializer
 from processor.garnishment_library import ResponseHelper
+from rest_framework.permissions import AllowAny
 
 class ClientDetailsAPI(APIView):
     """
     API view for CRUD operations on Client details.
     Provides robust exception handling and clear response messages.
     """
-
+    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: openapi.Response('Success', ClientSerializer(many=True)),
