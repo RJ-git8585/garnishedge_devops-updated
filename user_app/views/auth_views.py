@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView
 from user_app.serializers import (CustomTokenRefreshSerializer,
                            EmployerRegisterSerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer)
+from rest_framework.permissions import AllowAny
 
 
 class CustomTokenRefreshView(TokenRefreshView):
@@ -24,7 +25,10 @@ class CustomTokenRefreshView(TokenRefreshView):
 class LoginAPIView(APIView):
     """
     API view for employer login.
+    
     """
+
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         request_body=openapi.Schema(
@@ -45,6 +49,9 @@ class LoginAPIView(APIView):
         """
         Authenticate employer and return JWT tokens.
         """
+
+        
+
         data = request.data
         email = data.get('email')
         password = data.get('password')
@@ -106,6 +113,8 @@ class RegisterAPIView(APIView):
     """
     API view for employer registration.
     """
+    
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         request_body=EmployerRegisterSerializer,
