@@ -49,9 +49,6 @@ class LoginAPIView(APIView):
         """
         Authenticate employer and return JWT tokens.
         """
-
-        
-
         data = request.data
         email = data.get('email')
         password = data.get('password')
@@ -91,7 +88,7 @@ class LoginAPIView(APIView):
             response.set_cookie(
                 key='access',
                 value=access_token,
-                httponly=True,
+                httponly=False,
                 samesite='Lax',
                 secure=False,
                 expires=access_expire,
@@ -99,7 +96,7 @@ class LoginAPIView(APIView):
             response.set_cookie(
                 key='refresh',
                 value=str(refresh),
-                httponly=True,
+                httponly=False,
                 samesite='Lax',
                 secure=False,
                 expires=refresh_expire,
