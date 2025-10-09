@@ -70,10 +70,18 @@ class LoginAPIView(APIView):
             auth_login(request, user)
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
+            
+            access_expire = datetime.utcnow() + timedelta(minutes=5)
+            refresh_expire = datetime.utcnow() + timedelta(days=1)
 
             response = Response({
                 'success': True,
                 'message': 'Login successful',
+                'access_token': access_token,
+                'refresh_token': str(refresh),
+                'access_expires': access_expire,
+                'refresh_expires': refresh_expire,
+                'session_id': request.session.session_key,
                 'user_data': {
                     "id": user.id,
                     'username': user.username,
@@ -82,8 +90,6 @@ class LoginAPIView(APIView):
                 }
             }, status=status.HTTP_200_OK)
 
-            access_expire = datetime.utcnow() + timedelta(minutes=5)
-            refresh_expire = datetime.utcnow() + timedelta(days=1)
 
             response.set_cookie(
                 key='access',
