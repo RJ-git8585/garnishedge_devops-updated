@@ -13,7 +13,6 @@ class ClientDetailsAPI(APIView):
     API view for CRUD operations on Client details.
     Provides robust exception handling and clear response messages.
     """
-    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: openapi.Response('Success', ClientSerializer(many=True)),

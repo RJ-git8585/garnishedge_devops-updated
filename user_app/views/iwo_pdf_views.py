@@ -137,7 +137,6 @@ def clean_data_for_json(data):
 
 class ConvertExcelToJsonView(APIView):
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         manual_parameters=[
