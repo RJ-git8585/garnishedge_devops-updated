@@ -331,7 +331,6 @@ class ExportSDUDataView(APIView):
     API view to export SDU data as an Excel file.
     Provides robust exception handling and clear response messages.
     """
-    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: 'Excel file exported successfully',
