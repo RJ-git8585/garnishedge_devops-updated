@@ -23,6 +23,7 @@ from user_app.constants import (
     PayrollTaxesFields as PT,
     CalculationResponseFields as CR
 )
+from rest_framework.permissions import AllowAny
 from processor.garnishment_library import PaginationHelper
 
 class GarnishmentOrderImportView(APIView):
@@ -58,7 +59,10 @@ class GarnishmentOrderImportView(APIView):
     def post(self, request):
         try:
             if 'file' not in request.FILES:
-                return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+                return ResponseHelper.error_response(
+                    message="No file provided",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
             file = request.FILES['file']
             file_name = file.name
@@ -69,9 +73,9 @@ class GarnishmentOrderImportView(APIView):
             elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
                 df = pd.read_excel(file)
             else:
-                return Response(
-                    {"error": "Unsupported file format. Please upload a CSV or Excel file."},
-                    status=status.HTTP_400_BAD_REQUEST
+                return ResponseHelper.error_response(
+                    message="Unsupported file format. Please upload a CSV or Excel file.",
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
             
             added_orders = []
@@ -130,9 +134,10 @@ class GarnishmentOrderImportView(APIView):
                             serializer.save()
                             updated_orders.append(case_id)
                         else:
-                            return Response(
-                                {"error": f"Validation error for case_id {case_id}", "details": serializer.errors},
-                                status=status.HTTP_400_BAD_REQUEST
+                            return ResponseHelper.error_response(
+                                message=f"Validation error for case_id {case_id}",
+                                error=serializer.errors,
+                                status_code=status.HTTP_400_BAD_REQUEST
                             )
                     else:
                         # Create new order
@@ -141,22 +146,21 @@ class GarnishmentOrderImportView(APIView):
                             serializer.save()
                             added_orders.append(case_id)
                         else:
-                            return Response(
-                                {"error": f"Validation error for case_id {case_id}", "details": serializer.errors},
-                                status=status.HTTP_400_BAD_REQUEST
+                            return ResponseHelper.error_response(
+                                message=f"Validation error for case_id {case_id}",
+                                error=serializer.errors,
+                                status_code=status.HTTP_400_BAD_REQUEST
                             )
                             
                 except Exception as row_e:
-                    return Response(
-                        {"error": f"Error processing row: {str(row_e)}"},
-                        status=status.HTTP_400_BAD_REQUEST
+                    return ResponseHelper.error_response(
+                        message="Error processing row",
+                        error=str(row_e),
+                        status_code=status.HTTP_400_BAD_REQUEST
                     )
 
-            # Build response message
-            response_data = {
-                "message": "File processed successfully",
-                "status_code": status.HTTP_201_CREATED,
-            }
+            # Build response data
+            response_data = {}
             
             if added_orders:
                 response_data["added_orders"] = added_orders
@@ -167,17 +171,24 @@ class GarnishmentOrderImportView(APIView):
                 response_data["updated_count"] = len(updated_orders)
             
             if not added_orders and not updated_orders:
-                response_data["message"] = "No valid data to process"
-                response_data["status_code"] = status.HTTP_200_OK
-                return Response(response_data, status=status.HTTP_200_OK)
+                return ResponseHelper.success_response(
+                    message="No valid data to process",
+                    data=response_data,
+                    status_code=status.HTTP_200_OK
+                )
 
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return ResponseHelper.success_response(
+                message="File processed successfully",
+                data=response_data,
+                status_code=status.HTTP_201_CREATED
+            )
 
         except Exception as e:
             # logger.error(f"Error importing garnishment orders: {e}")
-            return Response(
-                {'error': str(e), "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return ResponseHelper.error_response(
+                message="Failed to import garnishment orders",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
 
@@ -476,7 +487,7 @@ class ExportGarnishmentOrderDataView(APIView):
     API view to export garnishment order data as an Excel file.
     Provides robust exception handling and clear response messages.
     """
-
+    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: 'Excel file exported successfully',
@@ -492,12 +503,9 @@ class ExportGarnishmentOrderDataView(APIView):
             # Fetch all garnishment orders from the database
             orders = GarnishmentOrder.objects.all()
             if not orders.exists():
-                return JsonResponse(
-                    {
-                        'detail': 'No garnishment orders found',
-                        'status': status.HTTP_404_NOT_FOUND
-                    },
-                    status=status.HTTP_404_NOT_FOUND
+                return ResponseHelper.error_response(
+                    message="No garnishment orders found",
+                    status_code=status.HTTP_404_NOT_FOUND
                 )
 
             serializer = GarnishmentOrderSerializer(orders, many=True)
@@ -509,7 +517,7 @@ class ExportGarnishmentOrderDataView(APIView):
 
             # Define header fields (use constants where available)
             header_fields = [
-            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state",EE.GARNISHMENT_TYPE,"garnishment_fees","payee","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","garnishing_authority","withholding_amount","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code",EE.ARREARS_GREATER_THAN_12_WEEKS,CA.ARREAR_AMOUNT,"created_at","updated_at"]
+            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state","garnishment_type","garnishment_fees","payee","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","garnishing_authority","withholding_amount","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code","arrear_greater_than_12_weeks",CA.ARREAR_AMOUNT,"created_at","updated_at"]
 
             ws.append(header_fields)
 
@@ -534,12 +542,11 @@ class ExportGarnishmentOrderDataView(APIView):
 
         except Exception as e:
             # logger.error(f"Error exporting garnishment order data: {e}")
-            return JsonResponse(
-                {
-                    'detail': f'Error exporting garnishment order data: {str(e)}',
-                    'status': status.HTTP_500_INTERNAL_SERVER_ERROR
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return ResponseHelper.error_response(
+                message="Failed to export garnishment order data",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class GarnishmentOrderAPI(APIView):

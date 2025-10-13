@@ -55,7 +55,7 @@ class PEOSerializer(serializers.ModelSerializer):
         state_code = validated_data.pop("state_code")
         state = self._resolve_related(state_code)
 
-        return PEO.objects.create(state__iexact=state, **validated_data)
+        return PEO.objects.create(state=state, **validated_data)
 
     def update(self, instance, validated_data):
         state_code = validated_data.pop("state_code", None)

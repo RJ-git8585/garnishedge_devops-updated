@@ -58,7 +58,10 @@ class EmployeeImportView(APIView):
     def post(self, request):
         try:
             if 'file' not in request.FILES:
-                return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+                return ResponseHelper.error_response(
+                    message="No file provided",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
             file = request.FILES['file']
             file_name = file.name
 
@@ -68,7 +71,10 @@ class EmployeeImportView(APIView):
             elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
                 df = pd.read_excel(file)
             else:
-                return Response({"error": "Unsupported file format. Please upload a CSV or Excel file."}, status=status.HTTP_400_BAD_REQUEST)
+                return ResponseHelper.error_response(
+                    message="Unsupported file format. Please upload a CSV or Excel file.",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
             employees = []
 
@@ -99,13 +105,29 @@ class EmployeeImportView(APIView):
                     if serializer.is_valid():
                         employees.append(serializer.save())
                     else:
-                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        return ResponseHelper.error_response(
+                            message="Validation error",
+                            error=serializer.errors,
+                            status_code=status.HTTP_400_BAD_REQUEST
+                        )
                 except Exception as row_exc:
-                    return Response({"error": f"Row import error: {row_exc}"}, status=status.HTTP_400_BAD_REQUEST)
+                    return ResponseHelper.error_response(
+                        message="Row import error",
+                        error=str(row_exc),
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
 
-            return Response({"message": "File processed Successfully", "status code": status.HTTP_201_CREATED})
+            return ResponseHelper.success_response(
+                message="File processed successfully",
+                data={"imported_count": len(employees)},
+                status_code=status.HTTP_201_CREATED
+            )
         except Exception as e:
-            return JsonResponse({'error': str(e), "status code": status.HTTP_500_INTERNAL_SERVER_ERROR})
+            return ResponseHelper.error_response(
+                message="Failed to import employees",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class EmployeeDetailAPIViews(APIView):
@@ -434,10 +456,9 @@ class ExportEmployeeDataView(APIView):
         try:
             employees = EmployeeDetail.objects.all()
             if not employees.exists():
-                return JsonResponse(
-                    {'detail': 'No employees found',
-                        'status': status.HTTP_404_NOT_FOUND},
-                    status=status.HTTP_404_NOT_FOUND
+                return ResponseHelper.error_response(
+                    message="No employees found",
+                    status_code=status.HTTP_404_NOT_FOUND
                 )
 
             serializer = EmployeeDetailSerializer(employees, many=True)
@@ -477,10 +498,10 @@ class ExportEmployeeDataView(APIView):
             return response
 
         except Exception as e:
-            return JsonResponse(
-                {'detail': f'Error exporting employee data: {str(e)}',
-                 'status': status.HTTP_500_INTERNAL_SERVER_ERROR},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return ResponseHelper.error_response(
+                message="Failed to export employee data",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
