@@ -14,7 +14,7 @@ from user_app.constants import (
     CommonConstants as CC,
     CalculationResponseFields as CRF,
 )
-from datetime import datetime
+from datetime import datetime, date
 import traceback as t
 
 class CreditorDebtHelper():
@@ -25,50 +25,157 @@ class CreditorDebtHelper():
 
     
     def _gar_start_date_check(self,garn_start_date):
+        """
+        Ensures garn_start_date is in MM/DD/YYYY format.
+        If it's already correct, it won't modify it.
+        """
+        if not garn_start_date:
+            return None
 
-        date = datetime(2022, 12, 5).date()
+        # If it's already a date or datetime object, convert to MM/DD/YYYY string
+        if isinstance(garn_start_date, (date, datetime)):
+            return garn_start_date.strftime("%m/%d/%Y")
+
+        # Check if the date is already in MM/DD/YYYY formatc
+        try:
+            datetime.strptime(garn_start_date, "%m/%d/%Y")
+            # If parsing succeeds, it's already in correct format, return as string
+            formatted_date = garn_start_date
+        except ValueError:
+            # If parsing fails, try replacing - with / and convert
+            garn_start_date = garn_start_date.replace("-", "/")
+            formatted_date = datetime.strptime(garn_start_date, "%m/%d/%Y").strftime("%m/%d/%Y")
+
+        return formatted_date
         
-        garn_start_date = garn_start_date.replace("-", "/")
-        filed_date = datetime.strptime(garn_start_date, "%m/%d/%Y").date()
-        if filed_date > date :
-            return True
-        elif filed_date < date:
-            return False
-        
-    def _exempt_amt_config_data(self,config_data, state, pay_period,garn_start_date, is_consumer_debt=None, non_consumer_debt=None,home_state=None,ftb_type=None):
-            """
-            Helper to fetch the correct config for the state, pay period, and optionally debt type.
-            """
+    def _exempt_amt_config_data(self, config_data, state, pay_period, garn_start_date, 
+                            is_consumer_debt=None, non_consumer_debt=None, 
+                            home_state=None, ftb_type=None):
+        """
+        Helper to fetch the correct config for the state, pay period, and optionally debt type.
+        Now supports date-range matching for states like Oregon and Arizona.
+        """
+
+        if is_consumer_debt==True:
+            debt_type = "consumer"
+        elif non_consumer_debt==True :
+            debt_type = "non consumer"
+        else:
             debt_type = None
-            if is_consumer_debt:
-                debt_type = "consumer"
-            elif non_consumer_debt:
-                debt_type = "non consumer"
 
-            if home_state and home_state.lower() == "alaska":
-                home_state = "alaska"
-            else:
-                home_state = None
-            garn_start_date =self._gar_start_date_check(garn_start_date)
-            try:    
-                return next(
-                        ( i for i in config_data
-                            if i[EmployeeFields.STATE].lower() == state.lower()
-                            and i[EmployeeFields.PAY_PERIOD].lower() == pay_period.lower()
-                            and (i.get("debt_type") is None or i.get("debt_type").lower() == debt_type or not i.get("debt_type")) 
-                            and (i.get("start_gt_5dec24") is None or i.get("start_gt_5dec24") == garn_start_date)
-                            and (i.get("home_state") == home_state)
-                            and (i.get("ftb_type" ) == ftb_type or i.get("ftb_type" ) is None) 
-                        ),
-                        None
-                    )
-                    
-            except Exception as e:
-                return Response(
-                {
-                    "error": f"Exception in CreditorDebtCalculator.calculate: {str(e)}"
-                }
-            )
+        if home_state and home_state.lower() == "alaska":
+            home_state = "alaska"
+        else:
+            home_state = None
+        
+        # Parse garnishment start date if provided
+        garn_start_date_parsed = None
+        if garn_start_date:
+            try:
+                garn_start_date_normalized = garn_start_date.replace("-", "/")
+                garn_start_date_parsed = datetime.strptime(garn_start_date_normalized, "%m/%d/%Y").date()
+            except:
+                pass
+
+        try:
+            # Step 1: Get all matching configs
+            matching_configs = []
+            for i in config_data:
+                # Check basic filters
+                state_match = i[EmployeeFields.STATE].lower() == state.lower()
+                period_match = i[EmployeeFields.PAY_PERIOD].lower() == pay_period.lower()
+                # Debt type filter: config.debt_type must be None OR match the requested debt_type
+                debt_match = (
+                    i.get("debt_type") is None 
+                    or not i.get("debt_type") 
+                    or (debt_type and i.get("debt_type", "").lower() == debt_type)
+                )
+                
+                # Home state filter: config.home_state must be None OR match the requested home_state
+                home_match = (
+                    i.get("home_state") is None 
+                    or (home_state and i.get("home_state") == home_state)
+                )
+                
+                # FTB type filter: config.ftb_type must be None OR match the requested ftb_type
+                ftb_match = (
+                    i.get("ftb_type") is None 
+                    or (ftb_type and i.get("ftb_type") == ftb_type)
+                )
+                
+                if not (state_match and period_match and debt_match and home_match and ftb_match):
+                    continue
+                
+                # Date filtering: handle both simple (NULL date) and date-based configs
+                config_date_str = i.get("garn_start_date")
+                
+                # If config has no date, it's a default/fallback - always include
+                if config_date_str is None or not isinstance(config_date_str, str) or not config_date_str.strip():
+                    matching_configs.append(i)
+                    continue
+                
+                # If we have a garnishment date, do range matching
+                if garn_start_date_parsed:
+                    try:
+                        config_date_normalized = config_date_str.replace("-", "/")
+                        # Try MM/DD/YYYY format first
+                        try:
+                            config_date = datetime.strptime(config_date_normalized, "%m/%d/%Y").date()
+                        except ValueError:
+                            # Try YYYY/MM/DD format
+                            config_date = datetime.strptime(config_date_normalized, "%Y/%m/%d").date()
+                        
+                        # Include configs where effective date <= garnishment date
+                        if config_date <= garn_start_date_parsed:
+                            matching_configs.append(i)
+                    except ValueError:
+                        # Skip configs with unparseable dates
+                        continue
+                # If no garnishment date provided, skip date-specific configs
+            if not matching_configs:
+                return None
+            
+            # Step 2: Return the config with the most recent effective date and highest specificity
+            def get_config_priority(config):
+                """
+                Helper to get config's priority for sorting.
+                Returns tuple: (date, specificity_score)
+                - Higher dates win first
+                - If dates are equal, higher specificity wins
+                """
+                # Get effective date
+                date_str = config.get("garn_start_date")
+                if not date_str or not isinstance(date_str, str):
+                    effective_date = date.min  # NULL dates get lowest date priority
+                else:
+                    try:
+                        date_str = date_str.replace("-", "/")
+                        try:
+                            effective_date = datetime.strptime(date_str, "%m/%d/%Y").date()
+                        except ValueError:
+                            effective_date = datetime.strptime(date_str, "%Y/%m/%d").date()
+                    except ValueError:
+                        effective_date = date.min
+                
+                # Calculate specificity score (higher = more specific)
+                # Configs with specific values for optional fields are more specific
+                specificity = 0
+                if config.get("debt_type") is not None and config.get("debt_type"):
+                    specificity += 1
+                if config.get("home_state") is not None and config.get("home_state"):
+                    specificity += 1
+                if config.get("ftb_type") is not None and config.get("ftb_type"):
+                    specificity += 1
+                
+                return (effective_date, specificity)
+            
+            # Return the most recent and most specific applicable config
+            return max(matching_configs, key=get_config_priority)
+
+        except Exception as e:
+            return Response({
+                "error": f"Exception in _exempt_amt_config_data: {str(e)}"
+            })
 
     def _general_debt_logic(self, disposable_earning, config_data):
         """
@@ -92,7 +199,7 @@ class CreditorDebtHelper():
                 return UtilityClass.build_response(
                     upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
         except Exception as e:
-            print(t.print_exc())
+
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
@@ -117,8 +224,6 @@ class CreditorDebtHelper():
                     f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))"
                 )
         except Exception as e:
-            import traceback as t
-            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _minimum_wage_threshold_compare: {str(e)}"
@@ -173,8 +278,6 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
         except Exception as e:
-            import traceback as t
-            print(t.print_exc())
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_alaska: {str(e)}"
@@ -506,13 +609,29 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
         return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
     
-    def cal_arizona(self, disposable_earning,garn_start_date, exempt_amt_config):
+    def cal_arizona(self, disposable_earning, garn_start_date, exempt_amt_config):
+        """
+        Arizona: Garnishment calculation with date-based formula changes.
+        - After Dec 5, 2022: Uses min(DE - 60×SMW, DE × 10%)
+        - Before Dec 5, 2022: Uses general debt logic with 25%
+        
+        The config already filtered by date, so we determine which formula 
+        to use based on the config values.
+        """
         try:
-            garn_start_date=self._gar_start_date_check(garn_start_date)
-            if garn_start_date ==True:
+            # Check if config is valid
+            if not exempt_amt_config or isinstance(exempt_amt_config, Response):
+                return UtilityClass.build_response(
+                    0, disposable_earning, "ERROR",
+                    "No valid config found for Arizona"
+                )
+            
+            if exempt_amt_config.get(EC.LOWER_THRESHOLD_PERCENT1):
+                # New formula: min(DE - threshold, DE × 10%)
                 return self._minimum_wage_threshold_compare(
                     disposable_earning, exempt_amt_config)
-            elif garn_start_date == False:
+            else:
+                # Old formula: standard general debt logic with thresholds
                 return self._general_debt_logic(
                     disposable_earning, exempt_amt_config)
             
@@ -520,6 +639,29 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_arizona: {str(e)}"
+            )
+
+    def cal_oregon(self, disposable_earning, exempt_amt_config):
+        """
+        Oregon: Garnishment calculation with date-based exempt amounts.
+        Formula: min(DE - exempt_amount, DE * 25%)
+        The exempt_amt_config is already fetched based on garn_start_date.
+        """
+        try:
+            # Check if config is valid
+            if not exempt_amt_config or isinstance(exempt_amt_config, Response):
+                return UtilityClass.build_response(
+                    0, disposable_earning, "ERROR",
+                    "No valid config found for Oregon"
+                )
+            
+            return self._minimum_wage_threshold_compare(
+                disposable_earning, exempt_amt_config
+            )
+        except Exception as e:
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"Exception in cal_oregon: {str(e)}"
             )
 
 class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
@@ -553,12 +695,20 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
         mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
         disposable_earning = cs_helper.calculate_de(gross_pay, mandatory_deductions)
-        garn_start_date=record.get(EmployeeFields.GARN_START_DATE)
-        
+        garn_start_date = record.get(EmployeeFields.GARN_START_DATE)
         
         exempt_amt_config = self._exempt_amt_config_data(
-            config_data, state, pay_period,garn_start_date,is_consumer_debt, non_consumer_debt,home_state)
+            config_data, state, pay_period, garn_start_date, is_consumer_debt, non_consumer_debt, home_state)
 
+        # Check if config lookup failed
+        if not exempt_amt_config:
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"No config found for {state} - {pay_period}"
+            )
+        if isinstance(exempt_amt_config, Response):
+            return exempt_amt_config  # Return the error response
+        
         try:
             state_formulas = {
                 ST.ARIZONA: lambda: self.cal_arizona(disposable_earning,garn_start_date, exempt_amt_config),
@@ -576,7 +726,8 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                 ST.MINNESOTA: lambda: self.cal_minnesota(
                     disposable_earning, exempt_amt_config),
                 ST.VERMONT: lambda: self.cal_vermont(
-                    disposable_earning, is_consumer_debt, non_consumer_debt, exempt_amt_config)
+                    disposable_earning, is_consumer_debt, non_consumer_debt, exempt_amt_config),
+                ST.OREGON: lambda: self.cal_oregon(disposable_earning, exempt_amt_config)
             }
             formula_func = state_formulas.get(state.lower().strip())
 
@@ -598,7 +749,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                 _minimum_wage_threshold_compare_gp = [
                     ST.NEW_YORK, ST.MASSACHUSETTS]
 
-                if state in [ST.TEXAS, ST.NORTH_CAROLINA, ST.SOUTH_CAROLINA]:
+                if state in [ST.TEXAS, ST.NORTH_CAROLINA, ST.SOUTH_CAROLINA,ST.PENNSYLVANIA   ]:
                     return CC.NOT_PERMITTED
                 elif state in _general_debt_logic:
                     return self._general_debt_logic(

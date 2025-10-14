@@ -39,7 +39,7 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
     percent_limit = serializers.IntegerField(source='config.percent_limit', allow_null=True, read_only=True)
     state = serializers.CharField(source='config.state.state', read_only=True)
     pay_period = serializers.CharField(source='config.pay_period.name', read_only=True)
-    start_gt_5dec24= serializers.BooleanField(source='config.start_gt_5dec24', read_only=True)
+    garn_start_date= serializers.DateField(source='config.garn_start_date', read_only=True)
 
     class Meta:
         model = ThresholdAmount
@@ -52,7 +52,7 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
             'de_range_lower_to_upper_threshold_percent',
             'de_range_lower_to_mid_threshold_percent',
             'de_range_mid_to_upper_threshold_percent',
-            'filing_status_percent','start_gt_5dec24','exempt_amt','home_state'
+            'filing_status_percent','garn_start_date','exempt_amt','home_state'
         ]
 
 
@@ -74,7 +74,7 @@ class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
         fields = [
             "id", "debt_type", "is_filing_status", "wage_basis",
             "wage_amount", "percent_limit", "state", "pay_period", "garnishment_type",
-            "start_gt_5dec24", "threshold_amounts","home_state"
+            "garn_start_date", "threshold_amounts","home_state"
         ]
 
     def create(self, validated_data):
@@ -121,7 +121,7 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         fields = [
             "id", "rule_id", "debt_type", "is_filing_status", "wage_basis",
             "wage_amount", "percent_limit", "state", "pay_period", "garnishment_type",
-            "start_gt_5dec24", "threshold_amounts","home_state"
+            "garn_start_date", "threshold_amounts","home_state"
         ]
 
     def __init__(self, *args, **kwargs):

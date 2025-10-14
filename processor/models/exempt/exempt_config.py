@@ -13,7 +13,7 @@ class ExemptConfig(models.Model):
     wage_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     percent_limit = models.IntegerField(null=True, blank=True)
-    start_gt_5dec24 = models.BooleanField(null=True, blank=True)
+    garn_start_date = models.DateField(null=True, blank=True)
     ftb_type = models.CharField(max_length=100,null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

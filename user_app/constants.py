@@ -98,7 +98,7 @@ class EmployeeFields:
     DEBT_TYPE = "debt_type"
     GARN_START_DATE = 'garn_start_date'
     STATEMENT_OF_EXEMPTION_RECEIVED_DATE = 'statement_of_exemption_received_date'
-    IS_CONSUMER_DEBT = 'consumer_debt'
+    IS_CONSUMER_DEBT = 'is_consumer_debt'
     CONSUMER_DEBT = 'consumer_debt'
     NON_CONSUMER_DEBT = 'non_consumer_debt'
     PAYROLL_DATE = 'payroll_date'

@@ -766,10 +766,27 @@ class CalculationDataView:
             # Create standardized result
             result = self._create_standardized_result(GT.CREDITOR_DEBT, record)
             
+            # Get garnishment data from input to extract case IDs
+            garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
+            creditor_debt_garnishment = None
+            
+            # Find creditor debt garnishment data
+            for garnishment in garnishment_data:
+                if garnishment.get(GDK.TYPE, '').lower() == GT.CREDITOR_DEBT:
+                    creditor_debt_garnishment = garnishment
+                    break
+            
+            # Extract case_id
+            case_id = GRF.CREDITOR_DEBT  # Default fallback
+            if creditor_debt_garnishment:
+                cases = creditor_debt_garnishment.get(GDK.DATA, [])
+                if cases and len(cases) > 0:
+                    case_id = cases[0].get(EE.CASE_ID, GRF.CREDITOR_DEBT)
+            
             if calculation_result[CR.WITHHOLDING_AMT] <= 0:
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: INSUFFICIENT_PAY, GRF.TYPE: GRF.CREDITOR_DEBT}
+                    {GRF.AMOUNT: INSUFFICIENT_PAY, GRF.TYPE: GRF.CREDITOR_DEBT, GRF.CASE_ID: case_id}
                 ]
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
@@ -784,7 +801,7 @@ class CalculationDataView:
                 
                 
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.CREDITOR_DEBT}
+                    {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.CREDITOR_DEBT, GRF.CASE_ID: case_id}
                 ]
                 result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
                 result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
@@ -800,6 +817,8 @@ class CalculationDataView:
             return result
             
         except Exception as e:
+            import traceback as t
+            print(t.print_exc())
             logger.error(f"{EM.ERROR_CALCULATING} creditor debt: {e}")
             return self._create_standardized_result(GT.CREDITOR_DEBT, record, error_message=f"{EM.ERROR_CALCULATING} creditor debt: {e}")
         
