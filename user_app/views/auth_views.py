@@ -71,7 +71,7 @@ class LoginAPIView(APIView):
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
             
-            access_expire = datetime.utcnow() + timedelta(minutes=2)
+            access_expire = datetime.utcnow() + timedelta(minutes=5)
             refresh_expire = datetime.utcnow() + timedelta(days=1)
 
             response = Response({
