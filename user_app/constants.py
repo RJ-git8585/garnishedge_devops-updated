@@ -108,6 +108,7 @@ class EmployeeFields:
     NET_PAY = 'net_pay'
     AGE = 'age'
     IS_BLIND = 'is_blind'
+    GARNISHMENT_FEES="garnishment_fees"
     SSN = 'ssn'
     NUMBER_OF_ACTIVE_GARNISHMENT = 'number_of_active_garnishment'
     IS_SPOUSE_BLIND = 'is_spouse_blind'
@@ -450,6 +451,7 @@ class ConfigDataKeys:
 class ErrorMessages:
     """Constants for error messages"""
     INSUFFICIENT_PAY = "Garnishment cannot be deducted due to insufficient pay"
+    GARNISHMENT_FEES_GTE_WITHHOLDING_AMT = "Garnishment fees cannot be deducted because they exceed the available withholding amount."
     GARNISHMENT_FEES_INSUFFICIENT_PAY = "Garnishment fees cannot be deducted due to insufficient pay"
     EMPLOYEE_NOT_REGISTERED = "is not registered. Please register the employee first to suspend garnishment fees calculation."
     GARNISHMENT_FEES_SUSPENDED = "Garnishment fees cannot be deducted due to the suspension of garnishment fees until"

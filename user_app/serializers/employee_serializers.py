@@ -2,10 +2,13 @@ from rest_framework import serializers
 from user_app.models import Client, GarnishmentOrder,EmployeeDetail
 from processor.models import FedFilingStatus,State
 from datetime import datetime
+import re
+from user_app.utils import DataProcessingUtils
 
 class CustomDateField(serializers.DateField):
     """
-    Custom date field that accepts MM-DD-YYYY format and converts to YYYY-MM-DD
+    Custom date field that accepts multiple date formats and converts to YYYY-MM-DD
+    Uses DataProcessingUtils for robust date parsing.
     """
     def __init__(self, **kwargs):
         # Set default values for null handling
@@ -14,26 +17,39 @@ class CustomDateField(serializers.DateField):
         super().__init__(**kwargs)
     
     def to_internal_value(self, data):
-        # Handle null/empty values
-        if data is None or data == '' or data == 'null':
+        # Use the utility function for date parsing
+        parsed_date = DataProcessingUtils.parse_date_field(data)
+        
+        if parsed_date is None:
             return None
         
         try:
-            # Try to parse MM-DD-YYYY format
-            if isinstance(data, str) and len(data.split('-')) == 3:
-                parts = data.split('-')
-                if len(parts[0]) == 2 and len(parts[1]) == 2 and len(parts[2]) == 4:
-                    # MM-DD-YYYY format
-                    month, day, year = parts
-                    date_obj = datetime.strptime(f"{month}-{day}-{year}", "%m-%d-%Y")
-                    return date_obj.date()
-            
-            # If not MM-DD-YYYY format, try default parsing
-            return super().to_internal_value(data)
+            # Convert string back to date object for serializer
+            return datetime.strptime(parsed_date, "%Y-%m-%d").date()
         except (ValueError, TypeError):
             raise serializers.ValidationError(
-                "Date has wrong format. Use MM-DD-YYYY format (e.g., 01-20-2024)."
+                f"Date '{data}' has wrong format. Supported formats: MM-DD-YYYY, YYYY-MM-DD, MM/DD/YYYY, etc."
             )
+
+
+class CustomIntegerField(serializers.IntegerField):
+    """
+    Custom integer field that handles string-to-integer conversions with better validation
+    Uses DataProcessingUtils for robust integer parsing.
+    """
+    def __init__(self, **kwargs):
+        kwargs.setdefault('allow_null', True)
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+    
+    def to_internal_value(self, data):
+        # Use the utility function for integer parsing
+        parsed_int = DataProcessingUtils.parse_integer_field(data)
+        
+        if parsed_int is None:
+            return None
+        
+        return parsed_int
 
 
 class ClientField(serializers.Field):
@@ -79,8 +95,14 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     work_state = StateField()
     filing_status = FilingStatusField()
     
-    # Custom date field that accepts MM-DD-YYYY format
+    # Custom date field that accepts multiple date formats
     garnishment_fees_suspended_till = CustomDateField()
+    
+    # Custom integer fields for better validation
+    number_of_exemptions = CustomIntegerField()
+    number_of_student_default_loan = CustomIntegerField()
+    number_of_dependent_child = CustomIntegerField()
+    number_of_active_garnishment = CustomIntegerField()
 
     class Meta:
         model = EmployeeDetail

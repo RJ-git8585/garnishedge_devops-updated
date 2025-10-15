@@ -9,7 +9,9 @@ from io import BytesIO
 import pandas as pd
 from processor.garnishment_library import PaginationHelper
 import math
+from rest_framework.permissions import AllowAny
 import csv
+import re
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from user_app.models import EmployeeDetail, GarnishmentOrder
@@ -26,6 +28,7 @@ from user_app.constants import (
 
 )
 from django.db.models import Prefetch, F
+from user_app.utils import DataProcessingUtils
 
 
 class EmployeeImportView(APIView):
@@ -81,26 +84,13 @@ class EmployeeImportView(APIView):
 
             for _, row in df.iterrows():
                 try:
-                    employee_data = {
-                        EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
-                        EE.CLIENT_ID: row.get(EE.CLIENT_ID),
-                        EE.FIRST_NAME: row.get(EE.FIRST_NAME),
-                        EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
-                        EE.LAST_NAME: row.get(EE.LAST_NAME),
-                        EE.SSN: row.get(EE.SSN),
-                        EE.HOME_STATE: row.get(EE.HOME_STATE),
-                        EE.WORK_STATE: row.get(EE.WORK_STATE),
-                        EE.GENDER: row.get(EE.GENDER),
-                        EE.NUMBER_OF_EXEMPTIONS: row.get(EE.NUMBER_OF_EXEMPTIONS),
-                        EE.FILING_STATUS: row.get(EE.FILING_STATUS),
-                        EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
-                        EE.NUMBER_OF_STUDENT_DEFAULT_LOAN: row.get(EE.NUMBER_OF_STUDENT_DEFAULT_LOAN),
-                        EE.NUMBER_OF_DEPENDENT_CHILD: row.get(EE.NUMBER_OF_DEPENDENT_CHILD),
-                        EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
-                        EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
-                        EE.GARNISHMENT_FEES_SUSPENDED_TILL: row.get(EE.GARNISHMENT_FEES_SUSPENDED_TILL),
-                        EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT),
-                    }
+                    # Convert row to dict and clean data using utility functions
+                    employee_data = dict(row)
+                    employee_data = DataProcessingUtils.clean_data_row(employee_data)
+                    
+                    # Use the specialized employee data cleaning function
+                    employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
+                    
                     serializer = EmployeeDetailSerializer(data=employee_data)
                     if serializer.is_valid():
                         employees.append(serializer.save())
@@ -341,43 +331,14 @@ class UpsertEmployeeDataView(APIView):
             added_employees, updated_employees = [], []
 
             for row in data:
-                # Remove unnamed columns and handle NaN social security numbers
-                row = {k: v for k, v in row.items() if k and not str(
-                    k).startswith('Unnamed')}
-                row = {
-                    k: ("" if (k == "social_security_number" and isinstance(
-                        v, float) and math.isnan(v)) else v)
-                    for k, v in row.items()
-                }
-
-                # Parse and format date fields
-                date_field = row.get("garnishment_fees_suspended_till")
-                if date_field:
-                    try:
-                        if isinstance(date_field, datetime):
-                            row["garnishment_fees_suspended_till"] = date_field.strftime(
-                                "%Y-%m-%d")
-                        else:
-                            parsed_date = pd.to_datetime(
-                                date_field, errors='coerce')
-                            row["garnishment_fees_suspended_till"] = parsed_date.strftime(
-                                "%Y-%m-%d") if not pd.isnull(parsed_date) else None
-                    except Exception:
-                        row["garnishment_fees_suspended_till"] = None
+                # Clean and normalize row data using utility functions
+                row = DataProcessingUtils.clean_data_row(row)
+                row = DataProcessingUtils.validate_and_clean_employee_data(row)
 
                 case_id = row.get("case_id")
                 ee_id = row.get("ee_id")
                 if not ee_id or not case_id:
                     continue  # Skip if identifiers are missing
-
-                # Normalize boolean fields
-                boolean_fields = ['is_blind',
-                                  'is_spouse_blind', 'support_second_family']
-                for bfield in boolean_fields:
-                    val = row.get(bfield)
-                    if isinstance(val, str):
-                        row[bfield] = val.strip().lower() in [
-                            'true', '1', 'yes']
 
                 # Check if employee exists
                 obj_qs = EmployeeDetail.objects.filter(
@@ -444,7 +405,7 @@ class ExportEmployeeDataView(APIView):
     Exports employee details as an Excel file.
     Provides robust exception handling and clear response messages.
     """
-
+    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: 'Employee data exported successfully as Excel file',
@@ -472,7 +433,7 @@ class ExportEmployeeDataView(APIView):
             # Define headers using constants where available
             header_fields = [
                 EE.EMPLOYEE_ID, EE.SSN,EE.CLIENT_ID, EE.FIRST_NAME, EE.MIDDLE_NAME, EE.LAST_NAME, EE.GENDER, EE.HOME_STATE, EE.WORK_STATE,
-                EE.PAY_PERIOD, EE.MARITAL_STATUS, EE.FILING_STATUS,'number_of_exemption',
+                EE.MARITAL_STATUS, EE.FILING_STATUS,'number_of_exemptions',
                 EE.SUPPORT_SECOND_FAMILY,'number_of_dependent_child',  
                 'number_of_student_default_loan', EE.GARNISHMENT_FEES_STATUS, EE.GARNISHMENT_FEES_SUSPENDED_TILL, EE.NUMBER_OF_ACTIVE_GARNISHMENT, CF.IS_ACTIVE, CF.CREATED_AT, CF.UPDATED_AT
             ]

@@ -386,6 +386,9 @@ class WithholdingProcessor:
             
             # Parse and create employee record
             record = self._create_employee_record(validated_data)
+            # print("record",record)
+            # case_id =record['garnishment_data']
+            # print("record['garnishment_data']",record['garnishment_data'])
             
             # Initialize priority repository with state info
             if not self.priority_repository:
@@ -405,12 +408,6 @@ class WithholdingProcessor:
             self.logger.info(f"Successfully processed withholding for employee {record.eeid}")
             
             return {
-                "success": True,
-                "employee_info": {
-                    "cid": record.cid,
-                    "eeid": record.eeid,
-                    "work_state": record.work_state,
-                },
                 "calculations": {
                     "gross_pay": float(record.gross_pay),
                     "disposable_earnings": float(record.disposable_earnings),

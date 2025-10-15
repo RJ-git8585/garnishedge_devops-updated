@@ -162,6 +162,7 @@ class PostCalculationView(APIView):
 
         # Get the first garnishment order for some fields (issuing_state, etc.)
         first_garnishment = garnishment_orders.first()
+        # print("first_garnishment",first_garnishment[0])
 
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
@@ -169,13 +170,14 @@ class PostCalculationView(APIView):
         # Extract deductions from garnishment orders
         deductions = self._extract_deductions_from_garnishment_orders(garnishment_orders, case)
 
-        
+        #print("first_garnishment.garnishment_fees",first_garnishment.garnishment_fees)
         # Add employee-specific fields
         enriched_case.update({
             'work_state': employee.work_state.state if employee.work_state else None,
             'home_state': employee.home_state.state if employee.home_state else None,
             'issuing_state': first_garnishment.issuing_state.state_code.lower() if first_garnishment and first_garnishment.issuing_state else None,
             'no_of_exemption_including_self': employee.number_of_exemptions,
+            'garnishment_fees':  first_garnishment.garnishment_fees if first_garnishment and first_garnishment.garnishment_fees else 0,
             'is_multiple_garnishment_type': len(garnishment_types) > 1,
             'no_of_student_default_loan': employee.number_of_student_default_loan,
             'filing_status': employee.filing_status.name if employee.filing_status else None,
@@ -190,7 +192,7 @@ class PostCalculationView(APIView):
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
-        print("enriched_case",enriched_case)
+        #print("enriched_case",enriched_case)
         return enriched_case
 
     def post(self, request, *args, **kwargs):
@@ -242,7 +244,6 @@ class PostCalculationView(APIView):
             
             cases_data = enriched_cases
 
-            # print("cases_data",cases_data)
             
             # Log any missing employees but continue processing
             if not_found_employees:
