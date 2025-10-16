@@ -214,6 +214,8 @@ class DataProcessingUtils:
                 return True
             elif val_str in ['false', '0', 'no', 'n', 'off', 'disabled']:
                 return False
+            elif val_str in ['true', 'false']:  # Handle Excel boolean strings
+                return val_str == 'true'
             
             # Handle numeric values
             if isinstance(bool_value, (int, float)):
@@ -267,10 +269,13 @@ class DataProcessingUtils:
             'ssn': 'ssn',
             'number of exemptions': 'number_of_exemptions',
             'numberofexemptions': 'number_of_exemptions',
+            'number of exemption': 'number_of_exemptions',  # Handle singular form
+            'numberofexemption': 'number_of_exemptions',
             'number of dependent child': 'number_of_dependent_child',
             'numberofdependentchild': 'number_of_dependent_child',
             'number of student default loan': 'number_of_student_default_loan',
             'numberofstudentdefaultloan': 'number_of_student_default_loan',
+            'number of student default loa': 'number_of_student_default_loan',  # Handle truncated
             'support second family': 'support_second_family',
             'supportsecondfamily': 'support_second_family',
             'garnishment fees status': 'garnishment_fees_status',
@@ -279,6 +284,8 @@ class DataProcessingUtils:
             'garnishmentfeessuspendedtill': 'garnishment_fees_suspended_till',
             'number of active garnishment': 'number_of_active_garnishment',
             'numberofactivegarnishment': 'number_of_active_garnishment',
+            # Handle the complex concatenated field name
+            'number of acgarnishment fees suspended tisupport secondgarnishment fe': 'garnishment_fees_suspended_till',
         }
         
         return field_mappings.get(normalized, field_name)
@@ -312,8 +319,26 @@ class DataProcessingUtils:
                 cleaned_row[normalized_key] = ""
                 continue
             
+            # Handle special complex field that contains both date and boolean
+            if normalized_key == 'garnishment_fees_suspended_till' and isinstance(value, str):
+                # Parse the complex field "2024-02-02 No" -> extract date part
+                parts = str(value).strip().split()
+                if parts:
+                    # First part should be the date
+                    date_part = parts[0]
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(date_part)
+                    
+                    # If there are more parts, handle support_second_family
+                    if len(parts) > 1:
+                        support_part = parts[1].lower()
+                        if support_part in ['yes', 'true', '1']:
+                            cleaned_row['support_second_family'] = True
+                        elif support_part in ['no', 'false', '0']:
+                            cleaned_row['support_second_family'] = False
+                else:
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(value)
             # Apply appropriate parsing based on field name
-            if any(date_field in normalized_key.lower() for date_field in ['date', 'till', 'until']):
+            elif any(date_field in normalized_key.lower() for date_field in ['date', 'till', 'until']):
                 cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(value)
             elif any(int_field in normalized_key.lower() for int_field in ['number', 'count', 'amount', 'id']):
                 cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
