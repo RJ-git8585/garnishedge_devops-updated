@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from user_app.models import Client, GarnishmentOrder,EmployeeDetails
+from user_app.models import Client, GarnishmentOrder,EmployeeDetail
 from processor.models import FedFilingStatus,State
 from datetime import datetime
 import re
@@ -105,7 +105,7 @@ class EmployeeDetailsSerializer(serializers.ModelSerializer):
     number_of_active_garnishment = CustomIntegerField()
 
     class Meta:
-        model = EmployeeDetails
+        model = EmployeeDetail
         fields = [
             "id", "ee_id", "client_id",
             "first_name", "middle_name", "last_name",

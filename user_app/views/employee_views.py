@@ -14,7 +14,7 @@ import csv
 import re
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from user_app.models import EmployeeDetails, GarnishmentOrder
+from user_app.models import EmployeeDetail, GarnishmentOrder
 from processor.models import GarnishmentFees
 from user_app.serializers import EmployeeDetailsSerializer
 from datetime import datetime
@@ -143,17 +143,17 @@ class EmployeeDetailsAPIViews(APIView):
         try:
             if case_id and ee_id:
                 try:
-                    employee = EmployeeDetails.objects.get(
+                    employee = EmployeeDetail.objects.get(
                         case_id=case_id, ee_id=ee_id)
                     serializer = EmployeeDetailsSerializer(employee)
                     return ResponseHelper.success_response('Employee data fetched successfully', serializer.data)
-                except EmployeeDetails.DoesNotExist:
+                except EmployeeDetail.DoesNotExist:
                     return ResponseHelper.error_response(
                         f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                         status_code=status.HTTP_404_NOT_FOUND
                     )
             else:
-                employees = EmployeeDetails.objects.all()
+                employees = EmployeeDetail.objects.all()
                 serializer = EmployeeDetailsSerializer(employees, many=True)
 
                 return ResponseHelper.success_response('All data fetched successfully', serializer.data)
@@ -217,9 +217,9 @@ class EmployeeDetailsAPIViews(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         try:
-            employee = EmployeeDetails.objects.get(
+            employee = EmployeeDetail.objects.get(
                 case_id=case_id, ee_id=ee_id)
-        except EmployeeDetails.DoesNotExist:
+        except EmployeeDetail.DoesNotExist:
             return ResponseHelper.error_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                 status_code=status.HTTP_404_NOT_FOUND
@@ -263,13 +263,13 @@ class EmployeeDetailsAPIViews(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         try:
-            employee = EmployeeDetails.objects.get(
+            employee = EmployeeDetail.objects.get(
                 case_id=case_id, ee_id=ee_id)
             employee.delete()
             return ResponseHelper.success_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" deleted successfully'
             )
-        except EmployeeDetails.DoesNotExist:
+        except EmployeeDetail.DoesNotExist:
             return ResponseHelper.error_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                 status_code=status.HTTP_404_NOT_FOUND
@@ -358,7 +358,7 @@ class UpsertEmployeeDataView(APIView):
                     cleaned_row['marital_status'] = DataProcessingUtils.get_default_marital_status()
 
                 # Check if employee exists
-                obj_qs = EmployeeDetails.objects.filter(
+                obj_qs = EmployeeDetail.objects.filter(
                     case_id=case_id, ee_id=ee_id)
                 obj = obj_qs.first() if obj_qs.exists() else None
 
@@ -441,7 +441,7 @@ class ExportEmployeeDataView(APIView):
     )
     def get(self, request):
         try:
-            employees = EmployeeDetails.objects.all()
+            employees = EmployeeDetail.objects.all()
             if not employees.exists():
                 return ResponseHelper.error_response(
                     message="No employees found",
@@ -509,7 +509,7 @@ class EmployeeGarnishmentOrderCombineData(APIView):
 
     def get(self, request):
         try:
-            employees = EmployeeDetails.objects.prefetch_related(
+            employees = EmployeeDetail.objects.prefetch_related(
                 Prefetch(
                     'garnishment_orders',
                     queryset=GarnishmentOrder.objects.all()
@@ -572,7 +572,7 @@ class EmployeeDetailsAPI(APIView):
         Get paginated list of active employees.
         """
         try:
-            employees = EmployeeDetails.objects.all().order_by("-created_at")
+            employees = EmployeeDetail.objects.all().order_by("-created_at")
             result = EmployeeDetailsSerializer(employees, many=True)
             return ResponseHelper.success_response(
                 message="Employees fetched successfully",
@@ -627,8 +627,8 @@ class EmployeeDetailsByIdAPI(APIView):
 
     def get_object(self, pk):
         try:
-            return EmployeeDetails.objects.get(pk=pk)
-        except EmployeeDetails.DoesNotExist:
+            return EmployeeDetail.objects.get(pk=pk)
+        except EmployeeDetail.DoesNotExist:
             return None
 
     @swagger_auto_schema(
