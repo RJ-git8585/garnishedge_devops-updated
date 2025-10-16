@@ -89,11 +89,18 @@ class EmployeeImportView(APIView):
                     employee_data = dict(row)
                     employee_data = DataProcessingUtils.clean_data_row(employee_data)
                     
+                    # Debug field values to see what's being read
+                    debug_info = DataProcessingUtils.debug_field_values(employee_data)
+                    
                     # Use the new validation and fixing function with auto client creation
                     cleaned_data, validation_errors = DataProcessingUtils.validate_and_fix_employee_data(employee_data, auto_create_client=True)
                     
                     # Collect validation warnings
                     validation_warnings.extend(validation_errors)
+                    
+                    # Add debug info to warnings for troubleshooting
+                    if validation_errors:
+                        validation_warnings.append(f"Debug info for row: {debug_info}")
                     
                     # Check if there are critical errors (missing required fields)
                     critical_errors = [err for err in validation_errors if "not found" in err or "is required" in err]

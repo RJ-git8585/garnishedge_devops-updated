@@ -225,6 +225,65 @@ class DataProcessingUtils:
             return None
 
     @staticmethod
+    def normalize_field_name(field_name: str) -> str:
+        """
+        Normalize field names to handle variations in Excel column names.
+        
+        Args:
+            field_name: Original field name from Excel/CSV
+            
+        Returns:
+            str: Normalized field name
+        """
+        if not field_name:
+            return field_name
+        
+        # Convert to lowercase and strip whitespace
+        normalized = str(field_name).strip().lower()
+        
+        # Handle common variations
+        field_mappings = {
+            'filing status': 'filing_status',
+            'filingstatus': 'filing_status',
+            'marital status': 'marital_status',
+            'maritalstatus': 'marital_status',
+            'client id': 'client_id',
+            'clientid': 'client_id',
+            'employee id': 'ee_id',
+            'employeeid': 'ee_id',
+            'ee id': 'ee_id',
+            'eeid': 'ee_id',
+            'first name': 'first_name',
+            'firstname': 'first_name',
+            'last name': 'last_name',
+            'lastname': 'last_name',
+            'middle name': 'middle_name',
+            'middlename': 'middle_name',
+            'home state': 'home_state',
+            'homestate': 'home_state',
+            'work state': 'work_state',
+            'workstate': 'work_state',
+            'social security number': 'ssn',
+            'ssn': 'ssn',
+            'number of exemptions': 'number_of_exemptions',
+            'numberofexemptions': 'number_of_exemptions',
+            'number of dependent child': 'number_of_dependent_child',
+            'numberofdependentchild': 'number_of_dependent_child',
+            'number of student default loan': 'number_of_student_default_loan',
+            'numberofstudentdefaultloan': 'number_of_student_default_loan',
+            'support second family': 'support_second_family',
+            'supportsecondfamily': 'support_second_family',
+            'garnishment fees status': 'garnishment_fees_status',
+            'garnishmentfeesstatus': 'garnishment_fees_status',
+            'garnishment fees suspended till': 'garnishment_fees_suspended_till',
+            'garnishmentfeessuspendedtill': 'garnishment_fees_suspended_till',
+            'number of active garnishment': 'number_of_active_garnishment',
+            'numberofactivegarnishment': 'number_of_active_garnishment',
+        }
+        
+        return field_mappings.get(normalized, field_name)
+
+    @staticmethod
     def clean_data_row(row_data: dict) -> dict:
         """
         Clean and normalize a data row from Excel/CSV import.
@@ -242,24 +301,27 @@ class DataProcessingUtils:
             if not key or str(key).startswith('Unnamed'):
                 continue
             
+            # Normalize field name
+            normalized_key = DataProcessingUtils.normalize_field_name(key)
+            
             # Clean NaN values first
             value = DataProcessingUtils.clean_nan_values(value)
             
             # Handle special cases
-            if key == "social_security_number" and value is None:
-                cleaned_row[key] = ""
+            if normalized_key == "ssn" and value is None:
+                cleaned_row[normalized_key] = ""
                 continue
             
             # Apply appropriate parsing based on field name
-            if any(date_field in key.lower() for date_field in ['date', 'till', 'until']):
-                cleaned_row[key] = DataProcessingUtils.parse_date_field(value)
-            elif any(int_field in key.lower() for int_field in ['number', 'count', 'amount', 'id']):
-                cleaned_row[key] = DataProcessingUtils.parse_integer_field(value)
-            elif any(bool_field in key.lower() for bool_field in ['status', 'support', 'active', 'is_']):
-                cleaned_row[key] = DataProcessingUtils.parse_boolean_field(value)
+            if any(date_field in normalized_key.lower() for date_field in ['date', 'till', 'until']):
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(value)
+            elif any(int_field in normalized_key.lower() for int_field in ['number', 'count', 'amount', 'id']):
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
+            elif any(bool_field in normalized_key.lower() for bool_field in ['status', 'support', 'active', 'is_']):
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_boolean_field(value)
             else:
                 # Keep original value for other fields (already cleaned of NaN)
-                cleaned_row[key] = value
+                cleaned_row[normalized_key] = value
         
         return cleaned_row
 
@@ -358,6 +420,35 @@ class DataProcessingUtils:
         return 'single'  # Default marital status
 
     @staticmethod
+    def is_field_empty(value: Any) -> bool:
+        """
+        Check if a field value should be considered empty.
+        
+        Args:
+            value: Field value to check
+            
+        Returns:
+            bool: True if field should be considered empty
+        """
+        if value is None:
+            return True
+        
+        # Clean NaN values first
+        cleaned_value = DataProcessingUtils.clean_nan_values(value)
+        if cleaned_value is None:
+            return True
+        
+        # Check for empty string
+        if isinstance(cleaned_value, str) and cleaned_value.strip() == '':
+            return True
+        
+        # Check for string representations of empty
+        if isinstance(cleaned_value, str) and cleaned_value.strip().lower() in ['', 'nan', 'null', 'none', 'n/a', 'na']:
+            return True
+        
+        return False
+
+    @staticmethod
     def validate_and_fix_employee_data(employee_data: dict, auto_create_client: bool = False) -> tuple[dict, list]:
         """
         Validate and fix employee data, returning cleaned data and validation errors.
@@ -377,30 +468,29 @@ class DataProcessingUtils:
         
         # Validate and fix client_id
         client_id = cleaned_data.get('client_id')
-        if client_id:
-            if not DataProcessingUtils.validate_client_exists(client_id):
-                if auto_create_client:
-                    # Try to create the missing client
-                    client_created = DataProcessingUtils.create_missing_client(client_id)
-                    if client_created:
-                        validation_errors.append(f"Client '{client_id}' was not found and was created automatically.")
-                    else:
-                        validation_errors.append(f"Client '{client_id}' not found and could not be created automatically.")
-                else:
-                    validation_errors.append(f"Client '{client_id}' not found. Please create the client first.")
-        else:
+        if DataProcessingUtils.is_field_empty(client_id):
             validation_errors.append("client_id is required")
+        elif not DataProcessingUtils.validate_client_exists(client_id):
+            if auto_create_client:
+                # Try to create the missing client
+                client_created = DataProcessingUtils.create_missing_client(client_id)
+                if client_created:
+                    validation_errors.append(f"Client '{client_id}' was not found and was created automatically.")
+                else:
+                    validation_errors.append(f"Client '{client_id}' not found and could not be created automatically.")
+            else:
+                validation_errors.append(f"Client '{client_id}' not found. Please create the client first.")
         
         # Validate and fix filing_status
         filing_status = cleaned_data.get('filing_status')
-        if not filing_status:
+        if DataProcessingUtils.is_field_empty(filing_status):
             default_filing_status = DataProcessingUtils.get_default_filing_status()
             cleaned_data['filing_status'] = default_filing_status
             validation_errors.append(f"filing_status was empty, using default: '{default_filing_status}'")
         
         # Validate and fix marital_status
         marital_status = cleaned_data.get('marital_status')
-        if not marital_status:
+        if DataProcessingUtils.is_field_empty(marital_status):
             default_marital_status = DataProcessingUtils.get_default_marital_status()
             cleaned_data['marital_status'] = default_marital_status
             validation_errors.append(f"marital_status was empty, using default: '{default_marital_status}'")
@@ -408,7 +498,7 @@ class DataProcessingUtils:
         # Validate required fields
         required_fields = ['ee_id', 'first_name', 'ssn', 'home_state', 'work_state']
         for field in required_fields:
-            if not cleaned_data.get(field):
+            if DataProcessingUtils.is_field_empty(cleaned_data.get(field)):
                 validation_errors.append(f"{field} is required")
         
         return cleaned_data, validation_errors
@@ -459,3 +549,37 @@ class DataProcessingUtils:
         except Exception as e:
             print(f"Error creating client {client_id}: {str(e)}")
             return False
+
+    @staticmethod
+    def debug_field_values(employee_data: dict, field_names: list = None) -> dict:
+        """
+        Debug function to see what values are being read from Excel/CSV.
+        
+        Args:
+            employee_data: Dictionary containing employee data
+            field_names: List of field names to debug (default: common fields)
+            
+        Returns:
+            dict: Debug information about field values
+        """
+        if field_names is None:
+            field_names = ['filing_status', 'marital_status', 'client_id', 'ee_id', 'first_name']
+        
+        debug_info = {
+            'available_fields': list(employee_data.keys()),
+            'field_values': {}
+        }
+        
+        for field in field_names:
+            value = employee_data.get(field)
+            debug_info['field_values'][field] = {
+                'raw_value': value,
+                'type': type(value).__name__,
+                'is_none': value is None,
+                'is_pandas_nan': pd.isna(value) if value is not None else False,
+                'is_empty_string': isinstance(value, str) and value.strip() == '',
+                'cleaned_value': DataProcessingUtils.clean_nan_values(value),
+                'is_field_empty': DataProcessingUtils.is_field_empty(value)
+            }
+        
+        return debug_info

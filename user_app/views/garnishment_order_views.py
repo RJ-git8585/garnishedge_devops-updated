@@ -93,7 +93,6 @@ class GarnishmentOrderImportView(APIView):
                     order_data = {
                         EE.CASE_ID: row.get(EE.CASE_ID),
                         "ssn": row.get("ssn"),
-                        "ee_id": row.get("ee_id"),
                         "issuing_state": row.get("issuing_state"),
                         "garnishment_type": row.get("garnishment_type"),
                         "garnishment_fees": row.get("garnishment_fees"),
