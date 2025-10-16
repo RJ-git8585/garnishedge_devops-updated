@@ -25,6 +25,7 @@ from user_app.constants import (
 )
 from rest_framework.permissions import AllowAny
 from processor.garnishment_library import PaginationHelper
+from user_app.utils import DataProcessingUtils
 
 class GarnishmentOrderImportView(APIView):
     """
@@ -83,6 +84,12 @@ class GarnishmentOrderImportView(APIView):
             
             for _, row in df.iterrows():
                 try:
+                    # Define date fields that need parsing
+                    date_fields = [
+                        "override_start_date", "override_stop_date", "paid_till_date",
+                        "issued_date", "received_date", "start_date", "stop_date"
+                    ]
+                    
                     order_data = {
                         EE.CASE_ID: row.get(EE.CASE_ID),
                         "ssn": row.get("ssn"),
@@ -92,14 +99,7 @@ class GarnishmentOrderImportView(APIView):
                         "garnishment_fees": row.get("garnishment_fees"),
                         "payee": row.get("payee"),
                         "override_amount": row.get("override_amount"),
-                        "override_start_date": row.get("override_start_date"),
-                        "override_stop_date": row.get("override_stop_date"),
-                        "paid_till_date": row.get("paid_till_date"),
                         "is_consumer_debt": row.get("is_consumer_debt"),
-                        "issued_date": row.get("issued_date"),
-                        "received_date": row.get("received_date"),
-                        "start_date": row.get("start_date"),
-                        "stop_date": row.get("stop_date"),
                         "ordered_amount": row.get("ordered_amount"),
                         "garnishing_authority": row.get("garnishing_authority"),
                         "withholding_amount": row.get("withholding_amount"),
@@ -113,6 +113,10 @@ class GarnishmentOrderImportView(APIView):
                         "arrear_greater_than_12_weeks": row.get("arrear_greater_than_12_weeks"),
                         "arrear_amount": row.get("arrear_amount"),
                     }
+                    
+                    # Parse date fields using the utility function
+                    for date_field in date_fields:
+                        order_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
                     
                     # Check if case_id exists
                     case_id = order_data.get("case_id")
@@ -406,20 +410,16 @@ class UpsertGarnishmentOrderView(APIView):
                 row = {k: v for k, v in row.items() if k and not str(
                     k).startswith('Unnamed')}
 
-                # Format date fields if any
-                for field in ['start_date', 'end_date', 'record_updated']:
-                    value = row.get(field)
-                    if value:
-                        try:
-                            if isinstance(value, datetime):
-                                row[field] = value.strftime('%Y-%m-%d')
-                            else:
-                                parsed_date = pd.to_datetime(
-                                    value, errors='coerce')
-                                row[field] = parsed_date.strftime(
-                                    '%Y-%m-%d') if not pd.isnull(parsed_date) else None
-                        except Exception:
-                            row[field] = None
+                # Define date fields that need parsing
+                date_fields = [
+                    "override_start_date", "override_stop_date", "paid_till_date",
+                    "issued_date", "received_date", "start_date", "stop_date"
+                ]
+                
+                # Parse date fields using the utility function
+                for field in date_fields:
+                    if field in row:
+                        row[field] = DataProcessingUtils.parse_date_field(row[field])
 
                 case_id = row.get(EE.CASE_ID)
                 if not case_id:

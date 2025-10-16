@@ -6,9 +6,9 @@ from user_app.views.utility_views import (
     GarnishmentDashboardAPI
 )
 
-app_name = 'utility'
+app_name = 'dashboard'
 
 urlpatterns = [
     path('dashboard/', get_dashboard_data, name='dashboard'),
-    path('garnishment-dashboard/', GarnishmentDashboardAPI.as_view(), name='garnishment_dashboard'),
+    path('garnishment/', GarnishmentDashboardAPI.as_view(), name='garnishment_dashboard'),
 ]
