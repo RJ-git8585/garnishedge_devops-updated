@@ -3,13 +3,13 @@ from django.db import transaction
 import logging
 import traceback as t
 from processor.models import (StateTaxLevyAppliedRule,GarnishmentFees,ExemptConfig,WithholdingLimit,WithholdingRules,CreditorDebtAppliedRule,StateTaxLevyConfig, StateTaxLevyExemptAmtConfig, CreditorDebtAppliedRule,AddExemptions,StdExemptions,ThresholdAmount,StateTaxLevyAppliedRule, StateTaxLevyExemptAmtConfig, StateTaxLevyConfig)
-from user_app.models import ( EmployeeDetail, 
+from user_app.models import ( EmployeeDetails, 
     EmployeeBatchData, GarnishmentBatchData, PayrollBatchData
 )
 from processor.serializers import (ThresholdAmountSerializer, AddExemptionSerializer, StdExemptionSerializer,GarnishmentFeesSerializer,
     StateTaxLevyConfigSerializers, StateTaxLevyExemptAmtConfigSerializers
 )
-from user_app.serializers import EmployeeDetailSerializer
+from user_app.serializers import EmployeeDetailsSerializer
 
 from processor.garnishment_library.calculations import (StateAbbreviations,ChildSupport,FTB,WithholdingProcessor,Bankruptcy,
                     GarFeesRulesEngine,MultipleGarnishmentPriorityOrder,StateTaxLevyCalculator,CreditorDebtCalculator,FederalTax,StudentLoanCalculator)
@@ -175,10 +175,10 @@ class CalculationDataView:
         Returns serialized data or None if not found.
         """
         try:
-            obj = EmployeeDetail.objects.get(ee_id=employee_id)
-            serializer = EmployeeDetailSerializer(obj)
+            obj = EmployeeDetails.objects.get(ee_id=employee_id)
+            serializer = EmployeeDetailsSerializer(obj)
             return serializer.data
-        except EmployeeDetail.DoesNotExist:
+        except EmployeeDetails.DoesNotExist:
             return None
         except Exception as e:
             logger.error(

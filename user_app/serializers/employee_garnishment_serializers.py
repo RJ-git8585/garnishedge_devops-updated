@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from user_app.models import EmployeeDetail, GarnishmentOrder
+from user_app.models import EmployeeDetails, GarnishmentOrder
 from processor.models import State, GarnishmentType, FedFilingStatus
 from user_app.serializers.employee_serializers import StateField, FilingStatusField, ClientField
 
@@ -35,7 +35,7 @@ class EmployeeGarnishmentDetailSerializer(serializers.ModelSerializer):
     garnishment_data = GarnishmentDataSerializer(many=True, read_only=True)
 
     class Meta:
-        model = EmployeeDetail
+        model = EmployeeDetails
         fields = [
             "ee_id", "home_state", "work_state", "no_of_exemption_including_self",
             "filing_status", "number_of_student_default_loan", "support_second_family",

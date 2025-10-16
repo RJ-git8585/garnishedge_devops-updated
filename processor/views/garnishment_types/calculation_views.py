@@ -14,7 +14,7 @@ from user_app.constants import (
 from processor.garnishment_library.calculations.multiple_garnishment import MultipleGarnishmentPriorityOrder
 from datetime import datetime
 from django.db.models import Prefetch
-from user_app.models import EmployeeDetail, GarnishmentOrder
+from user_app.models import EmployeeDetails, GarnishmentOrder
 
 
 import logging
@@ -50,7 +50,7 @@ class PostCalculationView(APIView):
 
             try:
                 # Fetch employee with related garnishment orders
-                employee = EmployeeDetail.objects.select_related(
+                employee = EmployeeDetails.objects.select_related(
                     'home_state', 'work_state', 'filing_status'
                 ).prefetch_related(
                     Prefetch(
@@ -65,7 +65,7 @@ class PostCalculationView(APIView):
                 enriched_case = self._build_enriched_case_from_employee(case, employee)
                 enriched_cases.append(enriched_case)
 
-            except EmployeeDetail.DoesNotExist:
+            except EmployeeDetails.DoesNotExist:
                 # Log missing employee and continue processing
                 not_found_employees.append({
                     'not_found': ee_id,

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from user_app.models import Client, GarnishmentOrder,EmployeeDetail
+from user_app.models import Client, GarnishmentOrder,EmployeeDetails
 from processor.models import FedFilingStatus,State
 from datetime import datetime
 import re
@@ -88,7 +88,7 @@ class FilingStatusField(serializers.Field):
             raise serializers.ValidationError(f"Filing status '{data}' not found")
 
 
-class EmployeeDetailSerializer(serializers.ModelSerializer):
+class EmployeeDetailsSerializer(serializers.ModelSerializer):
     # Unified fields (same for GET and POST/PUT)
     client_id = ClientField(source='client')
     home_state = StateField()
@@ -105,7 +105,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     number_of_active_garnishment = CustomIntegerField()
 
     class Meta:
-        model = EmployeeDetail
+        model = EmployeeDetails
         fields = [
             "id", "ee_id", "client_id",
             "first_name", "middle_name", "last_name",

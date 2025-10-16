@@ -1,6 +1,6 @@
 # app/urls/employee_urls.py
 from django.urls import path
-from user_app.views import (EmployeeDetailAPI,EmployeeDetailByIdAPI
+from user_app.views import (EmployeeDetailsAPI,EmployeeDetailsByIdAPI
     , EmployeeImportView,
      UpsertEmployeeDataView, ExportEmployeeDataView,EmployeeGarnishmentOrderCombineData)
 from user_app.views.employee_garnishment_views import (
@@ -14,8 +14,8 @@ app_name = 'employee'
 urlpatterns = [
 
     #CRUD for the employee data
-    path("details/", EmployeeDetailAPI.as_view(), name="employee-list-create"),
-    path("details/<int:pk>/", EmployeeDetailByIdAPI.as_view(), name="employee-detail"),
+    path("details/", EmployeeDetailsAPI.as_view(), name="employee-list-create"),
+    path("details/<int:pk>/", EmployeeDetailsByIdAPI.as_view(), name="employee-detail"),
 
     #Import employee using excel
     path('import/', EmployeeImportView.as_view(), name='import'),   

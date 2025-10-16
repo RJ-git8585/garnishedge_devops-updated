@@ -5,7 +5,7 @@ from django.utils.dateparse import parse_date
 from django.db.models import Count, Q
 from rest_framework.views import APIView
 from datetime import datetime, date
-from ..models import IWODetailsPDF, GarnishmentOrder, EmployeeDetail
+from ..models import IWODetailsPDF, GarnishmentOrder, EmployeeDetails
 from processor.models import GarnishmentType
 
 

@@ -6,7 +6,7 @@ from django.db.models import Prefetch, Q
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from processor.garnishment_library.utils.response import ResponseHelper
-from user_app.models import EmployeeDetail, GarnishmentOrder
+from user_app.models import EmployeeDetails, GarnishmentOrder
 from user_app.serializers.employee_garnishment_serializers import (
     EmployeeGarnishmentDetailSerializer,
     EmployeeBasicUpdateSerializer,
@@ -40,7 +40,7 @@ class EmployeeGarnishmentDetailAPI(APIView):
         """
         try:
             # Fetch employee with related garnishment orders filtered by ee_id and client_id
-            employee = EmployeeDetail.objects.select_related(
+            employee = EmployeeDetails.objects.select_related(
                 'home_state', 'work_state', 'filing_status', 'client'
             ).prefetch_related(
                 Prefetch(
@@ -66,7 +66,7 @@ class EmployeeGarnishmentDetailAPI(APIView):
                 status_code=status.HTTP_200_OK
             )
 
-        except EmployeeDetail.DoesNotExist:
+        except EmployeeDetails.DoesNotExist:
             return ResponseHelper.error_response(
                 message=f"Employee with ee_id '{ee_id}' and client_id '{client_id}' not found",
                 status_code=status.HTTP_404_NOT_FOUND
@@ -158,7 +158,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
 
             # Get employee filtered by ee_id and client_id
             try:
-                employee = EmployeeDetail.objects.select_related(
+                employee = EmployeeDetails.objects.select_related(
                     'home_state', 'work_state', 'filing_status', 'client'
                 ).prefetch_related(
                     Prefetch(
@@ -168,7 +168,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
                         )
                     )
                 ).get(ee_id__iexact=ee_id, client__client_id__iexact=client_id)
-            except EmployeeDetail.DoesNotExist:
+            except EmployeeDetails.DoesNotExist:
                 return ResponseHelper.error_response(
                     message=f"Employee with ee_id '{ee_id}' and client_id '{client_id}' not found",
                     status_code=status.HTTP_404_NOT_FOUND
@@ -178,7 +178,7 @@ class EmployeeGarnishmentUpdateAPI(APIView):
             employee_data = {}
             garnishment_data = {}
             
-            # Fields that belong to EmployeeDetail model
+            # Fields that belong to EmployeeDetails model
             employee_fields = {
                 'first_name', 'last_name', 'home_state', 'work_state', 'number_of_exemptions',
                 'marital_status', 'number_of_student_default_loan', 'number_of_dependent_child',
@@ -377,7 +377,7 @@ class EmployeeGarnishmentListAPI(APIView):
             search = request.query_params.get('search', '')
 
             # Build queryset
-            queryset = EmployeeDetail.objects.select_related(
+            queryset = EmployeeDetails.objects.select_related(
                 'home_state', 'work_state'
             ).prefetch_related(
                 Prefetch(

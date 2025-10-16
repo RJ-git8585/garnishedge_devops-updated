@@ -14,9 +14,9 @@ import csv
 import re
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from user_app.models import EmployeeDetail, GarnishmentOrder
+from user_app.models import EmployeeDetails, GarnishmentOrder
 from processor.models import GarnishmentFees
-from user_app.serializers import EmployeeDetailSerializer
+from user_app.serializers import EmployeeDetailsSerializer
 from datetime import datetime
 from user_app.constants import (
     EmployeeFields as EE,
@@ -90,7 +90,7 @@ class EmployeeImportView(APIView):
                     employee_data = dict(row)
 
                     # Directly serialize and save
-                    serializer = EmployeeDetailSerializer(data=employee_data)
+                    serializer = EmployeeDetailsSerializer(data=employee_data)
                     if serializer.is_valid():
                         employees.append(serializer.save())
                     else:
@@ -123,7 +123,7 @@ class EmployeeImportView(APIView):
 
 
 
-class EmployeeDetailAPIViews(APIView):
+class EmployeeDetailsAPIViews(APIView):
     """
     API view for CRUD operations on employee details.
     Provides robust exception handling and clear response messages.
@@ -131,7 +131,7 @@ class EmployeeDetailAPIViews(APIView):
 
     @swagger_auto_schema(
         responses={
-            200: openapi.Response('Success', EmployeeDetailSerializer(many=True)),
+            200: openapi.Response('Success', EmployeeDetailsSerializer(many=True)),
             404: 'Employee not found',
             500: 'Internal server error'
         }
@@ -143,18 +143,18 @@ class EmployeeDetailAPIViews(APIView):
         try:
             if case_id and ee_id:
                 try:
-                    employee = EmployeeDetail.objects.get(
+                    employee = EmployeeDetails.objects.get(
                         case_id=case_id, ee_id=ee_id)
-                    serializer = EmployeeDetailSerializer(employee)
+                    serializer = EmployeeDetailsSerializer(employee)
                     return ResponseHelper.success_response('Employee data fetched successfully', serializer.data)
-                except EmployeeDetail.DoesNotExist:
+                except EmployeeDetails.DoesNotExist:
                     return ResponseHelper.error_response(
                         f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                         status_code=status.HTTP_404_NOT_FOUND
                     )
             else:
-                employees = EmployeeDetail.objects.all()
-                serializer = EmployeeDetailSerializer(employees, many=True)
+                employees = EmployeeDetails.objects.all()
+                serializer = EmployeeDetailsSerializer(employees, many=True)
 
                 return ResponseHelper.success_response('All data fetched successfully', serializer.data)
         except Exception as e:
@@ -165,9 +165,9 @@ class EmployeeDetailAPIViews(APIView):
             )
 
     @swagger_auto_schema(
-        request_body=EmployeeDetailSerializer,
+        request_body=EmployeeDetailsSerializer,
         responses={
-            201: openapi.Response('Created', EmployeeDetailSerializer),
+            201: openapi.Response('Created', EmployeeDetailsSerializer),
             400: 'Invalid data',
             500: 'Internal server error'
         }
@@ -177,7 +177,7 @@ class EmployeeDetailAPIViews(APIView):
         Create a new employee detail record.
         """
         try:
-            serializer = EmployeeDetailSerializer(data=request.data)
+            serializer = EmployeeDetailsSerializer(data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return ResponseHelper.success_response(
@@ -199,9 +199,9 @@ class EmployeeDetailAPIViews(APIView):
             )
 
     @swagger_auto_schema(
-        request_body=EmployeeDetailSerializer,
+        request_body=EmployeeDetailsSerializer,
         responses={
-            200: openapi.Response('Updated', EmployeeDetailSerializer),
+            200: openapi.Response('Updated', EmployeeDetailsSerializer),
             400: 'Invalid data or missing identifiers',
             404: 'Employee not found',
             500: 'Internal server error'
@@ -217,15 +217,15 @@ class EmployeeDetailAPIViews(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         try:
-            employee = EmployeeDetail.objects.get(
+            employee = EmployeeDetails.objects.get(
                 case_id=case_id, ee_id=ee_id)
-        except EmployeeDetail.DoesNotExist:
+        except EmployeeDetails.DoesNotExist:
             return ResponseHelper.error_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                 status_code=status.HTTP_404_NOT_FOUND
             )
         try:
-            serializer = EmployeeDetailSerializer(employee, data=request.data)
+            serializer = EmployeeDetailsSerializer(employee, data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return ResponseHelper.success_response(
@@ -263,13 +263,13 @@ class EmployeeDetailAPIViews(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         try:
-            employee = EmployeeDetail.objects.get(
+            employee = EmployeeDetails.objects.get(
                 case_id=case_id, ee_id=ee_id)
             employee.delete()
             return ResponseHelper.success_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" deleted successfully'
             )
-        except EmployeeDetail.DoesNotExist:
+        except EmployeeDetails.DoesNotExist:
             return ResponseHelper.error_response(
                 f'Employee with case_id "{case_id}" and ee_id "{ee_id}" not found',
                 status_code=status.HTTP_404_NOT_FOUND
@@ -358,7 +358,7 @@ class UpsertEmployeeDataView(APIView):
                     cleaned_row['marital_status'] = DataProcessingUtils.get_default_marital_status()
 
                 # Check if employee exists
-                obj_qs = EmployeeDetail.objects.filter(
+                obj_qs = EmployeeDetails.objects.filter(
                     case_id=case_id, ee_id=ee_id)
                 obj = obj_qs.first() if obj_qs.exists() else None
 
@@ -371,7 +371,7 @@ class UpsertEmployeeDataView(APIView):
                         if hasattr(obj, field)
                     )
                     if has_changes:
-                        serializer = EmployeeDetailSerializer(
+                        serializer = EmployeeDetailsSerializer(
                             obj, data=cleaned_row, partial=True)
                         if serializer.is_valid():
                             serializer.save()
@@ -380,7 +380,7 @@ class UpsertEmployeeDataView(APIView):
                             # Log error but continue
                             print(f"Update validation failed for {ee_id}: {serializer.errors}")
                 else:
-                    serializer = EmployeeDetailSerializer(data=cleaned_row)
+                    serializer = EmployeeDetailsSerializer(data=cleaned_row)
                     if serializer.is_valid():
                         serializer.save()
                         added_employees.append(ee_id)
@@ -441,14 +441,14 @@ class ExportEmployeeDataView(APIView):
     )
     def get(self, request):
         try:
-            employees = EmployeeDetail.objects.all()
+            employees = EmployeeDetails.objects.all()
             if not employees.exists():
                 return ResponseHelper.error_response(
                     message="No employees found",
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-            serializer = EmployeeDetailSerializer(employees, many=True)
+            serializer = EmployeeDetailsSerializer(employees, many=True)
 
             # Define Excel workbook and worksheet
             wb = Workbook()
@@ -509,7 +509,7 @@ class EmployeeGarnishmentOrderCombineData(APIView):
 
     def get(self, request):
         try:
-            employees = EmployeeDetail.objects.prefetch_related(
+            employees = EmployeeDetails.objects.prefetch_related(
                 Prefetch(
                     'garnishment_orders',
                     queryset=GarnishmentOrder.objects.all()
@@ -556,14 +556,14 @@ class EmployeeGarnishmentOrderCombineData(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class EmployeeDetailAPI(APIView):
+class EmployeeDetailsAPI(APIView):
     """
     API view for listing and creating Employee Details.
     """
 
     @swagger_auto_schema(
         responses={
-            200: openapi.Response("Success", EmployeeDetailSerializer(many=True)),
+            200: openapi.Response("Success", EmployeeDetailsSerializer(many=True)),
             500: "Internal Server Error",
         }
     )
@@ -572,8 +572,8 @@ class EmployeeDetailAPI(APIView):
         Get paginated list of active employees.
         """
         try:
-            employees = EmployeeDetail.objects.all().order_by("-created_at")
-            result = EmployeeDetailSerializer(employees, many=True)
+            employees = EmployeeDetails.objects.all().order_by("-created_at")
+            result = EmployeeDetailsSerializer(employees, many=True)
             return ResponseHelper.success_response(
                 message="Employees fetched successfully",
                 data=result.data,
@@ -587,9 +587,9 @@ class EmployeeDetailAPI(APIView):
             )
 
     @swagger_auto_schema(
-        request_body=EmployeeDetailSerializer,
+        request_body=EmployeeDetailsSerializer,
         responses={
-            201: openapi.Response("Created", EmployeeDetailSerializer),
+            201: openapi.Response("Created", EmployeeDetailsSerializer),
             400: "Validation Error",
             500: "Internal Server Error",
         },
@@ -598,13 +598,13 @@ class EmployeeDetailAPI(APIView):
         """
         Create a new employee.
         """
-        serializer = EmployeeDetailSerializer(data=request.data)
+        serializer = EmployeeDetailsSerializer(data=request.data)
         if serializer.is_valid():
             try:
                 employee = serializer.save()
                 return ResponseHelper.success_response(
                     message="Employee created successfully",
-                    data=EmployeeDetailSerializer(employee).data,
+                    data=EmployeeDetailsSerializer(employee).data,
                     status_code=status.HTTP_201_CREATED
                 )
             except Exception as e:
@@ -620,20 +620,20 @@ class EmployeeDetailAPI(APIView):
         )
 
 
-class EmployeeDetailByIdAPI(APIView):
+class EmployeeDetailsByIdAPI(APIView):
     """
     API view for retrieving, updating, or deleting a specific Employee by ID.
     """
 
     def get_object(self, pk):
         try:
-            return EmployeeDetail.objects.get(pk=pk)
-        except EmployeeDetail.DoesNotExist:
+            return EmployeeDetails.objects.get(pk=pk)
+        except EmployeeDetails.DoesNotExist:
             return None
 
     @swagger_auto_schema(
         responses={
-            200: openapi.Response("Success", EmployeeDetailSerializer),
+            200: openapi.Response("Success", EmployeeDetailsSerializer),
             404: "Not Found",
         }
     )
@@ -650,14 +650,14 @@ class EmployeeDetailByIdAPI(APIView):
 
         return ResponseHelper.success_response(
             message="Employee fetched successfully",
-            data=EmployeeDetailSerializer(employee).data,
+            data=EmployeeDetailsSerializer(employee).data,
             status_code=status.HTTP_200_OK
         )
 
     @swagger_auto_schema(
-        request_body=EmployeeDetailSerializer,
+        request_body=EmployeeDetailsSerializer,
         responses={
-            200: openapi.Response("Updated", EmployeeDetailSerializer),
+            200: openapi.Response("Updated", EmployeeDetailsSerializer),
             400: "Validation Error",
             404: "Not Found",
             500: "Internal Server Error",
@@ -674,13 +674,13 @@ class EmployeeDetailByIdAPI(APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = EmployeeDetailSerializer(employee, data=request.data, partial=True)
+        serializer = EmployeeDetailsSerializer(employee, data=request.data, partial=True)
         if serializer.is_valid():
             try:
                 employee = serializer.save()
                 return ResponseHelper.success_response(
                     message="Employee updated successfully",
-                    data=EmployeeDetailSerializer(employee).data,
+                    data=EmployeeDetailsSerializer(employee).data,
                     status_code=status.HTTP_200_OK
                 )
             except Exception as e:

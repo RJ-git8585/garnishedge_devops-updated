@@ -386,9 +386,6 @@ class WithholdingProcessor:
             
             # Parse and create employee record
             record = self._create_employee_record(validated_data)
-            # print("record",record)
-            # case_id =record['garnishment_data']
-            # print("record['garnishment_data']",record['garnishment_data'])
             
             # Initialize priority repository with state info
             if not self.priority_repository:

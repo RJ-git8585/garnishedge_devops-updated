@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from user_app.models.iwo_pdf.iwo_pdf_extraction import WithholdingOrderData
-from user_app.models import EmployeeDetail, EmployerProfile, SDU,GarnishmentOrder
+from user_app.models import EmployeeDetails, EmployerProfile, SDU,GarnishmentOrder
 from processor.models import State,GarnishmentType
 from datetime import datetime
 
@@ -55,22 +55,22 @@ class CustomDateField(serializers.DateField):
 
 
 class EmployeeField(serializers.Field):
-    def to_representation(self, value: EmployeeDetail):
+    def to_representation(self, value: EmployeeDetails):
         # Only return SSN
         return value.ssn if value else None
 
     def to_internal_value(self, data):
         try:
             # First try to get a single employee
-            return EmployeeDetail.objects.get(ssn=data)
-        except EmployeeDetail.DoesNotExist:
+            return EmployeeDetails.objects.get(ssn=data)
+        except EmployeeDetails.DoesNotExist:
             raise serializers.ValidationError(
                 {"employee": f"Employee with SSN '{data}' not found"}
             )
-        except EmployeeDetail.MultipleObjectsReturned:
+        except EmployeeDetails.MultipleObjectsReturned:
             # If multiple employees with same SSN, get the first one
             # You might want to add additional logic here to determine which one to use
-            employees = EmployeeDetail.objects.filter(ssn=data)
+            employees = EmployeeDetails.objects.filter(ssn=data)
             return employees.first()
 
 
@@ -138,13 +138,13 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
         if 'ee_id' in validated_data:
             # If ee_id is provided, try to find employee by ee_id
             try:
-                employee = EmployeeDetail.objects.get(ee_id=validated_data.pop('ee_id'))
+                employee = EmployeeDetails.objects.get(ee_id=validated_data.pop('ee_id'))
                 validated_data['employee'] = employee
-            except EmployeeDetail.DoesNotExist:
+            except EmployeeDetails.DoesNotExist:
                 raise serializers.ValidationError({"ee_id": "Employee with this ee_id not found"})
-            except EmployeeDetail.MultipleObjectsReturned:
+            except EmployeeDetails.MultipleObjectsReturned:
                 # If multiple employees with same ee_id, get the first one
-                employees = EmployeeDetail.objects.filter(ee_id=validated_data.pop('ee_id'))
+                employees = EmployeeDetails.objects.filter(ee_id=validated_data.pop('ee_id'))
                 validated_data['employee'] = employees.first()
         
         return super().create(validated_data)
@@ -153,13 +153,13 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
         # Handle ee_id to ssn mapping
         if 'ee_id' in validated_data:
             try:
-                employee = EmployeeDetail.objects.get(ee_id=validated_data.pop('ee_id'))
+                employee = EmployeeDetails.objects.get(ee_id=validated_data.pop('ee_id'))
                 validated_data['employee'] = employee
-            except EmployeeDetail.DoesNotExist:
+            except EmployeeDetails.DoesNotExist:
                 raise serializers.ValidationError({"ee_id": "Employee with this ee_id not found"})
-            except EmployeeDetail.MultipleObjectsReturned:
+            except EmployeeDetails.MultipleObjectsReturned:
                 # If multiple employees with same ee_id, get the first one
-                employees = EmployeeDetail.objects.filter(ee_id=validated_data.pop('ee_id'))
+                employees = EmployeeDetails.objects.filter(ee_id=validated_data.pop('ee_id'))
                 validated_data['employee'] = employees.first()
         
         return super().update(instance, validated_data)
