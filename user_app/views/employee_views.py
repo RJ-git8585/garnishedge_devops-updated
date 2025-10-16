@@ -82,22 +82,49 @@ class EmployeeImportView(APIView):
             employees = []
 
 
+            validation_warnings = []
             for _, row in df.iterrows():
                 try:
                     # Convert row to dict and clean data using utility functions
                     employee_data = dict(row)
                     employee_data = DataProcessingUtils.clean_data_row(employee_data)
                     
-                    # Use the specialized employee data cleaning function
-                    employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
+                    # Use the new validation and fixing function with auto client creation
+                    cleaned_data, validation_errors = DataProcessingUtils.validate_and_fix_employee_data(employee_data, auto_create_client=True)
                     
-                    serializer = EmployeeDetailSerializer(data=employee_data)
+                    # Collect validation warnings
+                    validation_warnings.extend(validation_errors)
+                    
+                    # Check if there are critical errors (missing required fields)
+                    critical_errors = [err for err in validation_errors if "not found" in err or "is required" in err]
+                    if critical_errors:
+                        error_data = {
+                            "row_data": cleaned_data,
+                            "errors": critical_errors,
+                            "warnings": [err for err in validation_errors if err not in critical_errors]
+                        }
+                        # Make error data JSON-safe
+                        error_data = DataProcessingUtils.make_json_safe(error_data)
+                        return ResponseHelper.error_response(
+                            message="Critical validation errors",
+                            error=error_data,
+                            status_code=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    serializer = EmployeeDetailSerializer(data=cleaned_data)
                     if serializer.is_valid():
                         employees.append(serializer.save())
                     else:
+                        error_data = {
+                            "row_data": cleaned_data,
+                            "serializer_errors": serializer.errors,
+                            "validation_warnings": validation_errors
+                        }
+                        # Make error data JSON-safe
+                        error_data = DataProcessingUtils.make_json_safe(error_data)
                         return ResponseHelper.error_response(
-                            message="Validation error",
-                            error=serializer.errors,
+                            message="Serializer validation error",
+                            error=error_data,
                             status_code=status.HTTP_400_BAD_REQUEST
                         )
                 except Exception as row_exc:
@@ -107,9 +134,18 @@ class EmployeeImportView(APIView):
                         status_code=status.HTTP_400_BAD_REQUEST
                     )
 
+            response_data = {
+                "imported_count": len(employees),
+                "total_rows_processed": len(df),
+                "validation_warnings": validation_warnings if validation_warnings else None
+            }
+            
+            # Make response data JSON-safe
+            response_data = DataProcessingUtils.make_json_safe(response_data)
+            
             return ResponseHelper.success_response(
                 message="File processed successfully",
-                data={"imported_count": len(employees)},
+                data=response_data,
                 status_code=status.HTTP_201_CREATED
             )
         except Exception as e:
@@ -333,10 +369,12 @@ class UpsertEmployeeDataView(APIView):
             for row in data:
                 # Clean and normalize row data using utility functions
                 row = DataProcessingUtils.clean_data_row(row)
-                row = DataProcessingUtils.validate_and_clean_employee_data(row)
+                
+                # Use the new validation and fixing function with auto client creation
+                cleaned_row, validation_errors = DataProcessingUtils.validate_and_fix_employee_data(row, auto_create_client=True)
 
-                case_id = row.get("case_id")
-                ee_id = row.get("ee_id")
+                case_id = cleaned_row.get("case_id")
+                ee_id = cleaned_row.get("ee_id")
                 if not ee_id or not case_id:
                     continue  # Skip if identifiers are missing
 
@@ -349,18 +387,18 @@ class UpsertEmployeeDataView(APIView):
                     # Update only if there are changes
                     has_changes = any(
                         str(getattr(obj, field, '')).strip() != str(
-                            row.get(field, '')).strip()
-                        for field in row.keys()
+                            cleaned_row.get(field, '')).strip()
+                        for field in cleaned_row.keys()
                         if hasattr(obj, field)
                     )
                     if has_changes:
                         serializer = EmployeeDetailSerializer(
-                            obj, data=row, partial=True)
+                            obj, data=cleaned_row, partial=True)
                         if serializer.is_valid():
                             serializer.save()
                             updated_employees.append(ee_id)
                 else:
-                    serializer = EmployeeDetailSerializer(data=row)
+                    serializer = EmployeeDetailSerializer(data=cleaned_row)
                     if serializer.is_valid():
                         serializer.save()
                         added_employees.append(ee_id)
@@ -384,6 +422,9 @@ class UpsertEmployeeDataView(APIView):
                     'message': 'No data was updated or inserted.'
                 }, status=status.HTTP_200_OK)
 
+            # Make response data JSON-safe
+            response_data = DataProcessingUtils.make_json_safe(response_data)
+            
             return Response({
                 'success': True,
                 'status_code': status.HTTP_200_OK,

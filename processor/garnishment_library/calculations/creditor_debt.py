@@ -17,12 +17,14 @@ from user_app.constants import (
 from datetime import datetime, date
 import traceback as t
 
+logger = logging.getLogger(__name__)
+
+
 class CreditorDebtHelper():
     """
     Helper class for general creditor debt logic.
-
+    
     """
-
     
     def _gar_start_date_check(self,garn_start_date):
         """
