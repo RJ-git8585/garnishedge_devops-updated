@@ -232,6 +232,7 @@ class CreditorDebtHelper():
             )
         
     def _general_ftb_debt_logic(self, disposable_earning, config_data):
+        
         """
         Calculate the amount of disposable earnings that can be garnished for creditor debt
         using the general formula (used by multiple states).
@@ -729,6 +730,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                     disposable_earning, exempt_amt_config),
                 ST.VERMONT: lambda: self.cal_vermont(
                     disposable_earning, is_consumer_debt, non_consumer_debt, exempt_amt_config),
+                ST.CALIFORNIA: lambda: self._general_ftb_debt_logic(disposable_earning, exempt_amt_config),
                 ST.OREGON: lambda: self.cal_oregon(disposable_earning, exempt_amt_config)
             }
             formula_func = state_formulas.get(state.lower().strip())
@@ -743,7 +745,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                     ST.INDIANA, ST.KANSAS, ST.KENTUCKY, ST.LOUISIANA,
                     ST.MICHIGAN, ST.MISSISSIPPI, ST.MONTANA, ST.NEW_HAMPSHIRE,
                     ST.OHIO, ST.OKLAHOMA, ST.RHODE_ISLAND, ST.UTAH,
-                    ST.WYOMING, ST.GEORGIA, ST.CALIFORNIA, ST.COLORADO
+                    ST.WYOMING, ST.GEORGIA, ST.COLORADO
                 ]
                 _minimum_wage_threshold_compare_de = [
                      ST.IOWA, ST.WASHINGTON,ST.ILLINOIS, ST.CONNECTICUT, ST.NEW_MEXICO, ST.VIRGINIA, ST.WEST_VIRGINIA, ST.WISCONSIN]
