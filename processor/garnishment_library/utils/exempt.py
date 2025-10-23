@@ -17,7 +17,7 @@ from user_app.constants import (
 from datetime import datetime, date
 import traceback as t
 
-class CreditorDebtHelper():
+class ExemptHelper():
     """
     Helper class for general creditor debt logic.
     

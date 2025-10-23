@@ -16,7 +16,7 @@ from user_app.constants import (
 )
 from datetime import datetime, date
 import traceback as t
-from processor.garnishment_library.utils.exempt import CreditorDebtHelper
+from processor.garnishment_library.utils.exempt import ExemptHelper
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +27,18 @@ class StateWiseCreditorDebtFormulas():
     
     """
 
+    def __init__(self):
+        #self.logger = logging.getLogger(self.__class__.__name__)
+        self.exempthelper = ExemptHelper()
+
     def cal_alaska(self,home_state, disposable_earning, config_data):
         try:
             if home_state == ST.ALASKA.lower():
                 
-                return self._minimum_wage_threshold_compare(disposable_earning, config_data)
+                return self.exempthelper._minimum_wage_threshold_compare(disposable_earning, config_data)
                 
             elif home_state != ST.ALASKA.lower():
-                return self._general_debt_logic(disposable_earning, config_data)
+                return self.exempthelper._general_debt_logic(disposable_earning, config_data)
                 
             return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
@@ -80,7 +84,7 @@ class StateWiseCreditorDebtFormulas():
                 mde_total = de_five_percent+de_ten_percent+de_twenty_percent
                 wa = mde_total*12/52
 
-                general_debt_logic = self._general_debt_logic(
+                general_debt_logic = self.exempthelper._general_debt_logic(
                     disposable_earning, config_data)
 
                 withholding_amt = general_debt_logic[CRF.WITHHOLDING_AMT]
@@ -184,7 +188,7 @@ class StateWiseCreditorDebtFormulas():
                                                        CM.DE_GT_UPPER,
                                                        f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}")
             else:
-                withholding_amt = self._general_debt_logic(
+                withholding_amt = self.exempthelper._general_debt_logic(
                     disposable_earning, config_data)
                 return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP])
 
@@ -219,7 +223,7 @@ class StateWiseCreditorDebtFormulas():
                         filing_status_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}")
                 return withholding_amt
             else:
-                withholding_amt = self._general_debt_logic(
+                withholding_amt = self.exempthelper._general_debt_logic(
                     disposable_earning, config_data)
                 return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP])
 
@@ -278,7 +282,7 @@ class StateWiseCreditorDebtFormulas():
         try:
 
             exempt_amt = float(config_data[EC.EXEMPT_AMOUNT])
-            general_result = self._general_debt_logic(
+            general_result = self.exempthelper._general_debt_logic(
                 disposable_earning, config_data)
             if no_of_dependent_child == 0:
                 return UtilityClass.build_response(general_result[CRF.WITHHOLDING_AMT], disposable_earning,
@@ -362,10 +366,10 @@ class StateWiseCreditorDebtFormulas():
 
     def cal_vermont(self, disposable_earning, is_consumer_debt, non_consumer_debt, exempt_amt_config):
         if non_consumer_debt == True:
-            return self._general_debt_logic(
+            return self.exempthelper._general_debt_logic(
                 disposable_earning, exempt_amt_config)
         elif is_consumer_debt == True:
-            return self._minimum_wage_threshold_compare(
+            return self.exempthelper._minimum_wage_threshold_compare(
                 disposable_earning, exempt_amt_config)
         return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
@@ -389,11 +393,11 @@ class StateWiseCreditorDebtFormulas():
             
             if exempt_amt_config.get(EC.LOWER_THRESHOLD_PERCENT1):
                 # New formula: min(DE - threshold, DE × 10%)
-                return self._minimum_wage_threshold_compare(
+                return self.exempthelper._minimum_wage_threshold_compare(
                     disposable_earning, exempt_amt_config)
             else:
                 # Old formula: standard general debt logic with thresholds
-                return self._general_debt_logic(
+                return self.exempthelper._general_debt_logic(
                     disposable_earning, exempt_amt_config)
             
         except Exception as e:
@@ -416,7 +420,7 @@ class StateWiseCreditorDebtFormulas():
                     "No valid config found for Oregon"
                 )
             
-            return self._minimum_wage_threshold_compare(
+            return self.exempthelper._minimum_wage_threshold_compare(
                 disposable_earning, exempt_amt_config
             )
         except Exception as e:
