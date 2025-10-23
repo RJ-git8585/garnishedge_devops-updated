@@ -385,6 +385,7 @@ class AllocationMethods:
 class GarnishmentResultFields:
     """Constants for garnishment result structure fields"""
     GARNISHMENT_TYPE = "garnishment_type"
+    DEDUCTION_TYPE = "deduction_type"
     EMPLOYEE_ID = "employee_id"
     WORK_STATE = "work_state"
     CALCULATION_STATUS = "calculation_status"

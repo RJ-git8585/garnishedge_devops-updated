@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import traceback as t
-from processor.services.calculation_service import CalculationDataView
+from processor.services import CalculationDataView
 from processor.garnishment_library.utils.response import ResponseHelper
 from user_app.constants import (
     EmployeeFields as EE,

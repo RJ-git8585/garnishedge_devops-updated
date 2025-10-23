@@ -49,7 +49,8 @@ INSTALLED_APPS = [
     'django_rest_passwordreset',
     'rest_framework_simplejwt.token_blacklist',
     'processor',
-    'user_app']
+    'user_app'
+]
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend'
@@ -66,6 +67,11 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    # User context middleware for model audit logging
+    'garnishedge_project.user_context_middleware.UserContextMiddleware',
+    # OpenTelemetry audit logging middleware
+    'garnishedge_project.audit_middleware.AuditLoggingMiddleware',
+    'garnishedge_project.audit_middleware.DatabaseAuditMiddleware',
     "debug_toolbar.middleware.DebugToolbarMiddleware"
 ]
 
@@ -99,10 +105,7 @@ TEMPLATES = [
     },
 ]
 
-# Celery Configuration
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
+
 
 # Django-Celery-Results
 CELERY_RESULT_BACKEND = 'django-db'
@@ -208,3 +211,88 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
 DRF_API_LOGGER_DATABASE = True
 DRF_API_LOGGER_STATUS_CODES = {400, 401, 403,
                                404, 500}  # Log only failed req
+
+# OpenTelemetry Configuration
+OTEL_SERVICE_NAME = "garnishedge-api"
+OTEL_SERVICE_VERSION = "1.0.0"
+OTEL_RESOURCE_ATTRIBUTES = f"service.name={OTEL_SERVICE_NAME},service.version={OTEL_SERVICE_VERSION}"
+
+# OpenTelemetry Exporters Configuration
+OTLP_ENDPOINT = env('OTLP_ENDPOINT', default='http://localhost:4317')
+JAEGER_ENDPOINT = env('JAEGER_ENDPOINT', default='http://localhost:14268/api/traces')
+JAEGER_AGENT_HOST = env('JAEGER_AGENT_HOST', default='localhost')
+JAEGER_AGENT_PORT = env.int('JAEGER_AGENT_PORT', default=6831)
+
+# Disable OpenTelemetry if collector is not available
+OTEL_ENABLED = env.bool('OTEL_ENABLED', default=False)
+
+# Logging Configuration for OpenTelemetry
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'json': {
+            'format': '{"level": "%(levelname)s", "time": "%(asctime)s", "module": "%(module)s", "message": "%(message)s"}',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/audit.log',
+            'formatter': 'json',
+        },
+        'audit_file': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/api_audit.log',
+            'formatter': 'json',
+        },
+        'model_audit_file': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/model_audit.log',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'garnishedge_project.audit_middleware': {
+            'handlers': ['audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'garnishedge_project.audit_logger': {
+            'handlers': ['audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'model_audit': {
+            'handlers': ['model_audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'opentelemetry': {
+            'handlers': ['file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}

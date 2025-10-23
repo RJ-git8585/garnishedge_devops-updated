@@ -109,6 +109,7 @@ class LoginAPIView(APIView):
             )
             return response
         except Exception as e:
+            import traceback as t
             return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

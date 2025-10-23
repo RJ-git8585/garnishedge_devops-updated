@@ -10,8 +10,12 @@ import pandas as pd
 from processor.garnishment_library import PaginationHelper
 import math
 from rest_framework.permissions import AllowAny
-import csv
-import re
+from garnishedge_project.audit_decorators import (
+    audit_api_call, 
+    audit_business_operation, 
+    audit_data_access,
+    audit_security_event
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from user_app.models import EmployeeDetail, GarnishmentOrder
@@ -60,6 +64,10 @@ class EmployeeImportView(APIView):
             500: "Internal server error"
         },
     )
+    @audit_api_call
+    @audit_business_operation("employee_bulk_import")
+    @audit_data_access("EmployeeDetail", "CREATE")
+    @audit_security_event("bulk_data_import", "CRITICAL")
     def post(self, request):
         try:
             if 'file' not in request.FILES:
@@ -136,6 +144,7 @@ class EmployeeDetailsAPIViews(APIView):
             500: 'Internal server error'
         }
     )
+    @audit_api_call
     def get(self, request, case_id=None, ee_id=None):
         """
         Retrieve employee details by case_id and ee_id, or all employees if not provided.
@@ -284,7 +293,7 @@ class EmployeeDetailsAPIViews(APIView):
 
 class UpsertEmployeeDataView(APIView):
     """
-    API endpoint to upsert (insert or update) employee details from an uploaded Excel or CSV file.
+    API view to handle the import/upsert of employee details from a file.
     Provides robust exception handling and clear response messages.
     """
     parser_classes = [MultiPartParser, FormParser]
@@ -307,122 +316,161 @@ class UpsertEmployeeDataView(APIView):
             )
         ],
         responses={
-            200: 'File uploaded and processed successfully',
-            400: 'No file uploaded or unsupported file format',
+            201: 'File processed successfully',
+            400: 'No file provided or unsupported file format',
             500: 'Internal server error'
-        },
+        }
     )
     def post(self, request):
-        """
-        Upsert employee details from uploaded file.
-        """
-        file = request.FILES.get('file')
-        if not file:
-            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            # Read file data based on extension
-            if file.name.endswith('.csv'):
-                data = list(csv.DictReader(
-                    file.read().decode('utf-8').splitlines()))
-            elif file.name.endswith(('.xls', '.xlsx')):
+            if 'file' not in request.FILES:
+                return ResponseHelper.error_response(
+                    message="No file provided",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+            file = request.FILES['file']
+            file_name = file.name
+
+            # Read file based on extension
+            if file_name.endswith('.csv'):
+                df = pd.read_csv(file)
+            elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
                 df = pd.read_excel(file)
-                data = df.to_dict(orient='records')
             else:
-                return Response({'error': 'Unsupported file format. Use CSV or Excel.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            added_employees, updated_employees = [], []
-
-            for row in data:
-                # Clean and normalize row data using utility functions
-                row = DataProcessingUtils.clean_data_row(row)
-                
-                # Apply basic data cleaning without strict validation
-                cleaned_row = DataProcessingUtils.validate_and_clean_employee_data(row)
-
-                case_id = cleaned_row.get("case_id")
-                ee_id = cleaned_row.get("ee_id")
-                if not ee_id or not case_id:
-                    continue  # Skip if identifiers are missing
-                
-                # Try to create missing client if needed
-                client_id = cleaned_row.get('client_id')
-                if client_id and not DataProcessingUtils.validate_client_exists(client_id):
-                    DataProcessingUtils.create_missing_client(client_id)
-                
-                # Provide default values for required fields if missing
-                if not cleaned_row.get('filing_status'):
-                    cleaned_row['filing_status'] = DataProcessingUtils.get_default_filing_status()
-                
-                if not cleaned_row.get('marital_status'):
-                    cleaned_row['marital_status'] = DataProcessingUtils.get_default_marital_status()
-
-                # Check if employee exists
-                obj_qs = EmployeeDetail.objects.filter(
-                    case_id=case_id, ee_id=ee_id)
-                obj = obj_qs.first() if obj_qs.exists() else None
-
-                if obj:
-                    # Update only if there are changes
-                    has_changes = any(
-                        str(getattr(obj, field, '')).strip() != str(
-                            cleaned_row.get(field, '')).strip()
-                        for field in cleaned_row.keys()
-                        if hasattr(obj, field)
-                    )
-                    if has_changes:
+                return ResponseHelper.error_response(
+                    message="Unsupported file format. Please upload a CSV or Excel file.",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            added_employees = []
+            updated_employees = []
+            
+            for _, row in df.iterrows():
+                try:
+                    # Define date fields that need parsing
+                    date_fields = [
+                        "garnishment_fees_suspended_till"
+                    ]
+                    
+                    employee_data = {
+                        EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
+                        EE.CLIENT_ID: row.get(EE.CLIENT_ID),
+                        EE.FIRST_NAME: row.get(EE.FIRST_NAME),
+                        EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
+                        EE.LAST_NAME: row.get(EE.LAST_NAME),
+                        EE.SSN: row.get(EE.SSN),
+                        EE.HOME_STATE: row.get(EE.HOME_STATE),
+                        EE.WORK_STATE: row.get(EE.WORK_STATE),
+                        EE.GENDER: row.get(EE.GENDER),
+                        "number_of_exemptions": row.get("number_of_exemptions"),
+                        EE.FILING_STATUS: row.get(EE.FILING_STATUS),
+                        EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
+                        "number_of_student_default_loan": row.get("number_of_student_default_loan"),
+                        "number_of_dependent_child": row.get("number_of_dependent_child"),
+                        EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
+                        EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
+                        EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT),
+                        CF.IS_ACTIVE: row.get(CF.IS_ACTIVE, True),
+                    }
+                    
+                    # Parse date fields using the utility function
+                    for date_field in date_fields:
+                        employee_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
+                    
+                    # Clean and normalize row data using utility functions
+                    employee_data = DataProcessingUtils.clean_data_row(employee_data)
+                    
+                    # Apply basic data cleaning without strict validation
+                    employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
+                    
+                    # Check if ee_id exists
+                    ee_id = employee_data.get(EE.EMPLOYEE_ID)
+                    if not ee_id:
+                        # Skip rows without ee_id
+                        continue
+                    
+                    # Try to create missing client if needed
+                    client_id = employee_data.get(EE.CLIENT_ID)
+                    if client_id and not DataProcessingUtils.validate_client_exists(client_id):
+                        DataProcessingUtils.create_missing_client(client_id)
+                    
+                    # Provide default values for required fields if missing
+                    if not employee_data.get(EE.FILING_STATUS):
+                        employee_data[EE.FILING_STATUS] = DataProcessingUtils.get_default_filing_status()
+                    
+                    if not employee_data.get(EE.MARITAL_STATUS):
+                        employee_data[EE.MARITAL_STATUS] = DataProcessingUtils.get_default_marital_status()
+                    
+                    # Try to find existing employee by ee_id
+                    existing_employee = EmployeeDetail.objects.filter(ee_id=ee_id).first()
+                    
+                    if existing_employee:
+                        # Update existing employee
                         serializer = EmployeeDetailsSerializer(
-                            obj, data=cleaned_row, partial=True)
+                            existing_employee, 
+                            data=employee_data, 
+                            partial=True
+                        )
                         if serializer.is_valid():
                             serializer.save()
                             updated_employees.append(ee_id)
                         else:
-                            # Log error but continue
-                            print(f"Update validation failed for {ee_id}: {serializer.errors}")
-                else:
-                    serializer = EmployeeDetailsSerializer(data=cleaned_row)
-                    if serializer.is_valid():
-                        serializer.save()
-                        added_employees.append(ee_id)
+                            return ResponseHelper.error_response(
+                                message=f"Validation error for ee_id {ee_id}",
+                                error=serializer.errors,
+                                status_code=status.HTTP_400_BAD_REQUEST
+                            )
                     else:
-                        # Log error but continue
-                        print(f"Create validation failed for {ee_id}: {serializer.errors}")
+                        # Create new employee
+                        serializer = EmployeeDetailsSerializer(data=employee_data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            added_employees.append(ee_id)
+                        else:
+                            return ResponseHelper.error_response(
+                                message=f"Validation error for ee_id {ee_id}",
+                                error=serializer.errors,
+                                status_code=status.HTTP_400_BAD_REQUEST
+                            )
+                            
+                except Exception as row_e:
+                    return ResponseHelper.error_response(
+                        message="Error processing row",
+                        error=str(row_e),
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
 
-            response_data = []
-            if added_employees:
-                response_data.append({
-                    'message': 'Employee(s) imported successfully',
-                    'added_employees': added_employees
-                })
-            if updated_employees:
-                response_data.append({
-                    'message': 'Employee details updated successfully',
-                    'updated_employees': updated_employees
-                })
-
-            if not response_data:
-                return Response({
-                    'success': True,
-                    'status_code': status.HTTP_200_OK,
-                    'message': 'No data was updated or inserted.'
-                }, status=status.HTTP_200_OK)
-
-            # Make response data JSON-safe
-            response_data = DataProcessingUtils.make_json_safe(response_data)
+            # Build response data
+            response_data = {}
             
-            return Response({
-                'success': True,
-                'status_code': status.HTTP_200_OK,
-                'response_data': response_data
-            }, status=status.HTTP_200_OK)
+            if added_employees:
+                response_data["added_employees"] = added_employees
+                response_data["added_count"] = len(added_employees)
+            
+            if updated_employees:
+                response_data["updated_employees"] = updated_employees
+                response_data["updated_count"] = len(updated_employees)
+            
+            if not added_employees and not updated_employees:
+                return ResponseHelper.success_response(
+                    message="No valid data to process",
+                    data=response_data,
+                    status_code=status.HTTP_200_OK
+                )
+
+            return ResponseHelper.success_response(
+                message="File processed successfully",
+                data=response_data,
+                status_code=status.HTTP_201_CREATED
+            )
 
         except Exception as e:
-            # logger.error(f"Error upserting employee data: {e}")
-            return Response({
-                'success': False,
-                'status_code': status.HTTP_500_INTERNAL_SERVER_ERROR,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return ResponseHelper.error_response(
+                message="Failed to import employee data",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # Export employee details using the Excel file
@@ -431,7 +479,6 @@ class ExportEmployeeDataView(APIView):
     Exports employee details as an Excel file.
     Provides robust exception handling and clear response messages.
     """
-    permission_classes = [AllowAny]
     @swagger_auto_schema(
         responses={
             200: 'Employee data exported successfully as Excel file',
@@ -567,6 +614,9 @@ class EmployeeDetailsAPI(APIView):
             500: "Internal Server Error",
         }
     )
+    # @audit_api_call
+    # @audit_business_operation("employee_list_retrieval")
+    # @audit_data_access("EmployeeDetail", "READ")
     def get(self, request):
         """
         Get paginated list of active employees.
@@ -594,6 +644,10 @@ class EmployeeDetailsAPI(APIView):
             500: "Internal Server Error",
         },
     )
+    @audit_api_call
+    @audit_business_operation("employee_creation")
+    @audit_data_access("EmployeeDetail", "CREATE")
+    @audit_security_event("employee_data_modification", "WARNING")
     def post(self, request):
         """
         Create a new employee.
@@ -602,6 +656,20 @@ class EmployeeDetailsAPI(APIView):
         if serializer.is_valid():
             try:
                 employee = serializer.save()
+                
+                # Log successful employee creation
+                from garnishedge_project.audit_logger import audit_logger
+                audit_logger.log_business_operation(
+                    "employee_created",
+                    {
+                        "employee_id": employee.id,
+                        "employee_name": getattr(employee, 'first_name', 'Unknown'),
+                        "data_source": "api"
+                    },
+                    user=request.user,
+                    success=True
+                )
+                
                 return ResponseHelper.success_response(
                     message="Employee created successfully",
                     data=EmployeeDetailsSerializer(employee).data,

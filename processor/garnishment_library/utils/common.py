@@ -186,7 +186,6 @@ class StateAbbreviations:
                 state_name = self.abbreviation
             else:
                 state_name = State.objects.get(state_code=self.abbreviation).state
-                print("state_name", state_name)
             return state_name.lower()
         except Exception as e:
             raise ValueError(f"Error getting state name and abbreviation: {e}")
