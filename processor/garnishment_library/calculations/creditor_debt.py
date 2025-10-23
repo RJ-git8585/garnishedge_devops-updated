@@ -191,15 +191,27 @@ class CreditorDebtHelper():
                 config_data[EC.UPPER_THRESHOLD_AMOUNT])
             upper_threshold_percent = float(
                 config_data[EC.UPPER_THRESHOLD_PERCENT])/100
+            
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "upper_threshold_percent": upper_threshold_percent,
+                "upper_threshold_percent_display": f"{upper_threshold_percent*100}%"
+            }
+            
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
             elif lower_threshold_amount <= disposable_earning <= upper_threshold_amount:
                 return UtilityClass.build_response(disposable_earning - lower_threshold_amount, disposable_earning,
-                                                CM.DE_GT_LOWER_LT_UPPER, f"{CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}")
+                                                CM.DE_GT_LOWER_LT_UPPER, f"{CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}",
+                                                condition_values)
             elif disposable_earning >= upper_threshold_amount:
                 return UtilityClass.build_response(
-                    upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+                    upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                    condition_values)
         except Exception as e:
 
             return UtilityClass.build_response(
@@ -214,16 +226,25 @@ class CreditorDebtHelper():
             lower_threshold_percent = float(
                 config_data[EC.LOWER_THRESHOLD_PERCENT1])/100
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "lower_threshold_percent": lower_threshold_percent,
+                "lower_threshold_percent_display": f"{lower_threshold_percent*100}%"
+            }
+
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
             elif disposable_earning > lower_threshold_amount:
                 diff_of_de_and_threshold_amount = disposable_earning - lower_threshold_amount
                 de_percent = disposable_earning * lower_threshold_percent
                 return UtilityClass.build_response(
                     min(diff_of_de_and_threshold_amount,
                         de_percent), disposable_earning, CM.DE_GT_UPPER,
-                    f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))"
+                    f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))",
+                    condition_values
                 )
         except Exception as e:
             return UtilityClass.build_response(
@@ -246,15 +267,29 @@ class CreditorDebtHelper():
                 config_data[EC.UPPER_THRESHOLD_PERCENT]) / 100
             de_range_lower_to_upper_threshold_percent = float(
                 config_data[EC.DE_RANGE_LOWER_TO_UPPER_THRESHOLD_PERCENT]) / 100
+            
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "upper_threshold_percent": upper_threshold_percent,
+                "upper_threshold_percent_display": f"{upper_threshold_percent*100}%",
+                "de_range_lower_to_upper_threshold_percent": de_range_lower_to_upper_threshold_percent,
+                "de_range_lower_to_upper_threshold_percent_display": f"{de_range_lower_to_upper_threshold_percent*100}%"
+            }
+            
             if disposable_earning <= lower_threshold_amount:
-                return UtilityClass.build_response(0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                return UtilityClass.build_response(0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                                                    condition_values)
             elif lower_threshold_amount < disposable_earning <= upper_threshold_amount:
                 withholding_amount = (disposable_earning - lower_threshold_amount) * de_range_lower_to_upper_threshold_percent
                 return UtilityClass.build_response(withholding_amount, disposable_earning,
-                                                    CM.DE_GT_LOWER_LT_UPPER, f"({CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}) * {de_range_lower_to_upper_threshold_percent*100}%")
+                                                    CM.DE_GT_LOWER_LT_UPPER, f"({CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}) * {de_range_lower_to_upper_threshold_percent*100}%",
+                                                    condition_values)
             elif disposable_earning > upper_threshold_amount:
                 withholding_amount = upper_threshold_percent * disposable_earning
-                return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+                return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                                                    condition_values)
         except Exception as e:
 
             return UtilityClass.build_response(
@@ -295,9 +330,16 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 config_data[EC.PERCENT_LIMIT]) / 100
             withholding_amt = disposable_earning * PERCENT_LIMIT
 
+            # Prepare condition values
+            condition_values = {
+                "percent_limit": PERCENT_LIMIT,
+                "percent_limit_display": f"{PERCENT_LIMIT*100}%"
+            }
+
             return UtilityClass.build_response(
                 withholding_amt, disposable_earning, "NA",
-                f"{PERCENT_LIMIT*100}% of {CM.DISPOSABLE_EARNING}"
+                f"{PERCENT_LIMIT*100}% of {CM.DISPOSABLE_EARNING}",
+                condition_values
             )
         except Exception as e:
             return UtilityClass.build_response(
@@ -329,13 +371,23 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 withholding_cap = general_debt_logic[CRF.WITHHOLDING_CAP]
 
                 lesser_amt = min(wa, withholding_amt)
+                
+                # Prepare condition values
+                condition_values = general_debt_logic.get("condition_values", {})
+                condition_values["wa"] = wa
+                condition_values["threshold"] = 200
+                
                 return UtilityClass.build_response(lesser_amt, disposable_earning,
                                                    f"{CM.DISPOSABLE_EARNING} >= 200",
-                                                   f"Min({CM.WITHHOLDING_AMT},{withholding_cap})")
+                                                   f"Min({CM.WITHHOLDING_AMT},{withholding_cap})",
+                                                   condition_values)
             else:
+                # Prepare condition values
+                condition_values = {"threshold": 200}
                 return UtilityClass.build_response(0, disposable_earning,
                                                    "de < 200",
-                                                   CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                                                   CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                                                   condition_values)
         except Exception as e:
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
@@ -349,9 +401,18 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
         try:
             PERCENT_LIMIT = float(
                 config_data[EC.PERCENT_LIMIT]) / 100
+            
+            # Prepare condition values
+            condition_values = {
+                "percent_limit": PERCENT_LIMIT,
+                "percent_limit_display": f"{PERCENT_LIMIT*100}%",
+                "gross_pay": gross_pay
+            }
+            
             return UtilityClass.build_response(
                 gross_pay * PERCENT_LIMIT, 0, "NA",
-                f"{PERCENT_LIMIT*100}% of gross pay"
+                f"{PERCENT_LIMIT*100}% of gross pay",
+                condition_values
             )
         except Exception as e:
             return UtilityClass.build_response(
@@ -371,22 +432,33 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             upper_threshold_percent = float(
                 config_data[EC.UPPER_THRESHOLD_PERCENT]) / 100
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "upper_threshold_percent": upper_threshold_percent,
+                "upper_threshold_percent_display": f"{upper_threshold_percent*100}%"
+            }
+
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CR.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             elif lower_threshold_amount <= disposable_earning <= upper_threshold_amount:
                 diff = disposable_earning - lower_threshold_amount
                 return UtilityClass.build_response(
                     diff, disposable_earning, CM.DE_GT_LOWER_LT_UPPER,
-                    f"{CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}"
+                    f"{CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}",
+                    condition_values
                 )
             elif disposable_earning >= upper_threshold_amount:
                 return UtilityClass.build_response(
                     disposable_earning * upper_threshold_percent, disposable_earning,
-                    CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}"
+                    CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                    condition_values
                 )
             else:
                 return UtilityClass.build_response(
@@ -412,23 +484,36 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             filing_status_percent = float(
                 config_data[EC.FILING_STATUS_PERCENT]) / 100
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "filing_status_percent": filing_status_percent,
+                "filing_status_percent_display": f"{filing_status_percent*100}%",
+                "filing_status": filing_status
+            }
+
             if filing_status == FS.HEAD_OF_HOUSEHOLD:
                 if disposable_earning <= lower_threshold_amount:
                     return UtilityClass.build_response(0, disposable_earning,
                                                        CM.DE_LE_LOWER,
-                                                       CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                                                       CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                                                       condition_values)
                 elif lower_threshold_amount <= disposable_earning <= upper_threshold_amount:
                     return UtilityClass.build_response(upper_threshold_amount - disposable_earning, disposable_earning,
                                                        CM.DE_GT_LOWER_LT_UPPER,
-                                                       f"{CM.DISPOSABLE_EARNING} - {CM.UPPER_THRESHOLD_AMOUNT}")
+                                                       f"{CM.DISPOSABLE_EARNING} - {CM.UPPER_THRESHOLD_AMOUNT}",
+                                                       condition_values)
                 elif disposable_earning >= upper_threshold_amount:
                     return UtilityClass.build_response(filing_status_percent * disposable_earning, disposable_earning,
                                                        CM.DE_GT_UPPER,
-                                                       f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}")
+                                                       f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                                                       condition_values)
             else:
                 withholding_amt = self._general_debt_logic(
                     disposable_earning, config_data)
-                return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP])
+                return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP],
+                                                    withholding_amt.get("condition_values"))
 
         except Exception as e:
             return UtilityClass.build_response(
@@ -448,22 +533,35 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             filing_status_percent = float(
                 config_data[EC.FILING_STATUS_PERCENT]) / 100
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "filing_status_percent": filing_status_percent,
+                "filing_status_percent_display": f"{filing_status_percent*100}%",
+                "filing_status": filing_status
+            }
+
             if filing_status == FS.HEAD_OF_HOUSEHOLD:
                 if disposable_earning <= lower_threshold_amount:
                     withholding_amt = UtilityClass.build_response(
-                        0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                        0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                        condition_values)
 
                 elif lower_threshold_amount <= disposable_earning <= upper_threshold_amount:
                     withholding_amt = UtilityClass.build_response(disposable_earning-lower_threshold_amount, disposable_earning,
-                                                                  CM.DE_GT_LOWER_LT_UPPER, f"{CM.UPPER_THRESHOLD_AMOUNT} - {CM.DISPOSABLE_EARNING}")
+                                                                  CM.DE_GT_LOWER_LT_UPPER, f"{CM.UPPER_THRESHOLD_AMOUNT} - {CM.DISPOSABLE_EARNING}",
+                                                                  condition_values)
                 elif disposable_earning >= upper_threshold_amount:
                     withholding_amt = UtilityClass.build_response(
-                        filing_status_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}")
+                        filing_status_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{filing_status_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                        condition_values)
                 return withholding_amt
             else:
                 withholding_amt = self._general_debt_logic(
                     disposable_earning, config_data)
-                return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP])
+                return UtilityClass.build_response(withholding_amt[CRF.WITHHOLDING_AMT], disposable_earning, withholding_amt[CRF.WITHHOLDING_BASIS], withholding_amt[CRF.WITHHOLDING_CAP],
+                                                    withholding_amt.get("condition_values"))
 
         except Exception as e:
             return UtilityClass.build_response(
@@ -482,30 +580,44 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             lower_threshold_percent = float(
                 config_data[EC.LOWER_THRESHOLD_PERCENT1]) / 100
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "exempt_amt": exempt_amt,
+                "lower_threshold_percent": lower_threshold_percent,
+                "lower_threshold_percent_display": f"{lower_threshold_percent*100}%",
+                "no_of_exemption_including_self": no_of_exemption_including_self
+            }
+
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
 
             else:  # disposable_earning > lower_threshold_amount
                 if no_of_exemption_including_self == 0:
                     diff_of_de_and_lower_threshold_amount = disposable_earning-lower_threshold_amount
                     de_percent = disposable_earning*lower_threshold_percent
                     return UtilityClass.build_response(
-                        min(diff_of_de_and_lower_threshold_amount, de_percent), disposable_earning, CM.DE_GT_LOWER, f"Min({lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}, {CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT})")
+                        min(diff_of_de_and_lower_threshold_amount, de_percent), disposable_earning, CM.DE_GT_LOWER, f"Min({lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}, {CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT})",
+                        condition_values)
                 elif no_of_exemption_including_self >= 1:
                     diff_of_de_and_lower_threshold_amount = disposable_earning-lower_threshold_amount
                     de_percent = disposable_earning*lower_threshold_percent
                     min_amt =(min(diff_of_de_and_lower_threshold_amount, de_percent))
                     dependent_exemption = exempt_amt * \
                         no_of_exemption_including_self
+                    condition_values["dependent_exemption"] = dependent_exemption
                     if min_amt <= dependent_exemption:
                         return UtilityClass.build_response(
                             0, disposable_earning, CM.DE_GT_LOWER,
-                            CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                            CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                            condition_values
                         )
                     else:
                         return UtilityClass.build_response(
-                                min_amt-dependent_exemption, disposable_earning, CM.DE_GT_LOWER, f"Min({lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}, {CM.DISPOSABLE_EARNING} - ({CM.LOWER_THRESHOLD_AMOUNT} + ({CM.LOWER_THRESHOLD_AMOUNT}+dependent_exemption)))")
+                                min_amt-dependent_exemption, disposable_earning, CM.DE_GT_LOWER, f"Min({lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}, {CM.DISPOSABLE_EARNING} - ({CM.LOWER_THRESHOLD_AMOUNT} + ({CM.LOWER_THRESHOLD_AMOUNT}+dependent_exemption)))",
+                                condition_values)
 
         except Exception as e:
             return UtilityClass.build_response(
@@ -522,36 +634,63 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
             exempt_amt = float(config_data[EC.EXEMPT_AMOUNT])
             general_result = self._general_debt_logic(
                 disposable_earning, config_data)
+            
+            # Prepare condition values
+            condition_values = general_result.get("condition_values", {})
+            condition_values["exempt_amt"] = exempt_amt
+            condition_values["no_of_dependent_child"] = no_of_dependent_child
+            
             if no_of_dependent_child == 0:
                 return UtilityClass.build_response(general_result[CRF.WITHHOLDING_AMT], disposable_earning,
-                                                   general_result[CRF.WITHHOLDING_BASIS], f"{general_result[CRF.WITHHOLDING_CAP]}")
+                                                   general_result[CRF.WITHHOLDING_BASIS], f"{general_result[CRF.WITHHOLDING_CAP]}",
+                                                   condition_values)
             else:
                 exempt_amt_for_dependent = exempt_amt*no_of_dependent_child
                 withholding_amt = general_result[CRF.WITHHOLDING_AMT] - \
                     exempt_amt_for_dependent
+                condition_values["exempt_amt_for_dependent"] = exempt_amt_for_dependent
                 return UtilityClass.build_response(withholding_amt, disposable_earning,
-                                                   general_result[CRF.WITHHOLDING_BASIS], f"{general_result[CRF.WITHHOLDING_CAP]}-Exempt Amount for Dependent")
+                                                   general_result[CRF.WITHHOLDING_BASIS], f"{general_result[CRF.WITHHOLDING_CAP]}-Exempt Amount for Dependent",
+                                                   condition_values)
         except Exception as e:
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_tennessee: {str(e)}"
             )
 
-    def cal_nevada(self, gross_pay, disposable_earning, config_data, percent1=.18):
+    def cal_nevada(self, gross_pay, disposable_earning, config_data):
         """
         Nevada: Garnishment calculation based on lower threshold and percent.
         """
         try:
-            wl_limit_threshold = 770
+            gp_lower_threshold_amount = float(
+                config_data[EC.GP_LOWER_THRESHOLD_AMOUNT])
+            gp_lower_threshold_percent1 = float(
+                config_data[EC.GP_LOWER_THRESHOLD_PERCENT1]) / 100
             lower_threshold_amount = float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             lower_threshold_percent = float(
                 config_data[EC.LOWER_THRESHOLD_PERCENT1]) / 100
 
-            if gross_pay <= wl_limit_threshold:
-                withholding_amt = disposable_earning*percent1
+            # Prepare condition values
+            condition_values = {
+                "wl_limit_threshold": gp_lower_threshold_amount,
+                "lower_threshold_amount": lower_threshold_amount,
+                "lower_threshold_percent": lower_threshold_percent,
+                "lower_threshold_percent_display": f"{lower_threshold_percent*100}%",
+                "percent1": gp_lower_threshold_percent1,
+                "percent1_display": f"{gp_lower_threshold_percent1*100}%"
+            }
+
+            if gross_pay <= gp_lower_threshold_amount:
+                withholding_amt = disposable_earning*gp_lower_threshold_percent1
                 return UtilityClass.build_response(withholding_amt, disposable_earning,
-                                                   f"{CM.GROSS_PAY} <= {wl_limit_threshold}", f"{percent1*100}% of {CM.DISPOSABLE_EARNING}")
+                                                   f"{CM.GROSS_PAY} <= {gp_lower_threshold_amount}", f"{gp_lower_threshold_percent1*100}% of {CM.DISPOSABLE_EARNING}",
+                                                   condition_values)
+            elif  disposable_earning <= lower_threshold_amount:
+                return UtilityClass.build_response(
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
             else:  # disposable_earning > lower_threshold_amount
                 diff_of_de_and_fmw_fifty_times = disposable_earning-lower_threshold_amount
                 twenty_five_percent_of_de = disposable_earning*lower_threshold_percent
@@ -559,8 +698,11 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                     diff_of_de_and_fmw_fifty_times, twenty_five_percent_of_de)
                 return UtilityClass.build_response(withholding_amt, disposable_earning,
                                                    CM.DE_GT_LOWER,
-                                                   f"Min(({CM.DISPOSABLE_EARNING}-{CM.LOWER_THRESHOLD_AMOUNT}),{lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING})")
+                                                   f"Min(({CM.DISPOSABLE_EARNING}-{CM.LOWER_THRESHOLD_AMOUNT}),{lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING})",
+                                                   condition_values)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_nevada: {str(e)}"
@@ -583,18 +725,36 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 config_data[EC.UPPER_THRESHOLD_AMOUNT])
             upper_threshold_percent = float(
                 config_data[EC.UPPER_THRESHOLD_PERCENT]) / 100
+            
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "mid_threshold_amount": mid_threshold_amount,
+                "upper_threshold_amount": upper_threshold_amount,
+                "de_range_lower_to_mid_threshold_percent": de_range_lower_to_mid_threshold_percent,
+                "de_range_lower_to_mid_threshold_percent_display": f"{de_range_lower_to_mid_threshold_percent*100}%",
+                "de_range_mid_to_upper_threshold_percent": de_range_mid_to_upper_threshold_percent,
+                "de_range_mid_to_upper_threshold_percent_display": f"{de_range_mid_to_upper_threshold_percent*100}%",
+                "upper_threshold_percent": upper_threshold_percent,
+                "upper_threshold_percent_display": f"{upper_threshold_percent*100}%"
+            }
+            
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
             elif disposable_earning >= lower_threshold_amount and disposable_earning <= mid_threshold_amount:
                 return UtilityClass.build_response(
-                    de_range_lower_to_mid_threshold_percent*disposable_earning, disposable_earning, f"{CM.DISPOSABLE_EARNING} > {CM.LOWER_THRESHOLD_AMOUNT} and {CM.DISPOSABLE_EARNING} <= {CM.MID_THRESHOLD_AMOUNT}", f"{de_range_lower_to_mid_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+                    de_range_lower_to_mid_threshold_percent*disposable_earning, disposable_earning, f"{CM.DISPOSABLE_EARNING} > {CM.LOWER_THRESHOLD_AMOUNT} and {CM.DISPOSABLE_EARNING} <= {CM.MID_THRESHOLD_AMOUNT}", f"{de_range_lower_to_mid_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                    condition_values)
             elif disposable_earning >= mid_threshold_amount and disposable_earning <= upper_threshold_amount:
                 return UtilityClass.build_response(
-                    de_range_mid_to_upper_threshold_percent*disposable_earning, disposable_earning, f"{CM.DISPOSABLE_EARNING} > {CM.MID_THRESHOLD_AMOUNT} and {CM.DISPOSABLE_EARNING} <= {CM.UPPER_THRESHOLD_AMOUNT}", f"{de_range_mid_to_upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+                    de_range_mid_to_upper_threshold_percent*disposable_earning, disposable_earning, f"{CM.DISPOSABLE_EARNING} > {CM.MID_THRESHOLD_AMOUNT} and {CM.DISPOSABLE_EARNING} <= {CM.UPPER_THRESHOLD_AMOUNT}", f"{de_range_mid_to_upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                    condition_values)
             elif disposable_earning >= upper_threshold_amount:
                 return UtilityClass.build_response(
-                    upper_threshold_percent*disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+                    upper_threshold_percent*disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
+                    condition_values)
 
         except Exception as e:
             return UtilityClass.build_response(

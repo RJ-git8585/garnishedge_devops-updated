@@ -248,6 +248,7 @@ class GarnishmentCalculator:
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
             
@@ -311,9 +312,10 @@ class GarnishmentCalculator:
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
                 result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                
+                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
+
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-            
+
             return result
             
         except Exception as e:

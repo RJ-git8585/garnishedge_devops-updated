@@ -290,9 +290,11 @@ class StateList:
 
 class ExemptConfigFields:
     LOWER_THRESHOLD_AMOUNT = "lower_threshold_amount"
+    GP_LOWER_THRESHOLD_AMOUNT = "gp_lower_threshold_amount"
     MID_THRESHOLD_AMOUNT = "mid_threshold_amount"
     UPPER_THRESHOLD_AMOUNT = "upper_threshold_amount"
     LOWER_THRESHOLD_PERCENT1 = "lower_threshold_percent1"
+    GP_LOWER_THRESHOLD_PERCENT1 = "gp_lower_threshold_percent1"
     LOWER_THRESHOLD_PERCENT2 = "lower_threshold_percent2"
     UPPER_THRESHOLD_PERCENT = "upper_threshold_percent"
     EXEMPT_AMOUNT = "exempt_amt"
@@ -358,6 +360,7 @@ class CalculationResponseFields:
     ALLOWABLE_DISPOSABLE_EARNING = "allowable_disposable_earning"
     ARREAR = "arrear"
     CREDITOR_DEBT = "creditor_debt"
+    CONDITION_VALUES = "condition_values"
 
 
 class CommonConstants:
@@ -393,6 +396,7 @@ class GarnishmentResultFields:
     GARNISHMENT_DETAILS = "garnishment_details"
     CALCULATION_METRICS = "calculation_metrics"
     ERROR = "error"
+    CONDITION_VALUES = "condition_values"
     
     # Garnishment details sub-fields
     WITHHOLDING_AMOUNTS = "withholding_amounts"

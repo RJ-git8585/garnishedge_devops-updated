@@ -28,13 +28,35 @@ class ResponseHelper:
 class UtilityClass:
 
     @staticmethod
-    def build_response(withholding_amt, disposable_earning, basis, cap):
-        return {
+    def build_response(withholding_amt, disposable_earning, basis, cap, condition_values=None):
+        """
+        Build response with optional condition values.
+        
+        Args:
+            withholding_amt: The calculated withholding amount
+            disposable_earning: The disposable earning amount
+            basis: The condition basis description
+            cap: The withholding cap description
+            condition_values: Optional dict with actual threshold values and percentages used
+                            e.g., {
+                                "lower_threshold_amount": 217.50,
+                                "upper_threshold_amount": 725.00,
+                                "upper_threshold_percent": 0.25,
+                                "lower_threshold_percent": 0.10
+                            }
+        """
+        response = {
             "withholding_amt": withholding_amt,
             "disposable_earning": disposable_earning,
             "withholding_basis": basis,
             "withholding_cap": cap,
         }
+        
+        # Add condition values if provided
+        if condition_values:
+            response["condition_values"] = condition_values
+            
+        return response
 
 
 class CalculationResponse:

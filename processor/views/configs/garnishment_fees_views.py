@@ -135,10 +135,10 @@ class GarnishmentFeesListByFilterAPI(generics.GenericAPIView):
             garnishment_type__type__iexact=garnishment_type_name,
         )
         if not fees.exists():
-            return Response({"detail": "No matching record found"}, status=status.HTTP_404_NOT_FOUND)
+            return ResponseHelper.error_response("No matching record found", status_code=status.HTTP_404_NOT_FOUND)
 
         serializer = self.get_serializer(fees, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return ResponseHelper.success_response("Fees fetched successfully", serializer.data, status_code=status.HTTP_200_OK)
 
 
 # -------- RETRIEVE / UPDATE / DELETE (by id) --------

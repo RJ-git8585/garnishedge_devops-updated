@@ -94,21 +94,32 @@ class StateTaxViewHelper:
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
 
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower,
+                "upper_threshold_amount": upper,
+                "percent": percent,
+                "percent_display": f"{percent*100}%"
+            }
+
             if disposable_earning <= lower:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             elif lower <= disposable_earning <= upper:
                 return UtilityClass.build_response(
                     disposable_earning - lower, disposable_earning,
                     CM.DE_GT_LOWER_LT_UPPER,
-                    f"{CM.DISPOSABLE_EARNING} - {CM.UPPER_THRESHOLD_AMOUNT}"
+                    f"{CM.DISPOSABLE_EARNING} - {CM.UPPER_THRESHOLD_AMOUNT}",
+                    condition_values
                 )
             return UtilityClass.build_response(
                 percent * disposable_earning, disposable_earning,
-                CM.DE_GT_UPPER, f"{percent * 100}% of {CM.DISPOSABLE_EARNING}"
+                CM.DE_GT_UPPER, f"{percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in general debt logic: {e}")
@@ -123,18 +134,29 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
     def cal_massachusetts(self, disposable_earning, gross_pay, config_data, percent=GC.MASSACHUSETTS_PERCENT):
         try:
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
+            
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower,
+                "percent": percent,
+                "percent_display": f"{percent*100}%",
+                "gross_pay": gross_pay
+            }
+            
             if disposable_earning <= lower:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             diff = disposable_earning - lower
             gp_percent = gross_pay * percent
             return UtilityClass.build_response(
                 min(diff, gp_percent), disposable_earning,
                 CM.DE_GT_LOWER,
-                f"Min({percent * 100}% of {CM.GROSS_PAY}, ({CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}))"
+                f"Min({percent * 100}% of {CM.GROSS_PAY}, ({CM.DISPOSABLE_EARNING} - {CM.LOWER_THRESHOLD_AMOUNT}))",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in Massachusetts formula: {e}")
@@ -157,18 +179,28 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
     def cal_minnesota(self, disposable_earning, config_data, percent=GC.DEFAULT_PERCENT):
         try:
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
+            
+            # Prepare condition values
+            condition_values = {
+                "upper_threshold_amount": upper,
+                "percent": percent,
+                "percent_display": f"{percent*100}%"
+            }
+            
             if disposable_earning <= upper:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.UPPER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.UPPER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             diff = disposable_earning - upper
             de_percent = disposable_earning * percent
             return UtilityClass.build_response(
                 min(de_percent, diff), disposable_earning,
                 CM.DE_GT_UPPER,
-                f"Min(({CM.DISPOSABLE_EARNING}-{CM.UPPER_THRESHOLD_AMOUNT}), {percent * 100}% of {CM.DISPOSABLE_EARNING})"
+                f"Min(({CM.DISPOSABLE_EARNING}-{CM.UPPER_THRESHOLD_AMOUNT}), {percent * 100}% of {CM.DISPOSABLE_EARNING})",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in Minnesota formula: {e}")
@@ -178,18 +210,31 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
                     percent1=GC.NEWYORK_PERCENT1, percent2=GC.NEWYORK_PERCENT2):
         try:
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
+            
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower,
+                "percent1": percent1,
+                "percent1_display": f"{percent1*100}%",
+                "percent2": percent2,
+                "percent2_display": f"{percent2*100}%",
+                "gross_pay": gross_pay
+            }
+            
             if disposable_earning <= lower:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             de_percent = disposable_earning * percent2
             gp_percent = gross_pay * percent1
             return UtilityClass.build_response(
                 min(de_percent, gp_percent), disposable_earning,
                 CM.DE_GT_LOWER,
-                f"Min({percent1 * 100}% of {CM.GROSS_PAY}, {percent2 * 100}% of {CM.DISPOSABLE_EARNING})"
+                f"Min({percent1 * 100}% of {CM.GROSS_PAY}, {percent2 * 100}% of {CM.DISPOSABLE_EARNING})",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in New York formula: {e}")
@@ -200,18 +245,28 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
             exempt_amt = GC.EXEMPT_AMOUNT
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
 
+            # Prepare condition values
+            condition_values = {
+                "exempt_amt": exempt_amt,
+                "lower_threshold_amount": lower,
+                "no_of_exemption_including_self": no_of_exemption_including_self,
+                "net_pay": net_pay
+            }
 
             if no_of_exemption_including_self == 0:
                 return UtilityClass.build_response(
                     net_pay-lower, 0, CM.NO_OF_EXEMPTIONS_ONE,
-                    CM.LOWER_THRESHOLD_AMOUNT
+                    CM.LOWER_THRESHOLD_AMOUNT,
+                    condition_values
                 )
             exempt_amt_cal = lower + (exempt_amt * (no_of_exemption_including_self))
             diff = net_pay - exempt_amt_cal
+            condition_values["exempt_amt_cal"] = exempt_amt_cal
 
             return UtilityClass.build_response(
                 diff, 0, CM.NO_OF_EXEMPTIONS_MORE,
-                f"{EE.NET_PAY}-({CM.LOWER_THRESHOLD_AMOUNT}+{exempt_amt}*({CM.NO_OF_EXEMPTIONS_ONE}))"
+                f"{EE.NET_PAY}-({CM.LOWER_THRESHOLD_AMOUNT}+{exempt_amt}*({CM.NO_OF_EXEMPTIONS_ONE}))",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in West Virginia formula: {e}")
@@ -220,18 +275,28 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
     def cal_new_mexico(self, disposable_earning, config_data, percent=GC.DEFAULT_PERCENT):
         try:
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
+            
+            # Prepare condition values
+            condition_values = {
+                "upper_threshold_amount": upper,
+                "percent": percent,
+                "percent_display": f"{percent*100}%"
+            }
+            
             if disposable_earning <= upper:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER,
                     CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.UPPER_THRESHOLD_AMOUNT)
+                        CM.DISPOSABLE_EARNING, CM.UPPER_THRESHOLD_AMOUNT),
+                    condition_values
                 )
             diff = disposable_earning - upper
             de_percent = disposable_earning * percent
             return UtilityClass.build_response(
                 min(de_percent, diff), disposable_earning,
                 CM.DE_GT_UPPER,
-                f"Min(({CM.DISPOSABLE_EARNING}-{CM.UPPER_THRESHOLD_AMOUNT}),{percent * 100}% of {CM.DISPOSABLE_EARNING})"
+                f"Min(({CM.DISPOSABLE_EARNING}-{CM.UPPER_THRESHOLD_AMOUNT}),{percent * 100}% of {CM.DISPOSABLE_EARNING})",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in New Mexico formula: {e}")
@@ -239,9 +304,16 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
 
     def cal_delaware(self, disposable_earning, percent):
         try:
+            # Prepare condition values
+            condition_values = {
+                "percent": percent,
+                "percent_display": f"{percent*100}%"
+            }
+            
             return UtilityClass.build_response(
                 disposable_earning * percent, disposable_earning,
-                CM.NA, f"{percent * 100}% of {CM.DISPOSABLE_EARNING}"
+                CM.NA, f"{percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                condition_values
             )
         except Exception as e:
             logger.error(f"Error in Delaware formula: {e}")
@@ -310,25 +382,25 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
                 StateList.GEORGIA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
                 StateList.COLORADO: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
                 StateList.ILLINOIS: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, 
-                        "NA", f"{percent() * 100}% of {CM.GROSS_PAY}"),
+                        "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
                 StateList.MARYLAND: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()) 
-                            - medical_insurance, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}"),
+                            - medical_insurance, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%", "medical_insurance": medical_insurance}),
                 StateList.MASSACHUSETTS: lambda: self.cal_massachusetts(disposable_earning, gross_pay, exempt_amt_config, percent()),
                 StateList.MISSOURI: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()),
-                         disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}"),
+                         disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"}),
                 StateList.NEW_JERSEY: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 
-                            0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}"),
+                            0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
                 StateList.MAINE: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
                 StateList.INDIANA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
                 StateList.MINNESOTA: lambda: self.cal_minnesota(disposable_earning, exempt_amt_config, percent()),
                 StateList.NEW_YORK: lambda: self.cal_newyork(disposable_earning, gross_pay, exempt_amt_config, percent()),
-                StateList.NORTH_CAROLINA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}"),
-                StateList.PENNSYLVANIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}"),
+                StateList.NORTH_CAROLINA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
+                StateList.PENNSYLVANIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
                 StateList.VERMONT: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.VIRGINIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()), disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}"),
+                StateList.VIRGINIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()), disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"}),
                 StateList.DELAWARE: lambda: self.cal_delaware(disposable_earning, percent()),
                 StateList.IOWA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.WISCONSIN: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}"),
+                StateList.WISCONSIN: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
                 StateList.WEST_VIRGINIA: lambda: self.cal_west_virginia(no_of_exemption_including_self, net_pay, exempt_amt_config),
                 StateList.NEW_MEXICO: lambda: self.cal_new_mexico(
                     disposable_earning, exempt_amt_config, percent())
@@ -348,10 +420,10 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             if state in twenty_five_percentage_grp_state:
                 result = self.cal_x_disposible_income(
                     disposable_earning, percent())
-                return UtilityClass.build_response(result, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}")
+                return UtilityClass.build_response(result, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"})
             elif state in [StateList.ALABAMA, StateList.HAWAII]:
                 result = self.cal_x_disposible_income(gross_pay, percent())
-                return UtilityClass.build_response(result, 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}")
+                return UtilityClass.build_response(result, 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay})
 
             logger.warning(f"No formula found for state: {state}")
             return CC.NOT_FOUND

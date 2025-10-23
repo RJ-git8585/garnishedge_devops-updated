@@ -24,6 +24,10 @@ class ThresholdAmount(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True)
     de_range_mid_to_upper_threshold_percent =models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    gp_lower_threshold_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    gp_lower_threshold_percent1 = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
     exempt_amt = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     filing_status_percent =models.DecimalField(

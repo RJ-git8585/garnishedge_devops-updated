@@ -49,6 +49,7 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
             'state', 'pay_period', 'lower_threshold_amount', 'lower_threshold_percent1', 'lower_threshold_percent2',
             'mid_threshold_amount', 'mid_threshold_percent',
             'upper_threshold_amount', 'upper_threshold_percent',
+            'gp_lower_threshold_amount', 'gp_lower_threshold_percent1',
             'de_range_lower_to_upper_threshold_percent',
             'de_range_lower_to_mid_threshold_percent',
             'de_range_mid_to_upper_threshold_percent',
