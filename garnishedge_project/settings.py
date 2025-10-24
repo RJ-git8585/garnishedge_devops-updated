@@ -226,73 +226,135 @@ JAEGER_AGENT_PORT = env.int('JAEGER_AGENT_PORT', default=6831)
 # Disable OpenTelemetry if collector is not available
 OTEL_ENABLED = env.bool('OTEL_ENABLED', default=False)
 
+# Create logs directory if it doesn't exist
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Check if we're in production (Render deployment)
+IS_PRODUCTION = os.getenv('RENDER', False) or os.getenv('DJANGO_ENV') == 'production'
+
 # Logging Configuration for OpenTelemetry
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
+if IS_PRODUCTION:
+    # Production logging - use console only for cloud deployment
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+                'style': '{',
+            },
+            'json': {
+                'format': '{"level": "%(levelname)s", "time": "%(asctime)s", "module": "%(module)s", "message": "%(message)s"}',
+            },
         },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'verbose',
+            },
         },
-        'json': {
-            'format': '{"level": "%(levelname)s", "time": "%(asctime)s", "module": "%(module)s", "message": "%(message)s"}',
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': True,
+            },
+            'garnishedge_project.audit_middleware': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'garnishedge_project.audit_logger': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'model_audit': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'opentelemetry': {
+                'handlers': ['console'],
+                'level': 'WARNING',
+                'propagate': False,
+            },
         },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': 'logs/audit.log',
-            'formatter': 'json',
-        },
-        'audit_file': {
-            'class': 'logging.FileHandler',
-            'filename': 'logs/api_audit.log',
-            'formatter': 'json',
-        },
-        'model_audit_file': {
-            'class': 'logging.FileHandler',
-            'filename': 'logs/model_audit.log',
-            'formatter': 'verbose',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
+        'root': {
+            'handlers': ['console'],
             'level': 'INFO',
-            'propagate': True,
         },
-        'garnishedge_project.audit_middleware': {
-            'handlers': ['audit_file'],
+    }
+else:
+    # Development logging - use both console and files
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+                'style': '{',
+            },
+            'simple': {
+                'format': '{levelname} {message}',
+                'style': '{',
+            },
+            'json': {
+                'format': '{"level": "%(levelname)s", "time": "%(asctime)s", "module": "%(module)s", "message": "%(message)s"}',
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'verbose',
+            },
+            'file': {
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(LOGS_DIR, 'audit.log'),
+                'formatter': 'json',
+            },
+            'audit_file': {
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(LOGS_DIR, 'api_audit.log'),
+                'formatter': 'json',
+            },
+            'model_audit_file': {
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(LOGS_DIR, 'model_audit.log'),
+                'formatter': 'verbose',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['console', 'file'],
+                'level': 'INFO',
+                'propagate': True,
+            },
+            'garnishedge_project.audit_middleware': {
+                'handlers': ['audit_file'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'garnishedge_project.audit_logger': {
+                'handlers': ['audit_file'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'model_audit': {
+                'handlers': ['model_audit_file'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+            'opentelemetry': {
+                'handlers': ['file'],
+                'level': 'WARNING',
+                'propagate': False,
+            },
+        },
+        'root': {
+            'handlers': ['console'],
             'level': 'INFO',
-            'propagate': False,
         },
-        'garnishedge_project.audit_logger': {
-            'handlers': ['audit_file'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'model_audit': {
-            'handlers': ['model_audit_file'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'opentelemetry': {
-            'handlers': ['file'],
-            'level': 'WARNING',
-            'propagate': False,
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
-}
+    }
