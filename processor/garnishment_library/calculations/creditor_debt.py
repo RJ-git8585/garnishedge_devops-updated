@@ -817,7 +817,6 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                     0, disposable_earning, "ERROR",
                     "No valid config found for Oregon"
                 )
-            
             return self._minimum_wage_threshold_compare(
                 disposable_earning, exempt_amt_config
             )

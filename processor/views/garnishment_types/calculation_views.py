@@ -15,6 +15,7 @@ from processor.garnishment_library.calculations.multiple_garnishment import Mult
 from datetime import datetime
 from django.db.models import Prefetch
 from user_app.models import EmployeeDetail, GarnishmentOrder
+from garnishedge_project.model_audit import log_model_create
 
 
 import logging
@@ -196,6 +197,9 @@ class PostCalculationView(APIView):
         return enriched_case
 
     def post(self, request, *args, **kwargs):
+        # Get user for audit logging
+        user = request.user if hasattr(request, 'user') and request.user.is_authenticated else None
+        
         try:
             batch_id = request.data.get(BatchDetail.BATCH_ID)
             cases_data = request.data.get("payroll_data", [])
@@ -209,11 +213,40 @@ class PostCalculationView(APIView):
 
         # Input validation
         if not batch_id:
+            # Log validation error
+            try:
+                log_model_create(
+                    model_name="GarnishmentCalculation",
+                    object_id="VALIDATION_ERROR",
+                    user=user,
+                    new_values={
+                        "status": "VALIDATION_ERROR",
+                        "error": "batch_id is required",
+                        "processed_at": datetime.now().isoformat()
+                    }
+                )
+            except:
+                pass
             return Response(
                 {"error": "batch_id is required"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not cases_data:
+            # Log validation error
+            try:
+                log_model_create(
+                    model_name="GarnishmentCalculation",
+                    object_id=str(batch_id),
+                    user=user,
+                    new_values={
+                        "batch_id": batch_id,
+                        "status": "VALIDATION_ERROR",
+                        "error": "No PayRoll Data provided",
+                        "processed_at": datetime.now().isoformat()
+                    }
+                )
+            except:
+                pass
             return Response(
                 {"error": "No PayRoll Data provided"}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -369,6 +402,23 @@ class PostCalculationView(APIView):
 
         except Exception as e:
             logger.error(f"Critical error in batch processing {batch_id}: {str(e)}", exc_info=True)
+            
+            # Log failed calculation to audit trail
+            try:
+                log_model_create(
+                    model_name="GarnishmentCalculation",
+                    object_id=str(batch_id) if batch_id else "UNKNOWN",
+                    user=user,
+                    new_values={
+                        "batch_id": batch_id if batch_id else "UNKNOWN",
+                        "status": "FAILED",
+                        "error": str(e),
+                        "processed_at": datetime.now().isoformat()
+                    }
+                )
+            except Exception as audit_error:
+                logger.warning(f"Failed to log calculation audit: {audit_error}")
+            
             return Response(
                 {"error": f"Critical error during batch processing: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -409,5 +459,29 @@ class PostCalculationView(APIView):
         if is_payroll_input and not_found_employees:
             response_data["not_found_employees"] = not_found_employees
             response_data["summary"]["missing_employees"] = len(not_found_employees)
+        
+        # Log calculation to audit trail
+        try:
+            # Extract case IDs from cases_data
+            case_ids = [case.get(EE.CASE_ID, 'N/A') for case in cases_data[:10]]  # First 10 case IDs only
+            
+            log_model_create(
+                model_name="GarnishmentCalculation",
+                object_id=str(batch_id),
+                user=user,
+                new_values={
+                    "batch_id": batch_id,
+                    "case_ids": case_ids,
+                    "total_cases": len(cases_data),
+                    "successful_cases": success_count,
+                    "failed_cases": error_count,
+                    "garnishment_types": list(all_garnishment_types),
+                    "processed_at": datetime.now().isoformat(),
+                    "employee_ids": [case.get(EE.EMPLOYEE_ID, 'N/A') for case in cases_data[:10]]  # First 10 IDs only
+                }
+            )
+        except Exception as audit_error:
+            logger.warning(f"Failed to log calculation audit: {audit_error}")
+        
         return Response(response_data, status=status.HTTP_200_OK)
 
