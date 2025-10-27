@@ -22,6 +22,7 @@ import  traceback as t
 from ..utils.response import UtilityClass, CalculationResponse
 from processor.serializers.shared_serializers import ThresholdAmountSerializer
 logger = logging.getLogger(__name__)
+from utils.exempt import ExemptHelper
 
 
 class StateTaxViewHelper:
@@ -91,27 +92,10 @@ class StateTaxViewHelper:
         General logic for states using lower/upper threshold and percent.
         """
         try:
-            lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
-            upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
-
-            if disposable_earning <= lower:
-                return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER,
-                    CalculationResponse.get_zero_withholding_response(
-                        CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
-                )
-            elif lower <= disposable_earning <= upper:
-                return UtilityClass.build_response(
-                    disposable_earning - lower, disposable_earning,
-                    CM.DE_GT_LOWER_LT_UPPER,
-                    f"{CM.DISPOSABLE_EARNING} - {CM.UPPER_THRESHOLD_AMOUNT}"
-                )
-            return UtilityClass.build_response(
-                percent * disposable_earning, disposable_earning,
-                CM.DE_GT_UPPER, f"{percent * 100}% of {CM.DISPOSABLE_EARNING}"
-            )
+            exempt_helper = ExemptHelper()
+            return exempt_helper._general_debt_logic(disposable_earning, config_data)
         except Exception as e:
-            logger.error(f"Error in general debt logic: {e}")
+            logger.error(f"Error in apply_general_debt_logic: {e}")
             return UtilityClass.build_response(0, disposable_earning, "ERROR", str(e))
 
 
@@ -246,7 +230,6 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
         except Exception as e:
             logger.error(f"Error in Delaware formula: {e}")
             return UtilityClass.build_response(0, disposable_earning, "ERROR", str(e))
-
 
 class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
     """

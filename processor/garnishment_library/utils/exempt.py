@@ -10,7 +10,7 @@ from user_app.constants import (
     PayrollTaxesFields as PT,
     CalculationMessages as CM,
     ExemptConfigFields as EC,
-    FilingStatusFields as FS,
+    FilingStatusFields as FS, 
     CommonConstants as CC,
     CalculationResponseFields as CRF,
 )
@@ -188,6 +188,7 @@ class ExemptHelper():
                 config_data[EC.UPPER_THRESHOLD_AMOUNT])
             upper_threshold_percent = float(
                 config_data[EC.UPPER_THRESHOLD_PERCENT])/100
+            
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
@@ -197,8 +198,8 @@ class ExemptHelper():
             elif disposable_earning >= upper_threshold_amount:
                 return UtilityClass.build_response(
                     upper_threshold_percent * disposable_earning, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+        
         except Exception as e:
-
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
@@ -243,8 +244,12 @@ class ExemptHelper():
                 config_data[EC.UPPER_THRESHOLD_PERCENT]) / 100
             de_range_lower_to_upper_threshold_percent = float(
                 config_data[EC.DE_RANGE_LOWER_TO_UPPER_THRESHOLD_PERCENT]) / 100
+            
             if disposable_earning <= lower_threshold_amount:
-                return UtilityClass.build_response(0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT))
+                return UtilityClass.build_response(0, disposable_earning, CM.DE_LE_LOWER, 
+                                                   CR.get_zero_withholding_response(
+                                                       CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT)
+                                        )
             elif lower_threshold_amount < disposable_earning <= upper_threshold_amount:
                 withholding_amount = (disposable_earning - lower_threshold_amount) * de_range_lower_to_upper_threshold_percent
                 return UtilityClass.build_response(withholding_amount, disposable_earning,
@@ -252,8 +257,8 @@ class ExemptHelper():
             elif disposable_earning > upper_threshold_amount:
                 withholding_amount = upper_threshold_percent * disposable_earning
                 return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}")
+        
         except Exception as e:
-
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
