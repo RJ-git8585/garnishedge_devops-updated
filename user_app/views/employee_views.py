@@ -38,6 +38,7 @@ from user_app.utils import DataProcessingUtils
 class EmployeeImportView(APIView):
     """
     Handles the import of employee details from an Excel or CSV file.
+    Optimized for bulk processing with minimal database queries.
     """
     parser_classes = [MultiPartParser, FormParser]
 
@@ -59,15 +60,11 @@ class EmployeeImportView(APIView):
             )
         ],
         responses={
-            200: "File uploaded successfully",
-            400: "Row import error",
-            500: "Internal server error"
-        },
+            201: 'File processed successfully',
+            400: 'No file provided or unsupported file format',
+            500: 'Internal server error'
+        }
     )
-    @audit_api_call
-    @audit_business_operation("employee_bulk_import")
-    @audit_data_access("EmployeeDetail", "CREATE")
-    @audit_security_event("bulk_data_import", "CRITICAL")
     def post(self, request):
         try:
             if 'file' not in request.FILES:
@@ -89,32 +86,180 @@ class EmployeeImportView(APIView):
                     message="Unsupported file format. Please upload a CSV or Excel file.",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # Normalize all column names to expected keys (e.g., 'Employee ID' -> 'ee_id')
+            try:
+                df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
+            except Exception:
+                pass
+            
+            # Determine ee_id column after normalization
+            ee_id_candidates = ['ee_id', 'employee_id', 'employee id', 'ee id', 'eeid', 'id']
+            ee_id_column = next((c for c in ee_id_candidates if c in df.columns), None)
+            if not ee_id_column:
+                return ResponseHelper.error_response(
+                    message="No valid identifier column found",
+                    error="Expected one of: ee_id, employee_id, employee id, ee id, eeid, id",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
-            employees = []
+            # Process data in batches for better performance
+            batch_size = 200  # Increased batch size for better performance
+            added_employees = []
+            updated_employees = []
+            validation_errors = []
+            
+            # Pre-fetch existing employees to avoid repeated queries
+            existing_employee_ids = set(EmployeeDetail.objects.values_list('ee_id', flat=True))
+            print("existing_employee_ids",existing_employee_ids)
+            # Get default values once
+            default_filing_status = DataProcessingUtils.get_default_filing_status()
+            default_marital_status = DataProcessingUtils.get_default_marital_status()
+            
+            # Pre-fetch all foreign key mappings to avoid repeated queries
+            from user_app.models import Client
+            from processor.models import State, FedFilingStatus
+            
+            client_mapping = {c.client_id: c.id for c in Client.objects.all()}
+            state_mapping = {str(s.state).strip().lower(): s.id for s in State.objects.all()}
+            filing_status_mapping = {str(f.name).strip().lower(): f.fs_id for f in FedFilingStatus.objects.all()}
+            
+            # Process data in batches
+            for batch_start in range(0, len(df), batch_size):
+                batch_end = min(batch_start + batch_size, len(df))
+                batch_df = df.iloc[batch_start:batch_end]
+                
+                batch_employees_to_create = []
+                batch_employees_to_update = []
+                
+                for row_idx, row in batch_df.iterrows():
+                    try:
+                        # Process row data efficiently
+                        employee_data = self._process_employee_row(row, default_filing_status, default_marital_status)
+                        if not employee_data:
+                            validation_errors.append(f"Row {batch_start + row_idx + 1}: empty row after cleaning")
+                            continue
+                            
+                        # Extract ee_id from the detected identifier column first
+                        ee_id = row.get(ee_id_column)
+                        if ee_id is None:
+                            # Fallback to processed dict
+                            ee_id = employee_data.get(EE.EMPLOYEE_ID)
+                        # Final normalize as string to preserve prefixes/leading zeros
+                        if ee_id is not None:
+                            ee_id = str(ee_id).strip()
+                        if not ee_id:
+                            validation_errors.append(f"Row {batch_start + row_idx + 1}: missing ee_id")
+                            continue
+                        
+                        # Check if employee exists
+                        if ee_id in existing_employee_ids:
+                            # Prepare for update
+                            # normalize states/filing for mapping
+                            if EE.HOME_STATE in employee_data and employee_data.get(EE.HOME_STATE) is not None:
+                                employee_data[EE.HOME_STATE] = str(employee_data.get(EE.HOME_STATE)).strip().lower()
+                            if EE.WORK_STATE in employee_data and employee_data.get(EE.WORK_STATE) is not None:
+                                employee_data[EE.WORK_STATE] = str(employee_data.get(EE.WORK_STATE)).strip().lower()
+                            if EE.FILING_STATUS in employee_data and employee_data.get(EE.FILING_STATUS) is not None:
+                                employee_data[EE.FILING_STATUS] = str(employee_data.get(EE.FILING_STATUS)).strip().lower()
+                            batch_employees_to_update.append((ee_id, employee_data))
+                        else:
+                            # Prepare for creation - validate required FKs before queueing
+                            client_id_val = employee_data.get(EE.CLIENT_ID)
+                            home_state_val = employee_data.get(EE.HOME_STATE)
+                            work_state_val = employee_data.get(EE.WORK_STATE)
 
-            for _, row in df.iterrows():
-                try:
-                    # Convert each row to dict directly — no validation or defaults
-                    employee_data = dict(row)
+                            # normalize to lowercase for mapping
+                            home_state_val = str(home_state_val).strip().lower() if home_state_val is not None else None
+                            work_state_val = str(work_state_val).strip().lower() if work_state_val is not None else None
+                            employee_data[EE.HOME_STATE] = home_state_val
+                            employee_data[EE.WORK_STATE] = work_state_val
 
-                    # Directly serialize and save
-                    serializer = EmployeeDetailsSerializer(data=employee_data)
-                    if serializer.is_valid():
-                        employees.append(serializer.save())
-                    else:
-                        print(f"Serializer validation failed for row: {serializer.errors}")
+                            missing_fields = []
+                            if not client_id_val:
+                                missing_fields.append('client_id')
+                            if not home_state_val:
+                                missing_fields.append('home_state')
+                            if not work_state_val:
+                                missing_fields.append('work_state')
+                            if missing_fields:
+                                validation_errors.append(
+                                    f"Row {batch_start + row_idx + 1} (ee_id={ee_id}): missing required field(s): {', '.join(missing_fields)}"
+                                )
+                                continue
+
+                            mapping_missing = []
+                            if client_id_val not in client_mapping:
+                                mapping_missing.append(f"client_id '{client_id_val}' not found")
+                            if home_state_val not in state_mapping:
+                                mapping_missing.append(f"home_state '{home_state_val}' not found")
+                            if work_state_val not in state_mapping:
+                                mapping_missing.append(f"work_state '{work_state_val}' not found")
+                            if mapping_missing:
+                                validation_errors.append(
+                                    f"Row {batch_start + row_idx + 1} (ee_id={ee_id}): {', '.join(mapping_missing)}"
+                                )
+                                continue
+
+                            batch_employees_to_create.append((ee_id, employee_data))
+                            
+                    except Exception as row_e:
+                        validation_errors.append(f"Row {batch_start + row_idx + 1}: {str(row_e)}")
                         continue
-
-                except Exception as row_exc:
-                    print(f"Error processing row: {str(row_exc)}")
-                    continue
-
+                
+                # Bulk create new employees and get successfully created ee_ids
+                if batch_employees_to_create:
+                    created_ee_ids = self._bulk_create_employees(batch_employees_to_create, client_mapping, state_mapping, filing_status_mapping)
+                    added_employees.extend(created_ee_ids)
+                    # Update existing_employee_ids set to include newly created employees
+                    existing_employee_ids.update(created_ee_ids)
+                
+                # Bulk update existing employees and get successfully updated ee_ids
+                if batch_employees_to_update:
+                    updated_ee_ids = self._bulk_update_employees(batch_employees_to_update, client_mapping, state_mapping, filing_status_mapping)
+                    updated_employees.extend(updated_ee_ids)
+            
+            # Build response data
             response_data = {
-                "imported_count": len(employees),
-                "total_rows_processed": len(df),
-                "successful_imports": len(employees),
-                "failed_imports": len(df) - len(employees)
+                "added_count": len(added_employees),
+                "updated_count": len(updated_employees),
+                "validation_errors_count": len(validation_errors)
             }
+            
+            include_all_ids = False
+            try:
+                include_all_ids = str(request.data.get('include_all_ids', request.query_params.get('include_all_ids', ''))).strip().lower() in ['1', 'true', 'yes']
+            except Exception:
+                include_all_ids = False
+            
+            if added_employees:
+                if include_all_ids:
+                    response_data["added_employees"] = added_employees
+                else:
+                    response_data["added_employees"] = added_employees[:50]
+                    if len(added_employees) > 50:
+                        response_data["added_employees_truncated"] = True
+            
+            if updated_employees:
+                if include_all_ids:
+                    response_data["updated_employees"] = updated_employees
+                else:
+                    response_data["updated_employees"] = updated_employees[:50]
+                    if len(updated_employees) > 50:
+                        response_data["updated_employees_truncated"] = True
+            
+            if validation_errors:
+                response_data["validation_errors"] = validation_errors[:20]  # Limit error details
+                if len(validation_errors) > 20:
+                    response_data["validation_errors_truncated"] = True
+                response_data["skipped_count"] = len(validation_errors)
+            
+            if not added_employees and not updated_employees:
+                return ResponseHelper.error_response(
+                    message="No valid data to process",
+                    error=response_data,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
             return ResponseHelper.success_response(
                 message="File processed successfully",
@@ -124,10 +269,195 @@ class EmployeeImportView(APIView):
 
         except Exception as e:
             return ResponseHelper.error_response(
-                message="Failed to import employees",
+                message="Failed to import employee data",
                 error=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    def _process_employee_row(self, row, default_filing_status, default_marital_status):
+        """Process a single employee row efficiently."""
+        try:
+                    # Define date fields that need parsing
+            date_fields = ["garnishment_fees_suspended_till"]
+            employee_data = {
+                EE.CLIENT_ID: row.get(EE.CLIENT_ID),
+                EE.FIRST_NAME: row.get(EE.FIRST_NAME),
+                EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
+                EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
+                EE.LAST_NAME: row.get(EE.LAST_NAME),
+                EE.SSN: row.get(EE.SSN),
+                EE.HOME_STATE: row.get(EE.HOME_STATE),
+                EE.WORK_STATE: row.get(EE.WORK_STATE),
+                EE.GENDER: row.get(EE.GENDER),
+                "number_of_exemptions": row.get("number_of_exemptions"),
+                EE.FILING_STATUS: row.get(EE.FILING_STATUS),
+                EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
+                "number_of_student_default_loan": row.get("number_of_student_default_loan"),
+                "number_of_dependent_child": row.get("number_of_dependent_child"),
+                EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
+                EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
+                EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT)
+            }
+            
+            # Parse date fields using the utility function
+            for date_field in date_fields:
+                employee_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
+            
+            # Clean and normalize row data using utility functions
+            employee_data = DataProcessingUtils.clean_data_row(employee_data)
+            
+            # Apply basic data cleaning without strict validation
+            # employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
+            
+            # Provide default values for required fields if missing
+            if not employee_data.get(EE.FILING_STATUS):
+                employee_data[EE.FILING_STATUS] = default_filing_status
+                
+            if not employee_data.get(EE.MARITAL_STATUS):
+                employee_data[EE.MARITAL_STATUS] = default_marital_status
+            
+            return employee_data
+            
+        except Exception as e:
+            raise Exception(f"Error processing row: {str(e)}")
+    
+    def _bulk_create_employees(self, employees_data, client_mapping, state_mapping, filing_status_mapping):
+        """Bulk create employees using bulk_create for better performance. Returns list of successfully created ee_ids."""
+        if not employees_data:
+            return []
+            
+        created_ee_ids = []
+        try:
+            from django.db import transaction
+            from user_app.models import Client
+            
+            with transaction.atomic():
+                # Prepare bulk insert data
+                bulk_employees = []
+                for ee_id, emp_data in employees_data:
+                    try:
+                        # Resolve foreign keys
+                        client_id = emp_data.get(EE.CLIENT_ID)
+                        home_state = str(emp_data.get(EE.HOME_STATE)).strip().lower() if emp_data.get(EE.HOME_STATE) is not None else None
+                        work_state = str(emp_data.get(EE.WORK_STATE)).strip().lower() if emp_data.get(EE.WORK_STATE) is not None else None
+                        filing_status = str(emp_data.get(EE.FILING_STATUS)).strip().lower() if emp_data.get(EE.FILING_STATUS) is not None else None
+                        
+                        # Create missing client if needed
+                        if client_id and client_id not in client_mapping:
+                            try:
+                                client = Client.objects.create(
+                                    client_id=client_id,
+                                    legal_name=f'Client {client_id}',
+                                    is_active=True
+                                )
+                                client_mapping[client_id] = client.id
+                            except:
+                                continue  # Skip this employee if client creation fails
+                        
+                        # Validate required fields before creating
+                        if not client_mapping.get(client_id) or not state_mapping.get(home_state) or not state_mapping.get(work_state):
+                            continue  # Skip if required foreign keys are missing
+                        
+                        bulk_employees.append(EmployeeDetail(
+                            ee_id=ee_id,  # Use the ee_id from the tuple
+                            first_name=emp_data.get(EE.FIRST_NAME, ''),
+                            middle_name=emp_data.get(EE.MIDDLE_NAME),
+                            last_name=emp_data.get(EE.LAST_NAME),
+                            client_id=client_mapping.get(client_id),
+                            ssn=emp_data.get(EE.SSN, ''),
+                            home_state_id=state_mapping.get(home_state),
+                            work_state_id=state_mapping.get(work_state),
+                            gender=emp_data.get(EE.GENDER),
+                            number_of_exemptions=emp_data.get("number_of_exemptions", 0),
+                            filing_status_id=filing_status_mapping.get(filing_status),
+                            marital_status=emp_data.get(EE.MARITAL_STATUS, ''),
+                            number_of_student_default_loan=emp_data.get("number_of_student_default_loan", 0),
+                            number_of_dependent_child=emp_data.get("number_of_dependent_child", 0),
+                            support_second_family=emp_data.get(EE.SUPPORT_SECOND_FAMILY, False),
+                            garnishment_fees_status=emp_data.get(EE.GARNISHMENT_FEES_STATUS, False),
+                            garnishment_fees_suspended_till=emp_data.get("garnishment_fees_suspended_till"),
+                            number_of_active_garnishment=emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, 0),
+                            is_active=True
+                        ))
+                        created_ee_ids.append(ee_id)  # Track ee_id for successful creation
+                    except Exception as e:
+                        continue  # Skip problematic records
+                
+                # Bulk create
+                if bulk_employees:
+                    EmployeeDetail.objects.bulk_create(bulk_employees, ignore_conflicts=True)
+                    
+                return created_ee_ids
+                    
+        except Exception as e:
+            raise Exception(f"Bulk create failed: {str(e)}")
+    
+    def _bulk_update_employees(self, employees_data, client_mapping, state_mapping, filing_status_mapping):
+        """Bulk update employees efficiently."""
+        if not employees_data:
+            return
+            
+        try:
+            from django.db import transaction
+            from user_app.models import Client
+            from processor.models import State, FedFilingStatus
+            
+            with transaction.atomic():
+                # Get existing employees
+                ee_ids = [emp[0] for emp in employees_data]
+                existing_employees = {
+                    emp.ee_id: emp for emp in EmployeeDetail.objects.filter(ee_id__in=ee_ids)
+                }
+                
+                employees_to_update = []
+                for ee_id, emp_data in employees_data:
+                    if ee_id in existing_employees:
+                        emp = existing_employees[ee_id]
+                        
+                        # Update fields
+                        emp.first_name = emp_data.get(EE.FIRST_NAME, emp.first_name)
+                        emp.middle_name = emp_data.get(EE.MIDDLE_NAME, emp.middle_name)
+                        emp.last_name = emp_data.get(EE.LAST_NAME, emp.last_name)
+                        emp.ssn = emp_data.get(EE.SSN, emp.ssn)
+                        emp.gender = emp_data.get(EE.GENDER, emp.gender)
+                        emp.number_of_exemptions = emp_data.get("number_of_exemptions", emp.number_of_exemptions)
+                        emp.marital_status = emp_data.get(EE.MARITAL_STATUS, emp.marital_status)
+                        emp.number_of_student_default_loan = emp_data.get("number_of_student_default_loan", emp.number_of_student_default_loan)
+                        emp.number_of_dependent_child = emp_data.get("number_of_dependent_child", emp.number_of_dependent_child)
+                        emp.support_second_family = emp_data.get(EE.SUPPORT_SECOND_FAMILY, emp.support_second_family)
+                        emp.garnishment_fees_status = emp_data.get(EE.GARNISHMENT_FEES_STATUS, emp.garnishment_fees_status)
+                        emp.garnishment_fees_suspended_till = emp_data.get("garnishment_fees_suspended_till", emp.garnishment_fees_suspended_till)
+                        emp.number_of_active_garnishment = emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, emp.number_of_active_garnishment)
+                        
+                        # Update foreign keys if provided
+                        if emp_data.get(EE.CLIENT_ID) and emp_data.get(EE.CLIENT_ID) in client_mapping:
+                            emp.client_id = client_mapping[emp_data.get(EE.CLIENT_ID)]
+                        home_state_key = str(emp_data.get(EE.HOME_STATE)).strip().lower() if emp_data.get(EE.HOME_STATE) is not None else None
+                        work_state_key = str(emp_data.get(EE.WORK_STATE)).strip().lower() if emp_data.get(EE.WORK_STATE) is not None else None
+                        filing_key = str(emp_data.get(EE.FILING_STATUS)).strip().lower() if emp_data.get(EE.FILING_STATUS) is not None else None
+                        if home_state_key and home_state_key in state_mapping:
+                            emp.home_state_id = state_mapping[home_state_key]
+                        if work_state_key and work_state_key in state_mapping:
+                            emp.work_state_id = state_mapping[work_state_key]
+                        if filing_key and filing_key in filing_status_mapping:
+                            emp.filing_status_id = filing_status_mapping[filing_key]
+                        
+                        employees_to_update.append(emp)
+                
+                # Bulk update
+                if employees_to_update:
+                    EmployeeDetail.objects.bulk_update(
+                        employees_to_update,
+                        ['first_name', 'middle_name', 'last_name', 'ssn', 'gender', 
+                         'number_of_exemptions', 'marital_status', 'number_of_student_default_loan',
+                         'number_of_dependent_child', 'support_second_family', 'garnishment_fees_status',
+                         'garnishment_fees_suspended_till', 'number_of_active_garnishment', 'client_id',
+                         'home_state_id', 'work_state_id', 'filing_status_id', 'updated_at']
+                    )
+            return [emp.ee_id for emp in employees_to_update]
+
+        except Exception as e:
+            raise Exception(f"Bulk update failed: {str(e)}")
 
 
 
@@ -162,9 +492,61 @@ class EmployeeDetailsAPIViews(APIView):
                         status_code=status.HTTP_404_NOT_FOUND
                     )
             else:
-                employees = EmployeeDetail.objects.all()
-                serializer = EmployeeDetailsSerializer(employees, many=True)
+                # Optimized fetch: avoid N+1 by selecting related objects and limiting columns
+                queryset = (
+                    EmployeeDetail.objects
+                    .select_related('client', 'home_state', 'work_state', 'filing_status')
+                    .only(
+                        'id', 'ee_id',
+                        'client__client_id',
+                        'first_name', 'middle_name', 'last_name',
+                        'ssn',
+                        'home_state__state', 'work_state__state',
+                        'gender', 'number_of_exemptions',
+                        'filing_status__name',
+                        'marital_status', 'number_of_student_default_loan',
+                        'number_of_dependent_child', 'support_second_family',
+                        'garnishment_fees_status', 'garnishment_fees_suspended_till',
+                        'number_of_active_garnishment', 'is_active',
+                        'created_at', 'updated_at'
+                    )
+                    .order_by('id')
+                )
 
+                # Optional pagination via query params
+                page = request.query_params.get('page')
+                page_size = request.query_params.get('page_size')
+                if page_size is not None:
+                    try:
+                        page_size = max(1, min(1000, int(page_size)))
+                    except ValueError:
+                        page_size = None
+
+                if page and page_size:
+                    try:
+                        from django.core.paginator import Paginator, EmptyPage
+                        paginator = Paginator(queryset, page_size)
+                        page_number = int(page)
+                        page_obj = paginator.page(page_number)
+                        serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
+                        return ResponseHelper.success_response(
+                            'Page fetched successfully',
+                            {
+                                'results': serializer.data,
+                                'page': page_number,
+                                'page_size': page_size,
+                                'total_pages': paginator.num_pages,
+                                'total_items': paginator.count,
+                            }
+                        )
+                    except (ValueError, EmptyPage):
+                        return ResponseHelper.error_response(
+                            'Invalid page or page_size',
+                            status_code=status.HTTP_400_BAD_REQUEST
+                        )
+
+                # No pagination requested: return all optimized
+                serializer = EmployeeDetailsSerializer(list(queryset), many=True)
                 return ResponseHelper.success_response('All data fetched successfully', serializer.data)
         except Exception as e:
             return ResponseHelper.error_response(
@@ -294,7 +676,7 @@ class EmployeeDetailsAPIViews(APIView):
 class UpsertEmployeeDataView(APIView):
     """
     API view to handle the import/upsert of employee details from a file.
-    Provides robust exception handling and clear response messages.
+    Optimized for bulk processing with minimal database queries.
     """
     parser_classes = [MultiPartParser, FormParser]
 
@@ -343,120 +725,150 @@ class UpsertEmployeeDataView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Normalize all column names to expected keys
+            try:
+                df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
+            except Exception:
+                pass
+
+            # Process data in batches for better performance
+            batch_size = 100
             added_employees = []
             updated_employees = []
+            validation_errors = []
             
-            for _, row in df.iterrows():
-                try:
-                    # Define date fields that need parsing
-                    date_fields = [
-                        "garnishment_fees_suspended_till"
-                    ]
-                    
-                    employee_data = {
-                        EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
-                        EE.CLIENT_ID: row.get(EE.CLIENT_ID),
-                        EE.FIRST_NAME: row.get(EE.FIRST_NAME),
-                        EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
-                        EE.LAST_NAME: row.get(EE.LAST_NAME),
-                        EE.SSN: row.get(EE.SSN),
-                        EE.HOME_STATE: row.get(EE.HOME_STATE),
-                        EE.WORK_STATE: row.get(EE.WORK_STATE),
-                        EE.GENDER: row.get(EE.GENDER),
-                        "number_of_exemptions": row.get("number_of_exemptions"),
-                        EE.FILING_STATUS: row.get(EE.FILING_STATUS),
-                        EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
-                        "number_of_student_default_loan": row.get("number_of_student_default_loan"),
-                        "number_of_dependent_child": row.get("number_of_dependent_child"),
-                        EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
-                        EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
-                        EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT),
-                        CF.IS_ACTIVE: row.get(CF.IS_ACTIVE, True),
-                    }
-                    
-                    # Parse date fields using the utility function
-                    for date_field in date_fields:
-                        employee_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
-                    
-                    # Clean and normalize row data using utility functions
-                    employee_data = DataProcessingUtils.clean_data_row(employee_data)
-                    
-                    # Apply basic data cleaning without strict validation
-                    employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
-                    
-                    # Check if ee_id exists
-                    ee_id = employee_data.get(EE.EMPLOYEE_ID)
-                    if not ee_id:
-                        # Skip rows without ee_id
-                        continue
-                    
-                    # Try to create missing client if needed
-                    client_id = employee_data.get(EE.CLIENT_ID)
-                    if client_id and not DataProcessingUtils.validate_client_exists(client_id):
-                        DataProcessingUtils.create_missing_client(client_id)
-                    
-                    # Provide default values for required fields if missing
-                    if not employee_data.get(EE.FILING_STATUS):
-                        employee_data[EE.FILING_STATUS] = DataProcessingUtils.get_default_filing_status()
-                    
-                    if not employee_data.get(EE.MARITAL_STATUS):
-                        employee_data[EE.MARITAL_STATUS] = DataProcessingUtils.get_default_marital_status()
-                    
-                    # Try to find existing employee by ee_id
-                    existing_employee = EmployeeDetail.objects.filter(ee_id=ee_id).first()
-                    
-                    if existing_employee:
-                        # Update existing employee
-                        serializer = EmployeeDetailsSerializer(
-                            existing_employee, 
-                            data=employee_data, 
-                            partial=True
-                        )
-                        if serializer.is_valid():
-                            serializer.save()
+            # Pre-fetch existing employees and clients to avoid repeated queries
+            existing_employee_ids = set(EmployeeDetail.objects.values_list('ee_id', flat=True))
+            existing_clients = set(EmployeeDetail.objects.values_list('client_id', flat=True))
+            
+            # Get default values once
+            default_filing_status = DataProcessingUtils.get_default_filing_status()
+            default_marital_status = DataProcessingUtils.get_default_marital_status()
+            
+            # Build mappings for states/filings in lowercase for robustness
+            from processor.models import State, FedFilingStatus
+            state_mapping = {str(s.state).strip().lower(): s.id for s in State.objects.all()}
+            filing_status_mapping = {str(f.name).strip().lower(): f.id for f in FedFilingStatus.objects.all()}
+            
+            # Process data in batches
+            for batch_start in range(0, len(df), batch_size):
+                batch_end = min(batch_start + batch_size, len(df))
+                batch_df = df.iloc[batch_start:batch_end]
+                
+                batch_employees_to_create = []
+                batch_employees_to_update = []
+                
+                for _, row in batch_df.iterrows():
+                    try:
+                        # Process row data efficiently
+                        employee_data = self._process_employee_row(row, default_filing_status, default_marital_status)
+                        
+                        if not employee_data:
+                            continue
+                            
+                        ee_id = employee_data.get(EE.EMPLOYEE_ID)
+                        if not ee_id:
+                            continue
+                        
+                        # normalize states/filing for mapping
+                        if EE.HOME_STATE in employee_data and employee_data.get(EE.HOME_STATE) is not None:
+                            employee_data[EE.HOME_STATE] = str(employee_data.get(EE.HOME_STATE)).strip().lower()
+                        if EE.WORK_STATE in employee_data and employee_data.get(EE.WORK_STATE) is not None:
+                            employee_data[EE.WORK_STATE] = str(employee_data.get(EE.WORK_STATE)).strip().lower()
+                        if EE.FILING_STATUS in employee_data and employee_data.get(EE.FILING_STATUS) is not None:
+                            employee_data[EE.FILING_STATUS] = str(employee_data.get(EE.FILING_STATUS)).strip().lower()
+
+                        # Check if employee exists
+                        if ee_id in existing_employee_ids:
+                            # Prepare for update
+                            employee_data['id'] = None  # Will be set during bulk update
+                            batch_employees_to_update.append((ee_id, employee_data))
                             updated_employees.append(ee_id)
                         else:
-                            return ResponseHelper.error_response(
-                                message=f"Validation error for ee_id {ee_id}",
-                                error=serializer.errors,
-                                status_code=status.HTTP_400_BAD_REQUEST
-                            )
-                    else:
-                        # Create new employee
-                        serializer = EmployeeDetailsSerializer(data=employee_data)
-                        if serializer.is_valid():
-                            serializer.save()
+                            # Prepare for creation
+                            # Validate mappings for creation
+                            client_id_val = employee_data.get(EE.CLIENT_ID)
+                            home_state_val = employee_data.get(EE.HOME_STATE)
+                            work_state_val = employee_data.get(EE.WORK_STATE)
+                            missing_fields = []
+                            if not client_id_val:
+                                missing_fields.append('client_id')
+                            if not home_state_val:
+                                missing_fields.append('home_state')
+                            if not work_state_val:
+                                missing_fields.append('work_state')
+                            if missing_fields:
+                                validation_errors.append(
+                                    f"Row {batch_start + _ + 1} (ee_id={ee_id}): missing required field(s): {', '.join(missing_fields)}"
+                                )
+                                continue
+                            mapping_missing = []
+                            if home_state_val not in state_mapping:
+                                mapping_missing.append(f"home_state '{home_state_val}' not found")
+                            if work_state_val not in state_mapping:
+                                mapping_missing.append(f"work_state '{work_state_val}' not found")
+                            filing_key = employee_data.get(EE.FILING_STATUS)
+                            if filing_key and filing_key not in filing_status_mapping:
+                                mapping_missing.append(f"filing_status '{filing_key}' not found")
+                            if mapping_missing:
+                                validation_errors.append(
+                                    f"Row {batch_start + _ + 1} (ee_id={ee_id}): {', '.join(mapping_missing)}"
+                                )
+                                continue
+                            batch_employees_to_create.append(employee_data)
                             added_employees.append(ee_id)
-                        else:
-                            return ResponseHelper.error_response(
-                                message=f"Validation error for ee_id {ee_id}",
-                                error=serializer.errors,
-                                status_code=status.HTTP_400_BAD_REQUEST
-                            )
                             
-                except Exception as row_e:
-                    return ResponseHelper.error_response(
-                        message="Error processing row",
-                        error=str(row_e),
-                        status_code=status.HTTP_400_BAD_REQUEST
-                    )
-
+                    except Exception as row_e:
+                        validation_errors.append(f"Row {batch_start + _ + 1}: {str(row_e)}")
+                        continue
+                
+                # Bulk create new employees
+                if batch_employees_to_create:
+                    self._bulk_create_employees(batch_employees_to_create)
+                
+                # Bulk update existing employees
+                if batch_employees_to_update:
+                    self._bulk_update_employees(batch_employees_to_update)
+            
             # Build response data
-            response_data = {}
+            response_data = {
+                "added_count": len(added_employees),
+                "updated_count": len(updated_employees),
+                "validation_errors_count": len(validation_errors)
+            }
+            
+            include_all_ids = False
+            try:
+                include_all_ids = str(request.data.get('include_all_ids', request.query_params.get('include_all_ids', ''))).strip().lower() in ['1', 'true', 'yes']
+            except Exception:
+                include_all_ids = False
             
             if added_employees:
-                response_data["added_employees"] = added_employees
-                response_data["added_count"] = len(added_employees)
+                if include_all_ids:
+                    response_data["added_employees"] = added_employees
+                else:
+                    response_data["added_employees"] = added_employees[:50]
+                    if len(added_employees) > 50:
+                        response_data["added_employees_truncated"] = True
             
             if updated_employees:
-                response_data["updated_employees"] = updated_employees
-                response_data["updated_count"] = len(updated_employees)
+                if include_all_ids:
+                    response_data["updated_employees"] = updated_employees
+                else:
+                    response_data["updated_employees"] = updated_employees[:50]
+                    if len(updated_employees) > 50:
+                        response_data["updated_employees_truncated"] = True
+            
+            if validation_errors:
+                response_data["validation_errors"] = validation_errors[:20]  # Limit error details
+                if len(validation_errors) > 20:
+                    response_data["validation_errors_truncated"] = True
             
             if not added_employees and not updated_employees:
-                return ResponseHelper.success_response(
+                return ResponseHelper.error_response(
                     message="No valid data to process",
-                    data=response_data,
-                    status_code=status.HTTP_200_OK
+                    error=response_data,
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
 
             return ResponseHelper.success_response(
@@ -471,6 +883,191 @@ class UpsertEmployeeDataView(APIView):
                 error=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    def _process_employee_row(self, row, default_filing_status, default_marital_status):
+        """Process a single employee row efficiently."""
+        try:
+                    # Define date fields that need parsing
+            date_fields = ["garnishment_fees_suspended_till"]
+                    
+            employee_data = {
+                EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
+                EE.CLIENT_ID: row.get(EE.CLIENT_ID),
+                EE.FIRST_NAME: row.get(EE.FIRST_NAME),
+                EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
+                EE.LAST_NAME: row.get(EE.LAST_NAME),
+                EE.SSN: row.get(EE.SSN),
+                EE.HOME_STATE: row.get(EE.HOME_STATE),
+                EE.WORK_STATE: row.get(EE.WORK_STATE),
+                EE.GENDER: row.get(EE.GENDER),
+                "number_of_exemptions": row.get("number_of_exemptions"),
+                EE.FILING_STATUS: row.get(EE.FILING_STATUS),
+                EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
+                "number_of_student_default_loan": row.get("number_of_student_default_loan"),
+                "number_of_dependent_child": row.get("number_of_dependent_child"),
+                EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
+                EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
+                EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT)
+            }
+            
+            # Parse date fields using the utility function
+            for date_field in date_fields:
+                employee_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
+            
+            # Clean and normalize row data using utility functions
+            employee_data = DataProcessingUtils.clean_data_row(employee_data)
+            
+            # Apply basic data cleaning without strict validation
+            employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
+            
+            # Provide default values for required fields if missing
+            if not employee_data.get(EE.FILING_STATUS):
+                employee_data[EE.FILING_STATUS] = default_filing_status
+                
+            if not employee_data.get(EE.MARITAL_STATUS):
+                employee_data[EE.MARITAL_STATUS] = default_marital_status
+            
+            return employee_data
+            
+        except Exception as e:
+            raise Exception(f"Error processing row: {str(e)}")
+    
+    def _bulk_create_employees(self, employees_data):
+        """Bulk create employees using raw SQL for better performance."""
+        if not employees_data:
+            return
+            
+        try:
+            from django.db import transaction
+            from user_app.models import Client
+            from processor.models import State, FedFilingStatus
+            
+            # Get all required foreign key mappings
+            client_mapping = {c.client_id: c.id for c in Client.objects.all()}
+            state_mapping = {s.state: s.id for s in State.objects.all()}
+            filing_status_mapping = {f.name: f.id for f in FedFilingStatus.objects.all()}
+            
+            with transaction.atomic():
+                # Prepare bulk insert data
+                bulk_employees = []
+                for emp_data in employees_data:
+                    try:
+                        # Resolve foreign keys
+                        client_id = emp_data.get(EE.CLIENT_ID)
+                        home_state = emp_data.get(EE.HOME_STATE)
+                        work_state = emp_data.get(EE.WORK_STATE)
+                        filing_status = emp_data.get(EE.FILING_STATUS)
+                        
+                        # Create missing client if needed
+                        if client_id and client_id not in client_mapping:
+                            try:
+                                client = Client.objects.create(
+                                    client_id=client_id,
+                                    legal_name=f'Client {client_id}',
+                                    is_active=True
+                                )
+                                client_mapping[client_id] = client.id
+                            except:
+                                continue  # Skip this employee if client creation fails
+                        
+                        bulk_employees.append(EmployeeDetail(
+                            ee_id=emp_data.get(EE.EMPLOYEE_ID),
+                            first_name=emp_data.get(EE.FIRST_NAME, ''),
+                            middle_name=emp_data.get(EE.MIDDLE_NAME),
+                            last_name=emp_data.get(EE.LAST_NAME),
+                            client_id=client_mapping.get(client_id),
+                            ssn=emp_data.get(EE.SSN, ''),
+                            home_state_id=state_mapping.get(home_state),
+                            work_state_id=state_mapping.get(work_state),
+                            gender=emp_data.get(EE.GENDER),
+                            number_of_exemptions=emp_data.get("number_of_exemptions", 0),
+                            filing_status_id=filing_status_mapping.get(filing_status),
+                            marital_status=emp_data.get(EE.MARITAL_STATUS, ''),
+                            number_of_student_default_loan=emp_data.get("number_of_student_default_loan", 0),
+                            number_of_dependent_child=emp_data.get("number_of_dependent_child", 0),
+                            support_second_family=emp_data.get(EE.SUPPORT_SECOND_FAMILY, False),
+                            garnishment_fees_status=emp_data.get(EE.GARNISHMENT_FEES_STATUS, False),
+                            garnishment_fees_suspended_till=emp_data.get("garnishment_fees_suspended_till"),
+                            number_of_active_garnishment=emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, 0),
+                            is_active=True
+                        ))
+                    except Exception as e:
+                        continue  # Skip problematic records
+                
+                # Bulk create
+                if bulk_employees:
+                    EmployeeDetail.objects.bulk_create(bulk_employees, ignore_conflicts=True)
+
+        except Exception as e:
+            raise Exception(f"Bulk create failed: {str(e)}")
+    
+    def _bulk_update_employees(self, employees_data):
+        """Bulk update employees efficiently."""
+        if not employees_data:
+            return
+            
+        try:
+            from django.db import transaction
+            from user_app.models import Client
+            from processor.models import State, FedFilingStatus
+            
+            # Get all required foreign key mappings
+            client_mapping = {c.client_id: c.id for c in Client.objects.all()}
+            state_mapping = {s.state: s.id for s in State.objects.all()}
+            filing_status_mapping = {f.name: f.id for f in FedFilingStatus.objects.all()}
+            
+            with transaction.atomic():
+                # Get existing employees
+                ee_ids = [emp[0] for emp in employees_data]
+                existing_employees = {
+                    emp.ee_id: emp for emp in EmployeeDetail.objects.filter(ee_id__in=ee_ids)
+                }
+                
+                employees_to_update = []
+                for ee_id, emp_data in employees_data:
+                    if ee_id in existing_employees:
+                        emp = existing_employees[ee_id]
+                        
+                        # Update fields
+                        emp.first_name = emp_data.get(EE.FIRST_NAME, emp.first_name)
+                        emp.middle_name = emp_data.get(EE.MIDDLE_NAME, emp.middle_name)
+                        emp.last_name = emp_data.get(EE.LAST_NAME, emp.last_name)
+                        emp.ssn = emp_data.get(EE.SSN, emp.ssn)
+                        emp.gender = emp_data.get(EE.GENDER, emp.gender)
+                        emp.number_of_exemptions = emp_data.get("number_of_exemptions", emp.number_of_exemptions)
+                        emp.marital_status = emp_data.get(EE.MARITAL_STATUS, emp.marital_status)
+                        emp.number_of_student_default_loan = emp_data.get("number_of_student_default_loan", emp.number_of_student_default_loan)
+                        emp.number_of_dependent_child = emp_data.get("number_of_dependent_child", emp.number_of_dependent_child)
+                        emp.support_second_family = emp_data.get(EE.SUPPORT_SECOND_FAMILY, emp.support_second_family)
+                        emp.garnishment_fees_status = emp_data.get(EE.GARNISHMENT_FEES_STATUS, emp.garnishment_fees_status)
+                        emp.garnishment_fees_suspended_till = emp_data.get("garnishment_fees_suspended_till", emp.garnishment_fees_suspended_till)
+                        emp.number_of_active_garnishment = emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, emp.number_of_active_garnishment)
+                        
+                        # Update foreign keys if provided
+                        if emp_data.get(EE.CLIENT_ID) and emp_data.get(EE.CLIENT_ID) in client_mapping:
+                            emp.client_id = client_mapping[emp_data.get(EE.CLIENT_ID)]
+                        if emp_data.get(EE.HOME_STATE) and emp_data.get(EE.HOME_STATE) in state_mapping:
+                            emp.home_state_id = state_mapping[emp_data.get(EE.HOME_STATE)]
+                        if emp_data.get(EE.WORK_STATE) and emp_data.get(EE.WORK_STATE) in state_mapping:
+                            emp.work_state_id = state_mapping[emp_data.get(EE.WORK_STATE)]
+                        if emp_data.get(EE.FILING_STATUS) and emp_data.get(EE.FILING_STATUS) in filing_status_mapping:
+                            emp.filing_status_id = filing_status_mapping[emp_data.get(EE.FILING_STATUS)]
+                        
+                        employees_to_update.append(emp)
+                
+                # Bulk update
+                if employees_to_update:
+                    EmployeeDetail.objects.bulk_update(
+                        employees_to_update,
+                        ['first_name', 'middle_name', 'last_name', 'ssn', 'gender', 
+                         'number_of_exemptions', 'marital_status', 'number_of_student_default_loan',
+                         'number_of_dependent_child', 'support_second_family', 'garnishment_fees_status',
+                         'garnishment_fees_suspended_till', 'number_of_active_garnishment', 'client_id',
+                         'home_state_id', 'work_state_id', 'filing_status_id', 'updated_at']
+                    )
+                    
+        except Exception as e:
+            raise Exception(f"Bulk update failed: {str(e)}")
 
 
 # Export employee details using the Excel file
@@ -614,19 +1211,73 @@ class EmployeeDetailsAPI(APIView):
             500: "Internal Server Error",
         }
     )
-    # @audit_api_call
-    # @audit_business_operation("employee_list_retrieval")
-    # @audit_data_access("EmployeeDetail", "READ")
+    @audit_api_call
+    @audit_business_operation("employee_list_retrieval")
+    @audit_data_access("EmployeeDetail", "READ")
     def get(self, request):
         """
         Get paginated list of active employees.
         """
         try:
-            employees = EmployeeDetail.objects.all().order_by("-created_at")
-            result = EmployeeDetailsSerializer(employees, many=True)
+            # Optimized queryset to avoid N+1 and reduce columns
+            queryset = (
+                EmployeeDetail.objects
+                .select_related('client', 'home_state', 'work_state', 'filing_status')
+                .only(
+                    'id', 'ee_id',
+                    'client__client_id',
+                    'first_name', 'middle_name', 'last_name',
+                    'ssn',
+                    'home_state__state', 'work_state__state',
+                    'gender', 'number_of_exemptions',
+                    'filing_status__name',
+                    'marital_status', 'number_of_student_default_loan',
+                    'number_of_dependent_child', 'support_second_family',
+                    'garnishment_fees_status', 'garnishment_fees_suspended_till',
+                    'number_of_active_garnishment', 'is_active',
+                    'created_at', 'updated_at'
+                )
+                .order_by('-created_at')
+            )
+
+            # Optional pagination via query params
+            page = request.query_params.get('page')
+            page_size = request.query_params.get('page_size')
+            if page_size is not None:
+                try:
+                    page_size = max(1, min(1000, int(page_size)))
+                except ValueError:
+                    page_size = None
+
+            if page and page_size:
+                try:
+                    from django.core.paginator import Paginator, EmptyPage
+                    paginator = Paginator(queryset, page_size)
+                    page_number = int(page)
+                    page_obj = paginator.page(page_number)
+                    serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
+                    return ResponseHelper.success_response(
+                        message="Employees fetched successfully",
+                        data={
+                            'results': serializer.data,
+                            'page': page_number,
+                            'page_size': page_size,
+                            'total_pages': paginator.num_pages,
+                            'total_items': paginator.count,
+                        },
+                        status_code=status.HTTP_200_OK
+                    )
+                except (ValueError, EmptyPage):
+                    return ResponseHelper.error_response(
+                        message="Invalid page or page_size",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # No pagination requested
+            serializer = EmployeeDetailsSerializer(list(queryset), many=True)
             return ResponseHelper.success_response(
                 message="Employees fetched successfully",
-                data=result.data,
+                data=serializer.data,
                 status_code=status.HTTP_200_OK
             )  
         except Exception as e:

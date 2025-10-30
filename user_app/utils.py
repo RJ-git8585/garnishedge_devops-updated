@@ -185,6 +185,38 @@ class DataProcessingUtils:
             return None
 
     @staticmethod
+    def parse_string_field(str_value: Any) -> Optional[str]:
+        """
+        Parse and normalize a string field while preserving non-numeric prefixes
+        and leading zeros (e.g., 'D00500' stays 'D00500').
+
+        Args:
+            str_value: Value to coerce to a clean string
+
+        Returns:
+            str: Trimmed string or None if empty/invalid
+        """
+        # Clean NaN values first
+        str_value = DataProcessingUtils.clean_nan_values(str_value)
+
+        if str_value is None:
+            return None
+
+        try:
+            # Already string → trim
+            if isinstance(str_value, str):
+                cleaned = str_value.strip()
+                return cleaned if cleaned != '' else None
+
+            # For numeric types, convert to string without losing leading zeros for known formats
+            # Since we cannot infer formatting from numeric types, simply cast to string
+            # to avoid unintended integer coercion.
+            cleaned = str(str_value).strip()
+            return cleaned if cleaned != '' else None
+        except Exception:
+            return None
+
+    @staticmethod
     def parse_boolean_field(bool_value: Any) -> Optional[bool]:
         """
         Parse various boolean formats and return clean boolean value.
@@ -265,8 +297,18 @@ class DataProcessingUtils:
             'homestate': 'home_state',
             'work state': 'work_state',
             'workstate': 'work_state',
+            'issuing state': 'issuing_state',
+            'issuingstate': 'issuing_state',
+            'state': 'issuing_state',  # Common default for issuing_state
             'social security number': 'ssn',
             'ssn': 'ssn',
+            'case id': 'case_id',
+            'caseid': 'case_id',
+            'garnishment type': 'garnishment_type',
+            'garnishmenttype': 'garnishment_type',
+            'type': 'garnishment_type',
+            'ftb_order': 'franchise_tax_board',  # Handle FTB_Order variant
+            'ftborder': 'franchise_tax_board',
             'number of exemptions': 'number_of_exemptions',
             'numberofexemptions': 'number_of_exemptions',
             'number of exemption': 'number_of_exemptions',  # Handle singular form
@@ -287,8 +329,9 @@ class DataProcessingUtils:
             # Handle the complex concatenated field name
             'number of acgarnishment fees suspended tisupport secondgarnishment fe': 'garnishment_fees_suspended_till',
         }
-        
-        return field_mappings.get(normalized, field_name)
+
+        # Return mapped value if known, otherwise the normalized key
+        return field_mappings.get(normalized, normalized)
 
     @staticmethod
     def clean_data_row(row_data: dict) -> dict:
@@ -341,9 +384,17 @@ class DataProcessingUtils:
             elif any(date_field in normalized_key.lower() for date_field in ['date', 'till', 'until']):
                 cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(value)
             elif any(int_field in normalized_key.lower() for int_field in ['number', 'count', 'amount', 'id']):
-                cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
+                # Protect identifiers that must remain strings
+                if normalized_key in ['ee_id', 'client_id', 'case_id', 'ssn']:
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_string_field(value)
+                else:
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
             elif any(bool_field in normalized_key.lower() for bool_field in ['status', 'support', 'active', 'is_']):
-                cleaned_row[normalized_key] = DataProcessingUtils.parse_boolean_field(value)
+                # Check if it's a string field that shouldn't be converted to boolean
+                if normalized_key in ['issuing_state', 'garnishment_type', 'home_state', 'work_state']:
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_string_field(value)
+                else:
+                    cleaned_row[normalized_key] = DataProcessingUtils.parse_boolean_field(value)
             else:
                 # Keep original value for other fields (already cleaned of NaN)
                 cleaned_row[normalized_key] = value
@@ -375,6 +426,12 @@ class DataProcessingUtils:
         # Boolean fields
         boolean_fields = ['support_second_family', 'garnishment_fees_status', 'is_active',
                          'is_consumer_debt', 'is_blind', 'is_spouse_blind']
+
+        # String fields (explicitly validated to avoid coercion to integers)
+        string_fields = [
+            'ee_id', 'client_id', 'first_name', 'middle_name', 'last_name',
+            'marital_status', 'gender', 'home_state', 'work_state', 'ssn',
+        ]
         
         # Process date fields
         for field in date_fields:
@@ -390,6 +447,11 @@ class DataProcessingUtils:
         for field in boolean_fields:
             if field in cleaned_data:
                 cleaned_data[field] = DataProcessingUtils.parse_boolean_field(cleaned_data[field])
+
+        # Process string fields
+        for field in string_fields:
+            if field in cleaned_data:
+                cleaned_data[field] = DataProcessingUtils.parse_string_field(cleaned_data[field])
         
         return cleaned_data
 

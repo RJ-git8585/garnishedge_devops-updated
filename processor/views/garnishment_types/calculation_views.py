@@ -16,16 +16,50 @@ from datetime import datetime
 from django.db.models import Prefetch
 from user_app.models import EmployeeDetail, GarnishmentOrder
 from garnishedge_project.model_audit import log_model_create
-
-
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
 from typing import Dict, Set, List, Any
 
 logger = logging.getLogger(__name__)
+
+
+def _calculate_garnishment_worker(case_info, batch_id, config_data):
+    """
+    Worker function for processing garnishment calculations in separate threads.
+    This function handles proper database connection management for threading.
+    """
+    from django.db import connections
+    
+    # Set up logging for worker thread
+    worker_logger = logging.getLogger(f"{__name__}.worker")
+    
+    try:
+        # Ensure we have a fresh database connection for this thread
+        # Django automatically creates thread-local connections
+        connections.close_all()
+        
+        worker_logger.debug(f"Worker thread started for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}")
+        
+        # Create a new instance of CalculationDataView for this worker thread
+        calculation_service = CalculationDataView()
+        result = calculation_service.calculate_garnishment_result(case_info, batch_id, config_data)
+        
+        # Close database connections after processing to free up resources
+        connections.close_all()
+        
+        worker_logger.debug(f"Worker thread completed for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}")
+        return result
+        
+    except Exception as e:
+        worker_logger.error(f"Error in worker thread for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}: {str(e)}", exc_info=True)
+        # Close connections on error as well
+        try:
+            connections.close_all()
+        except:
+            pass
+        return {
+            "error": f"Error processing garnishment for employee {case_info.get(EE.EMPLOYEE_ID, 'N/A')}: {str(e)}",
+            "status_code": 500,
+            "employee_id": case_info.get(EE.EMPLOYEE_ID, 'N/A')
+        }
 
 
 class PostCalculationView(APIView):
@@ -341,7 +375,12 @@ class PostCalculationView(APIView):
                 logger.warning(f"No configuration data loaded for types: {all_garnishment_types}")
 
             # Step 4: Process each case with appropriate configuration
-            with ThreadPoolExecutor(max_workers=100) as executor:
+            # Use ThreadPoolExecutor for concurrent processing with Django
+            # Threads work better with Django ORM than processes
+            max_workers = min(50, len(cases_data) + 10)  # Dynamic workers, cap at 50
+            
+            # Create executor with threading
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_case = {}
                 
                 for case_info in cases_data:
@@ -358,24 +397,24 @@ class PostCalculationView(APIView):
                         # For single garnishment cases, use full config (it will be filtered naturally)
                         case_config = full_config_data
                     
-                    # Submit case for processing
+                    # Submit case for processing using the worker function
                     future = executor.submit(
-                        calculation_service.calculate_garnishment_result, 
+                        _calculate_garnishment_worker, 
                         case_info, 
                         batch_id, 
                         case_config
-
-                        
                     )
                     future_to_case[future] = case_info
 
                 # Step 5: Collect results
-                for future in as_completed(future_to_case):
+                from concurrent.futures import TimeoutError as FuturesTimeoutError
+                
+                for future in as_completed(future_to_case, timeout=300):  # 5 minute timeout per task
                     case_info_original = future_to_case[future]
                     ee_id_for_log = case_info_original.get(EE.EMPLOYEE_ID, "N/A")
                     
                     try:
-                        result = future.result()
+                        result = future.result(timeout=10)  # 10 second timeout for result retrieval
                         if result:
                             # Add metadata for multi-garnishment cases
                             if calculation_service.is_multi_garnishment_case(case_info_original):
@@ -390,6 +429,15 @@ class PostCalculationView(APIView):
                         else:
                             logger.warning(f"No result returned for employee {ee_id_for_log}")
                             
+                    except FuturesTimeoutError as e:
+                        error_message = f"Timeout processing garnishment for employee {ee_id_for_log}"
+                        logger.error(error_message, exc_info=True)
+                        
+                        output.append({
+                            "employee_id": ee_id_for_log,
+                            "error": error_message,
+                            "status": status.HTTP_500_INTERNAL_SERVER_ERROR
+                        })
                     except Exception as e:
                         error_message = f"Error processing garnishment for employee {ee_id_for_log}: {str(e)}"
                         logger.error(error_message, exc_info=True)
