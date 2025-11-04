@@ -24,7 +24,7 @@ from user_app.constants import (
     CalculationResultKeys as CRK,
     GarnishmentDataKeys as GDK
 )
-
+from processor.services.fee_calculator import FeeCalculator
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +34,7 @@ class GarnishmentCalculator:
     """
 
     def __init__(self, fee_calculator):
-        self.fee_calculator = fee_calculator
+        self.fee_calculator = FeeCalculator()
         self.logger = logger
 
     def calculate_child_support(self, record: Dict, config_data: Dict = None, 
@@ -137,6 +137,7 @@ class GarnishmentCalculator:
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
             garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+            case_id = garnishment_data[0].get("data")[0].get("case_id") 
             
             result = StudentLoanCalculator().calculate(record)
             total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(record)
@@ -160,24 +161,28 @@ class GarnishmentCalculator:
                     if isinstance(amount, (int, float)):
                         withholding_amounts.append({
                             GRF.AMOUNT: round(amount, 2), 
-                            GRF.TYPE: GRF.STUDENT_LOAN
+                            GRF.TYPE: GRF.STUDENT_LOAN,
+                            GRF.CASE_ID: case_id
                         })
                         total_student_loan_amt += amount
                     else:
                         withholding_amounts.append({
                             GRF.AMOUNT: EM.INSUFFICIENT_PAY, 
-                            GRF.TYPE: GRF.STUDENT_LOAN
+                            GRF.TYPE: GRF.STUDENT_LOAN,
+                            GRF.CASE_ID: case_id
                         })
             elif isinstance(loan_amt, (int, float)):
                 withholding_amounts.append({
                     GRF.AMOUNT: round(loan_amt, 2), 
-                    GRF.TYPE: GRF.STUDENT_LOAN
+                    GRF.TYPE: GRF.STUDENT_LOAN,
+                    GRF.CASE_ID: case_id
                 })
                 total_student_loan_amt = loan_amt
             else:
                 withholding_amounts.append({
                     GRF.AMOUNT: EM.INSUFFICIENT_PAY, 
-                    GRF.TYPE: GRF.STUDENT_LOAN
+                    GRF.TYPE: GRF.STUDENT_LOAN,
+                    GRF.CASE_ID: case_id
                 })
 
             if total_student_loan_amt <= 0:
@@ -270,11 +275,14 @@ class GarnishmentCalculator:
             work_state = record.get(EE.WORK_STATE)
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
+            data = garnishment_data[0].get(GDK.DATA, [])
+            case_id = data[0].get("case_id") if data else None
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
             garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
             
             calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
+            print("calculation_result:", calculation_result)
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
                 
@@ -295,15 +303,22 @@ class GarnishmentCalculator:
             result = self.create_standardized_result(GT.CREDITOR_DEBT, record)
             
             if calculation_result[CR.WITHHOLDING_AMT] <= 0:
+                
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
+                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                    {GRF.AMOUNT: EM.INSUFFICIENT_PAY, GRF.CASE_ID: case_id}
+                ]
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
+                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
             else:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
                 result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.CREDITOR_DEBT}
+                    {GRF.AMOUNT: withholding_amount, GRF.CASE_ID: case_id}
                 ]
                 result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
                 result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
