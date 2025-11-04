@@ -218,8 +218,54 @@ class CreditorDebtHelper():
                 0, disposable_earning, "ERROR",
                 f"Exception in _general_debt_logic: {str(e)}"
             )
+        
 
-    def _minimum_wage_threshold_compare(self, disposable_earning, config_data):
+    def _minimum_wage_threshold_compare(self, disposable_earning, config_data,gross_pay=None):
+        try:
+            lower_threshold_amount = float(
+                config_data[EC.LOWER_THRESHOLD_AMOUNT])
+            lower_threshold_percent = float(
+                config_data[EC.LOWER_THRESHOLD_PERCENT1])/100
+            
+
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "lower_threshold_percent": lower_threshold_percent,
+                "lower_threshold_percent_display": f"{lower_threshold_percent*100}%"
+            }
+
+            
+
+            if disposable_earning <= lower_threshold_amount:
+                return UtilityClass.build_response(
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
+            if gross_pay:
+                diff_of_de_and_threshold_amount = disposable_earning - lower_threshold_amount
+                de_percent = gross_pay * lower_threshold_percent
+                return UtilityClass.build_response(
+                    min(diff_of_de_and_threshold_amount,
+                        de_percent), disposable_earning, CM.DE_GT_UPPER,
+                    f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))",
+                    condition_values
+                )
+            elif disposable_earning > lower_threshold_amount:
+                diff_of_de_and_threshold_amount = disposable_earning - lower_threshold_amount
+                de_percent = disposable_earning * lower_threshold_percent
+                return UtilityClass.build_response(
+                    min(diff_of_de_and_threshold_amount,
+                        de_percent), disposable_earning, CM.DE_GT_UPPER,
+                    f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))",
+                    condition_values
+                )
+        except Exception as e:
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"Exception in _minimum_wage_threshold_compare: {str(e)}"
+            )
+
+    def _minimum_wage_threshold_compare(self, disposable_earning, config_data,gross_pay=None):
         try:
             lower_threshold_amount = float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
@@ -231,12 +277,21 @@ class CreditorDebtHelper():
                 "lower_threshold_amount": lower_threshold_amount,
                 "lower_threshold_percent": lower_threshold_percent,
                 "lower_threshold_percent_display": f"{lower_threshold_percent*100}%"
-            }
+            }           
 
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
                     0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
                     condition_values)
+            if gross_pay:
+                diff_of_de_and_threshold_amount = disposable_earning - lower_threshold_amount
+                de_percent = gross_pay * lower_threshold_percent
+                return UtilityClass.build_response(
+                    min(diff_of_de_and_threshold_amount,
+                        de_percent), disposable_earning, CM.DE_GT_UPPER,
+                    f"Min({lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({CM.DISPOSABLE_EARNING} - threshold_amount))",
+                    condition_values
+                )
             elif disposable_earning > lower_threshold_amount:
                 diff_of_de_and_threshold_amount = disposable_earning - lower_threshold_amount
                 de_percent = disposable_earning * lower_threshold_percent
@@ -320,6 +375,49 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_alaska: {str(e)}"
             )
+    def cal_new_york(self, disposable_earning,gross_pay, config_data):
+        """
+        New York: Garnishment calculation based on minimum wage threshold comparison.
+        """
+        try:
+            lower_threshold_amount = float(
+                config_data[EC.LOWER_THRESHOLD_AMOUNT])
+            gp_lower_threshold_percent = float(
+                config_data[EC.LOWER_THRESHOLD_PERCENT1])/100
+            de_lower_threshold_percent = float(
+                config_data[EC.LOWER_THRESHOLD_PERCENT2])/100
+
+            # Prepare condition values
+            condition_values = {
+                "lower_threshold_amount": lower_threshold_amount,
+                "de_lower_threshold_percent": gp_lower_threshold_percent*100,
+                "gp_lower_threshold_percent": de_lower_threshold_percent*100,
+                "gp_lower_threshold_percent_display": f"{gp_lower_threshold_percent*100}%",
+                "de_lower_threshold_percent_display": f"{de_lower_threshold_percent*100}%"
+            }
+
+
+            if disposable_earning <= lower_threshold_amount:
+                return UtilityClass.build_response(
+                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                    condition_values)
+            
+            elif disposable_earning > lower_threshold_amount:
+                gp_percent = gross_pay * gp_lower_threshold_percent
+                de_percent = disposable_earning * de_lower_threshold_percent
+                return UtilityClass.build_response(
+                    min(gp_percent,
+                        de_percent), disposable_earning, CM.DE_GT_UPPER,
+                    f"Min({de_lower_threshold_percent * 100}% of {CM.DISPOSABLE_EARNING}, ({gp_lower_threshold_percent*100}% of Gross Pay))",
+                    condition_values
+                )
+        except Exception as e:
+            import traceback as t
+            return UtilityClass.build_response(
+                0, disposable_earning, "ERROR",
+                f"Exception in _minimum_wage_threshold_compare: {str(e)}"
+            )
+
 
     def cal_delaware(self, disposable_earning, config_data):
         """
@@ -681,28 +779,26 @@ class StateWiseCreditorDebtFormulas(CreditorDebtHelper):
                 "percent1": gp_lower_threshold_percent1,
                 "percent1_display": f"{gp_lower_threshold_percent1*100}%"
             }
-
             if gross_pay <= gp_lower_threshold_amount:
                 withholding_amt = disposable_earning*gp_lower_threshold_percent1
                 return UtilityClass.build_response(withholding_amt, disposable_earning,
                                                    f"{CM.GROSS_PAY} <= {gp_lower_threshold_amount}", f"{gp_lower_threshold_percent1*100}% of {CM.DISPOSABLE_EARNING}",
                                                    condition_values)
-            elif  disposable_earning <= lower_threshold_amount:
-                return UtilityClass.build_response(
-                    0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
-                    condition_values)
-            else:  # disposable_earning > lower_threshold_amount
-                diff_of_de_and_fmw_fifty_times = disposable_earning-lower_threshold_amount
-                twenty_five_percent_of_de = disposable_earning*lower_threshold_percent
-                withholding_amt = min(
-                    diff_of_de_and_fmw_fifty_times, twenty_five_percent_of_de)
-                return UtilityClass.build_response(withholding_amt, disposable_earning,
-                                                   CM.DE_GT_LOWER,
-                                                   f"Min(({CM.DISPOSABLE_EARNING}-{CM.LOWER_THRESHOLD_AMOUNT}),{lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING})",
-                                                   condition_values)
+            else: 
+                if disposable_earning <= lower_threshold_amount:
+                    return UtilityClass.build_response(
+                        0, disposable_earning, CM.DE_LE_LOWER, CR.get_zero_withholding_response(CM.DISPOSABLE_EARNING, CM.LOWER_THRESHOLD_AMOUNT),
+                        condition_values)
+                else:  # disposable_earning > lower_threshold_amount
+                    diff_of_de_and_fmw_fifty_times = disposable_earning-lower_threshold_amount
+                    twenty_five_percent_of_de = disposable_earning*lower_threshold_percent
+                    withholding_amt = min(
+                        diff_of_de_and_fmw_fifty_times, twenty_five_percent_of_de)
+                    return UtilityClass.build_response(withholding_amt, disposable_earning,
+                                                    CM.DE_GT_LOWER,
+                                                    f"Min(({CM.DISPOSABLE_EARNING}-{CM.LOWER_THRESHOLD_AMOUNT}),{lower_threshold_percent*100}% of {CM.DISPOSABLE_EARNING})",
+                                                    condition_values)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",
                 f"Exception in cal_nevada: {str(e)}"
@@ -854,9 +950,10 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         commission_and_bonus = record.get(CF.COMMISSION_AND_BONUS, 0)
         non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
         payroll_taxes = record.get(PT.PAYROLL_TAXES)
-        gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+        gross_pay =record.get(EmployeeFields.GROSS_PAY)
+        total_amount = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
         mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
-        disposable_earning = cs_helper.calculate_de(gross_pay, mandatory_deductions)
+        disposable_earning = cs_helper.calculate_de(total_amount, mandatory_deductions)
         garn_start_date = record.get(EmployeeFields.GARN_START_DATE)
         
         exempt_amt_config = self._exempt_amt_config_data(
@@ -874,6 +971,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
         try:
             state_formulas = {
                 ST.ARIZONA: lambda: self.cal_arizona(disposable_earning,garn_start_date, exempt_amt_config),
+                ST.NEW_YORK: lambda: self.cal_new_york(disposable_earning,gross_pay, exempt_amt_config),
                 ST.ALASKA: lambda: self.cal_alaska(home_state, disposable_earning, exempt_amt_config),
                 ST.DELAWARE: lambda: self.cal_delaware(disposable_earning, exempt_amt_config),
                 ST.HAWAII: lambda: self.cal_hawaii(disposable_earning, exempt_amt_config),
@@ -910,7 +1008,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                      ST.IOWA, ST.WASHINGTON,ST.ILLINOIS, ST.CONNECTICUT, ST.NEW_MEXICO, ST.VIRGINIA, ST.WEST_VIRGINIA, ST.WISCONSIN]
 
                 _minimum_wage_threshold_compare_gp = [
-                    ST.NEW_YORK, ST.MASSACHUSETTS]
+                     ST.MASSACHUSETTS]
 
                 if state in [ST.TEXAS, ST.NORTH_CAROLINA, ST.SOUTH_CAROLINA,ST.PENNSYLVANIA   ]:
                     return CC.NOT_PERMITTED
@@ -922,7 +1020,7 @@ class CreditorDebtCalculator(StateWiseCreditorDebtFormulas):
                         disposable_earning, exempt_amt_config)
                 elif state in _minimum_wage_threshold_compare_gp:
                     return self._minimum_wage_threshold_compare(
-                        gross_pay,exempt_amt_config)
+                        disposable_earning,exempt_amt_config,gross_pay)
                 else:
                     return CC.NOT_FOUND
 
