@@ -33,6 +33,7 @@ from user_app.constants import (
 )
 from django.db.models import Prefetch, F
 from user_app.utils import DataProcessingUtils
+from django.core.paginator import Paginator, EmptyPage
 
 
 class EmployeeImportView(APIView):
@@ -513,41 +514,31 @@ class EmployeeDetailsAPIViews(APIView):
                     .order_by('id')
                 )
 
-                # Optional pagination via query params
-                page = request.query_params.get('page')
-                page_size = request.query_params.get('page_size')
-                if page_size is not None:
-                    try:
-                        page_size = max(1, min(1000, int(page_size)))
-                    except ValueError:
-                        page_size = None
-
-                if page and page_size:
-                    try:
-                        from django.core.paginator import Paginator, EmptyPage
-                        paginator = Paginator(queryset, page_size)
-                        page_number = int(page)
-                        page_obj = paginator.page(page_number)
-                        serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
-                        return ResponseHelper.success_response(
-                            'Page fetched successfully',
-                            {
-                                'results': serializer.data,
-                                'page': page_number,
-                                'page_size': page_size,
-                                'total_pages': paginator.num_pages,
-                                'total_items': paginator.count,
-                            }
-                        )
-                    except (ValueError, EmptyPage):
-                        return ResponseHelper.error_response(
-                            'Invalid page or page_size',
-                            status_code=status.HTTP_400_BAD_REQUEST
-                        )
-
-                # No pagination requested: return all optimized
-                serializer = EmployeeDetailsSerializer(list(queryset), many=True)
-                return ResponseHelper.success_response('All data fetched successfully', serializer.data)
+                # Chunked pagination (defaults if not provided)
+                page = request.query_params.get('page') or 1
+                page_size = request.query_params.get('page_size') or 500
+                try:
+                    page = int(page)
+                    page_size = max(1, min(1000, int(page_size)))
+                    from django.core.paginator import Paginator, EmptyPage
+                    paginator = Paginator(queryset, page_size)
+                    page_obj = paginator.page(page)
+                    serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
+                    return ResponseHelper.success_response(
+                        'Page fetched successfully',
+                        {
+                            'results': serializer.data,
+                            'page': page,
+                            'page_size': page_size,
+                            'total_pages': paginator.num_pages,
+                            'total_items': paginator.count,
+                        }
+                    )
+                except (ValueError, EmptyPage):
+                    return ResponseHelper.error_response(
+                        'Invalid page or page_size',
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
         except Exception as e:
             return ResponseHelper.error_response(
                 'Failed to fetch data',
@@ -1240,46 +1231,32 @@ class EmployeeDetailsAPI(APIView):
                 .order_by('-created_at')
             )
 
-            # Optional pagination via query params
-            page = request.query_params.get('page')
-            page_size = request.query_params.get('page_size')
-            if page_size is not None:
-                try:
-                    page_size = max(1, min(1000, int(page_size)))
-                except ValueError:
-                    page_size = None
-
-            if page and page_size:
-                try:
-                    from django.core.paginator import Paginator, EmptyPage
-                    paginator = Paginator(queryset, page_size)
-                    page_number = int(page)
-                    page_obj = paginator.page(page_number)
-                    serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
-                    return ResponseHelper.success_response(
-                        message="Employees fetched successfully",
-                        data={
-                            'results': serializer.data,
-                            'page': page_number,
-                            'page_size': page_size,
-                            'total_pages': paginator.num_pages,
-                            'total_items': paginator.count,
-                        },
-                        status_code=status.HTTP_200_OK
-                    )
-                except (ValueError, EmptyPage):
-                    return ResponseHelper.error_response(
-                        message="Invalid page or page_size",
-                        status_code=status.HTTP_400_BAD_REQUEST
-                    )
-
-            # No pagination requested
-            serializer = EmployeeDetailsSerializer(list(queryset), many=True)
-            return ResponseHelper.success_response(
-                message="Employees fetched successfully",
-                data=serializer.data,
-                status_code=status.HTTP_200_OK
-            )  
+            # Chunked pagination (defaults if not provided)
+            page = request.query_params.get('page') or 1
+            page_size = request.query_params.get('page_size') or 500
+            try:
+                page = int(page)
+                page_size = max(1, min(1000, int(page_size)))
+                from django.core.paginator import Paginator, EmptyPage
+                paginator = Paginator(queryset, page_size)
+                page_obj = paginator.page(page)
+                serializer = EmployeeDetailsSerializer(page_obj.object_list, many=True)
+                return ResponseHelper.success_response(
+                    message="Employees fetched successfully",
+                    data={
+                        'results': serializer.data,
+                        'page': page,
+                        'page_size': page_size,
+                        'total_pages': paginator.num_pages,
+                        'total_items': paginator.count,
+                    },
+                    status_code=status.HTTP_200_OK
+                )
+            except (ValueError, EmptyPage):
+                return ResponseHelper.error_response(
+                    message="Invalid page or page_size",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )  
         except Exception as e:
             return ResponseHelper.error_response(
                 message="Failed to fetch employees",

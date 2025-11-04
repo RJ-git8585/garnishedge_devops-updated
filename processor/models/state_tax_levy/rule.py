@@ -6,6 +6,7 @@ class StateTaxLevyConfig(models.Model):
     withholding_limit = models.CharField(max_length=255, blank=True, null=True)
     withholding_limit_rule = models.CharField(
         max_length=455, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

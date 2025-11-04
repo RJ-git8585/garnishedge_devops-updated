@@ -21,6 +21,7 @@ class StateTaxLevyExemptAmtConfig(models.Model):
     condition_expression_ut = models.CharField(max_length=1200,null=True, blank=True)
     upper_threshold_amount = models.DecimalField(
         max_digits=10, decimal_places=4)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

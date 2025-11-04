@@ -254,6 +254,7 @@ class SingleChild(ChildSupportHelper):
             mandatory_deductions = self.calculate_md(payroll_taxes)
             de = self.calculate_de(gross_pay, mandatory_deductions)
             withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
+            print("withholding_limit",withholding_limit)
             ade = self.calculate_ade(withholding_limit, de)
             
             # Get support amounts
@@ -311,7 +312,7 @@ class MultipleChild(ChildSupportHelper):
             alloc_method = AllocationMethodResolver(
                 self.work_state
             ).get_allocation_method()
-
+            print("alloc_method",alloc_method)
             if ade >= twa:
                 cs_amounts = self._calculate_each_amount(tcsa,"child support amount") 
                 ar_amounts = self._calculate_each_amount(tcsa,"arrear amount") 
@@ -345,6 +346,8 @@ class MultipleChild(ChildSupportHelper):
                         for i, amt in enumerate(taa)
                     }
                 else:
+                    import traceback as t
+                    t.print_exc()
                     raise ValueError(
                         "Invalid allocation method for garnishment.")
 

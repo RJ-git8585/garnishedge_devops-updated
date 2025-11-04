@@ -5,6 +5,7 @@ class WithholdingRules(models.Model):
     rule = models.IntegerField()
     allocation_method = models.CharField(max_length=255)
     withholding_limit = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

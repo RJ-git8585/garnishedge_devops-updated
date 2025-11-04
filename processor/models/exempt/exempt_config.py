@@ -14,7 +14,9 @@ class ExemptConfig(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True)
     percent_limit = models.IntegerField(null=True, blank=True)
     garn_start_date = models.DateField(null=True, blank=True)
+    effective_date = models.DateField(null=True, blank=True, help_text="Date when this configuration becomes active. If null, config is active immediately.")
     ftb_type = models.CharField(max_length=100,null=True, blank=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

@@ -6,6 +6,7 @@ class GarnishmentFeesRules(models.Model):
     per_pay_period = models.DecimalField(max_digits=12, decimal_places=2)
     per_month = models.DecimalField(max_digits=12, decimal_places=2)
     per_remittance = models.DecimalField(max_digits=12, decimal_places=2)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

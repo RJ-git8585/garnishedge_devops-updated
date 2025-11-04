@@ -81,12 +81,14 @@ class AllocationMethodResolver:
         Fetches the allocation method from the WithholdingRules table based on the work state.
         """
         try:
-            rule = WithholdingRules.objects.get(state__state__iexact=self.work_state)
-            if rule.allocation_method:
+            rule = WithholdingRules.objects.select_related("state").get(state__state__iexact=self.work_state, is_active=True)
+            if rule.allocation_method:  
                 return rule.allocation_method.lower()
             return f"No allocation method defined for the state: {self.work_state.capitalize()}."
         
         except ObjectDoesNotExist:
+            import traceback as t
+            t.print_exc()
             return f"No withholding rule found for the state: {self.work_state.capitalize()}."
         
         except MultipleObjectsReturned:

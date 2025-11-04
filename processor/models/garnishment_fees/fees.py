@@ -15,9 +15,10 @@ class GarnishmentFees(models.Model):
     )
     amount = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(max_length=255)
-
+    
 
     payable_by = models.CharField(max_length=255, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

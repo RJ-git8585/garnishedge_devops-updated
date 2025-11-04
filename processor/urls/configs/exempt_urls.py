@@ -12,7 +12,8 @@ urlpatterns = [
     path("config/<str:garnishment_type>/", ExemptConfigAPIView.as_view()),
     path("config/<str:garnishment_type>/<int:pk>/", ExemptConfigAPIView.as_view()),
     
-    # URL for getting by rule_id (GET only, update/delete still use pk)
+    # URL for getting by rule_id (GET only - use this URL pattern)
+    # For PUT/DELETE, use the pk-based URLs above
     path("config/<str:garnishment_type>/rule/<int:rule_id>/", ExemptConfigAPIView.as_view()),
 ]
 

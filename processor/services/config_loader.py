@@ -5,12 +5,15 @@ Handles loading and caching of configuration data for different garnishment type
 
 import logging
 from typing import Dict, Set, Any
+from datetime import date
+from django.utils import timezone
+from django.db.models import Q
 from processor.models import (
     StateTaxLevyExemptAmtConfig, ExemptConfig, ThresholdAmount,
     AddExemptions, StdExemptions, GarnishmentFees
 )
 from processor.serializers import (
-    ThresholdAmountSerializer, AddExemptionSerializer, StdExemptionSerializer,
+    ThresholdAmountSerializer, StdExemptionSerializer,
     GarnishmentFeesSerializer, StateTaxLevyExemptAmtConfigSerializers
 )
 from user_app.constants import GarnishmentTypeFields as GT, ConfigDataKeys as CDK
@@ -71,7 +74,10 @@ class ConfigLoader:
     def _load_state_tax_levy_config(self) -> list:
         """Load state tax levy configuration data."""
         try:
-            queryset = StateTaxLevyExemptAmtConfig.objects.select_related('state').all()
+            today = date.today()
+            queryset = StateTaxLevyExemptAmtConfig.objects.select_related('state').filter(
+                is_active=True
+            )
             serializer = StateTaxLevyExemptAmtConfigSerializers(queryset, many=True)
             logger.info(f"Successfully loaded {GT.STATE_TAX_LEVY} config")
             return serializer.data
@@ -82,7 +88,11 @@ class ConfigLoader:
     def _load_creditor_debt_config(self) -> list:
         """Load creditor debt configuration data."""
         try:
-            queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=5)
+            today = date.today()
+            queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(
+                garnishment_type=5,
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
             config_ids = queryset.values_list("id", flat=True)
             threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
             serializer = ThresholdAmountSerializer(threshold_qs, many=True)
@@ -107,7 +117,11 @@ class ConfigLoader:
     def _load_bankruptcy_config(self) -> list:
         """Load bankruptcy configuration data."""
         try:
-            queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(garnishment_type=7)
+            today = date.today()
+            queryset = ExemptConfig.objects.select_related('state','pay_period','garnishment_type').filter(
+                garnishment_type=7,
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
             config_ids = queryset.values_list("id", flat=True)
             threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
             serializer = ThresholdAmountSerializer(threshold_qs, many=True)
@@ -120,7 +134,11 @@ class ConfigLoader:
     def _load_ftb_config(self, type_id: int) -> list:
         """Load FTB related configuration data."""
         try:
-            queryset = ExemptConfig.objects.select_related('state', 'pay_period', 'garnishment_type').filter(garnishment_type=type_id)
+            today = date.today()
+            queryset = ExemptConfig.objects.select_related('state', 'pay_period', 'garnishment_type').filter(
+                garnishment_type=type_id,
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
             config_ids = queryset.values_list("id", flat=True)
             threshold_qs = ThresholdAmount.objects.select_related("config").filter(config_id__in=config_ids)
             serializer = ThresholdAmountSerializer(threshold_qs, many=True)

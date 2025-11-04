@@ -85,12 +85,16 @@ class PostCalculationView(APIView):
 
             try:
                 # Fetch employee with related garnishment orders
-                employee = EmployeeDetail.objects.select_related(
+                employee = EmployeeDetail.objects.filter(
+                    is_active=True
+                ).select_related(
                     'home_state', 'work_state', 'filing_status'
                 ).prefetch_related(
                     Prefetch(
                         'garnishments',
-                        queryset=GarnishmentOrder.objects.select_related(
+                        queryset=GarnishmentOrder.objects.filter(
+                            is_active=True
+                        ).select_related(
                             'issuing_state', 'garnishment_type'
                         )
                     )
@@ -205,7 +209,6 @@ class PostCalculationView(APIView):
         # Extract deductions from garnishment orders
         deductions = self._extract_deductions_from_garnishment_orders(garnishment_orders, case)
 
-        #print("first_garnishment.garnishment_fees",first_garnishment.garnishment_fees)
         # Add employee-specific fields
         enriched_case.update({
             'work_state': employee.work_state.state if employee.work_state else None,
@@ -227,7 +230,7 @@ class PostCalculationView(APIView):
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
-        #print("enriched_case",enriched_case)
+
         return enriched_case
 
     def post(self, request, *args, **kwargs):

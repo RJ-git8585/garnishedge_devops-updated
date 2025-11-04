@@ -132,7 +132,8 @@ REST_FRAMEWORK = {
     'ALLOWED_VERSIONS': ('v1', 'v2','v3','v4','v5'),
         
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10
+    'PAGE_SIZE': 100,
+    'DEFAULT_THROTTLE_RATES': { 'anon': '100/min', 'user': '1000/min' }, 
 
 }
 

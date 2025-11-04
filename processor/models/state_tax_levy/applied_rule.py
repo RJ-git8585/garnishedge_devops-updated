@@ -14,6 +14,7 @@ class StateTaxLevyAppliedRule(models.Model):
         max_length=1000, blank=True, null=True)
     withholding_limit_rule = models.CharField(
         max_length=1000, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
