@@ -7,3 +7,4 @@ from .peo import *
 from .sdu import *
 from .client import *
 from .garnishment_order import *
+from .letter_template import *

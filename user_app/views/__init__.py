@@ -8,5 +8,6 @@ from .garnishment_order_views import *
 from .sdu_views import *
 from .client_views import *
 from .peo_views import *
+from .letter_template_views import *
  
 # try:
