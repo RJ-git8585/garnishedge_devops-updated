@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from processor.models import MultipleGarnPriorityOrders,ThresholdCondition,ExemptConfig,ThresholdAmount,PayPeriod, State, GarnishmentType, ExemptRule
+from user_app.utils import DataProcessingUtils
+from datetime import datetime
 
 
 class PayPeriodSerializers(serializers.ModelSerializer):
@@ -60,6 +62,53 @@ class GarnishmentTypeField(serializers.Field):
             return GarnishmentType.objects.get(type__iexact=data)
         except GarnishmentType.DoesNotExist:
             raise serializers.ValidationError(f"GarnishmentType '{data}' not found")
+
+
+class RuleField(serializers.Field):
+    """Custom field for handling ExemptRule as read/write using rule_id."""
+    def to_representation(self, value):
+        return value.id if value else None
+
+    def to_internal_value(self, data):
+        if data is None or data == '':
+            raise serializers.ValidationError("rule_id is required")
+        try:
+            # Accept both integer ID or ExemptRule object
+            if isinstance(data, int):
+                return ExemptRule.objects.get(id=data)
+            elif hasattr(data, 'id'):
+                return data
+            else:
+                raise serializers.ValidationError(f"Invalid rule_id: {data}")
+        except ExemptRule.DoesNotExist:
+            raise serializers.ValidationError(f"ExemptRule with id '{data}' not found")
+
+
+class FlexibleDateField(serializers.DateField):
+    """Custom date field that uses parse_date_field to handle various date formats."""
+    def to_internal_value(self, data):
+        """
+        Parse date using the flexible parse_date_field utility.
+        Accepts various date formats and converts them to YYYY-MM-DD.
+        """
+        if data is None or data == '':
+            raise serializers.ValidationError("This field is required.")
+        
+        # Use the parse_date_field utility to handle various formats
+        parsed_date_str = DataProcessingUtils.parse_date_field(data)
+        
+        if parsed_date_str is None:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+        
+        # Parse the YYYY-MM-DD string to a date object
+        try:
+            return datetime.strptime(parsed_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
 
 
 
@@ -126,7 +175,6 @@ class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        print("Created GarnishmentType2:")
         threshold_data = validated_data.pop("threshold_amounts", [])
         config = ExemptConfig.objects.create(**validated_data)
         for t in threshold_data:
@@ -134,6 +182,8 @@ class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
         return config
 
     def update(self, instance, validated_data):
+        print("Validated data in update:", validated_data)
+
         threshold_data = validated_data.pop("threshold_amounts", [])
 
         #  Update parent
@@ -183,7 +233,8 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
     state = StateField(required=False, allow_null=True)
     pay_period = PayPeriodField(required=False, allow_null=True)
     garnishment_type = serializers.CharField(source="garnishment_type.type", read_only=True)
-    rule_id = serializers.IntegerField(source="rule.id", read_only=True)
+    rule_id = RuleField(source="rule", required=True)
+    effective_date = FlexibleDateField(required=True)
     threshold_amounts = ThresholdAmountCoreSerializer(many=True, required=False)
 
     class Meta:
@@ -191,8 +242,9 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         fields = [
             "id", "rule_id", "debt_type", "is_filing_status", "wage_basis",
             "wage_amount", "percent_limit", "state", "pay_period", "garnishment_type",
-            "garn_start_date", "threshold_amounts","home_state"
+            "garn_start_date", "threshold_amounts", "home_state", "is_active", "effective_date"
         ]
+        read_only_fields = ["id"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -203,6 +255,15 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         """
         Validate that we're only working with the specific garnishment type
         """
+        # Validate rule belongs to the correct garnishment type
+        rule_obj = data.get('rule')
+        if rule_obj:
+            if rule_obj.garnishment_type.type != self.garnishment_type_name:
+                raise serializers.ValidationError(
+                    f"Rule must belong to {self.garnishment_type_name} garnishment type, "
+                    f"but it belongs to {rule_obj.garnishment_type.type}"
+                )
+        
         # Get the state and pay_period objects
         state_obj = data.get('state')
         pay_period_obj = data.get('pay_period')
@@ -228,8 +289,9 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         Create ExemptConfig specifically for the garnishment type
         """
         threshold_data = validated_data.pop("threshold_amounts", [])
-
-        print("Created GarnishmentType:")
+        
+        # Remove id from validated_data if present (should not set ID when creating)
+        validated_data.pop("id", None)
         
         # Get or create the garnishment type
         garnishment_type_obj, created = GarnishmentType.objects.get_or_create(
@@ -242,8 +304,10 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         
         config = ExemptConfig.objects.create(**validated_data)
         
-        # Create threshold amounts
+        # Create threshold amounts - remove IDs for new records
         for t in threshold_data:
+            # Remove id from threshold data when creating new threshold amounts
+            t.pop("id", None)
             ThresholdAmount.objects.create(config=config, **t)
         
         return config
@@ -252,8 +316,6 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         """
         Update ExemptConfig ensuring it remains the correct garnishment type
         """
-
-        print("Created GarnishmentType:")
         # Ensure we're only updating records of the correct garnishment type
         if instance.garnishment_type.type != self.garnishment_type_name:
             raise serializers.ValidationError(
@@ -339,41 +401,6 @@ def get_garnishment_type_serializer(garnishment_type):
     return serializer_class
 
 
-class ThresholdConditionSerializer(serializers.ModelSerializer):
-    """
-    Serializer for ThresholdCondition.
-    - Allows write with `threshold_id`.
-    - Returns nested threshold details in GET.
-    """
-    # Write-only field for foreign key
-    threshold_id = serializers.PrimaryKeyRelatedField(
-        queryset=ThresholdAmount.objects.all(),
-        source="threshold",
-        write_only=True
-    )
-
-    # Read-only nested threshold details
-    threshold = ThresholdAmountSerializer(read_only=True)
-
-    class Meta:
-        model = ThresholdCondition
-        fields = [
-            "id",
-            "threshold_id",  
-            "threshold",     
-            "multiplier_lt",
-            "condition_expression_lt",
-            "multiplier_mid",
-            "condition_expression_mid",
-            "multiplier_ut",
-            "condition_expression_ut",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-
 class BaseGarnishmentTypeExemptRuleSerializer(serializers.ModelSerializer):
     """
     Base serializer for garnishment type specific ExemptRule operations.
@@ -425,6 +452,7 @@ class BaseGarnishmentTypeExemptRuleSerializer(serializers.ModelSerializer):
             type=self.garnishment_type_name,
             defaults={'description': f'{self.garnishment_type_name} Garnishment'}
         )
+        
         # Set the garnishment_type
         validated_data['garnishment_type'] = garnishment_type_obj
         
@@ -506,3 +534,38 @@ def get_garnishment_type_rule_serializer(garnishment_type):
         raise ValueError(f"Unsupported garnishment type: {garnishment_type}. Supported types: {supported_types}")
     
     return serializer_class
+
+
+class ThresholdConditionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ThresholdCondition.
+    - Allows write with `threshold_id`.
+    - Returns nested threshold details in GET.
+    """
+    # Write-only field for foreign key
+    threshold_id = serializers.PrimaryKeyRelatedField(
+        queryset=ThresholdAmount.objects.all(),
+        source="threshold",
+        write_only=True
+    )
+
+    # Read-only nested threshold details
+    threshold = ThresholdAmountSerializer(read_only=True)
+
+    class Meta:
+        model = ThresholdCondition
+        fields = [
+            "id",
+            "threshold_id",  
+            "threshold",     
+            "multiplier_lt",
+            "condition_expression_lt",
+            "multiplier_mid",
+            "condition_expression_mid",
+            "multiplier_ut",
+            "condition_expression_ut",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+

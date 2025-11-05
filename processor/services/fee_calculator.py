@@ -104,7 +104,8 @@ class FeeCalculator:
         """
         try:
             # Extract required fields for garnishment fees
-            if float(garn_fees) == float(0.0):
+            # If garn_fees is None or 0, use the rule engine to calculate the fee
+            if garn_fees is None or garn_fees == 0.0:
                 fee = GarFeesRulesEngine(work_state).apply_rule(
                     garnishment_type, pay_period, withholding_amt)
                 if isinstance(fee, (int, float)):

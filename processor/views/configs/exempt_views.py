@@ -4,6 +4,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.db import transaction
 from datetime import date
 from processor.models import ExemptConfig, GarnishmentType, ExemptRule, ThresholdCondition
 from processor.serializers import ExemptConfigWithThresholdSerializer, get_garnishment_type_serializer, get_garnishment_type_rule_serializer, BaseGarnishmentTypeExemptRuleSerializer, CreditorDebtExemptRuleSerializer, ThresholdConditionSerializer
@@ -28,7 +29,6 @@ class ExemptConfigAPIView(APIView):
         """
         if garnishment_type:
             try:
-                print("RUNN")
                 return get_garnishment_type_serializer(garnishment_type)
 
             except ValueError as e:
@@ -94,7 +94,6 @@ class ExemptConfigAPIView(APIView):
     def get(self, request, garnishment_type=None, pk=None, rule_id=None):
         try:
             serializer_class = self.get_serializer_class(garnishment_type)
-            print("serializer_class",serializer_class)
             
             if pk:
                 # Get specific record by primary key
@@ -195,9 +194,21 @@ class ExemptConfigAPIView(APIView):
             serializer = serializer_class(data=request.data)
             
             if serializer.is_valid():
-                instance = serializer.save()
-                # Handle effective date logic - deactivate previous configs if needed
-                self._deactivate_previous_configs(instance)
+                # Use transaction.atomic() to ensure all-or-nothing behavior
+                # If any part fails (ExemptConfig or ThresholdAmount creation), 
+                # the entire operation will be rolled back
+                with transaction.atomic():
+                    instance = serializer.save()
+                    # Handle effective date logic - deactivate previous configs if needed
+                    # This is also within the transaction, so if it fails, everything rolls back
+                    # Note: If deactivation fails, the exception will propagate and roll back the transaction
+                    try:
+                        self._deactivate_previous_configs(instance)
+                    except Exception as e:
+                        logger.exception(f"Error in _deactivate_previous_configs for config ID {instance.id}: {e}")
+                        # Re-raise to ensure transaction rollback
+                        raise
+                
                 return ResponseHelper.success_response(
                     message="Record created successfully",
                     data=serializer.data,
@@ -233,7 +244,12 @@ class ExemptConfigAPIView(APIView):
             
             serializer = serializer_class(config, data=request.data,partial=True)
             if serializer.is_valid():
-                serializer.save()
+                # Use transaction.atomic() to ensure all-or-nothing behavior
+                # If any part fails (ExemptConfig or ThresholdAmount update), 
+                # the entire operation will be rolled back
+                with transaction.atomic():
+                    serializer.save()
+                
                 return ResponseHelper.success_response(
                     message="Record updated successfully",
                     data=serializer.data,
