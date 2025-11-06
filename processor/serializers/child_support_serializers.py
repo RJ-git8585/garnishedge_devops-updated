@@ -78,17 +78,16 @@ class WithholdingLimitSerializer(serializers.ModelSerializer):
 class WithholdingLimitCRUDSerializer(serializers.ModelSerializer):
     """
     Serializer for CRUD on WithholdingLimit that accepts:
-    - state (name or code) and rule_number to resolve FK to WithholdingRules
+    - state (name or code) and rule_id to resolve FK to WithholdingRules
     Returns state name and rule_id in responses.
     """
     state = serializers.CharField(source='rule.state.state')
-    rule_number = serializers.IntegerField(write_only=True, required=True)
-    rule_id = serializers.IntegerField(source='rule.id', read_only=True)
+    rule_id = serializers.IntegerField( required=True)
 
     class Meta:
         model = WithholdingLimit
         fields = [
-            'id', 'state', 'rule_number', 'rule_id', 'wl', 'supports_2nd_family',
+            'id', 'state', 'rule_id', 'rule_id', 'wl', 'supports_2nd_family',
             'arrears_of_more_than_12_weeks', 'number_of_orders', 'weekly_de_code',
             'work_state', 'issuing_state', 'effective_date', 'is_active',
             'created_at', 'updated_at'
@@ -107,9 +106,9 @@ class WithholdingLimitCRUDSerializer(serializers.ModelSerializer):
         if not state_name:
             raise serializers.ValidationError("state is required")
 
-        rule_number = attrs.get('rule_number')
-        if rule_number is None:
-            raise serializers.ValidationError("rule_number is required")
+        rule_id = attrs.get('rule_id')
+        if rule_id is None:
+            raise serializers.ValidationError("rule_id is required")
 
         # Find State and corresponding WithholdingRules
         state_obj = State.objects.filter(state__iexact=state_name).first() or \
@@ -117,18 +116,17 @@ class WithholdingLimitCRUDSerializer(serializers.ModelSerializer):
         if not state_obj:
             raise serializers.ValidationError(f"State '{state_name}' not found")
 
-        rule_obj = WithholdingRules.objects.filter(state=state_obj, rule=rule_number).first()
+        rule_obj = WithholdingRules.objects.filter(state=state_obj, rule=rule_id).first()
         if not rule_obj:
             raise serializers.ValidationError(
-                f"WithholdingRules not found for state '{state_obj.state}' and rule_number '{rule_number}'"
+                f"WithholdingRules not found for state '{state_obj.state}' and rule_id '{rule_id}'"
             )
 
         # Replace incoming with resolved FK
         attrs['rule'] = rule_obj
-        # Normalize state field for representation
-        attrs['state'] = state_obj.state
-        # Remove helper write-only
-        attrs.pop('rule_number', None)
+        # Remove helper write-only fields so model create/update doesn't receive unexpected kwargs
+        attrs.pop('state', None)
+        attrs.pop('rule_id', None)
         return attrs
 
     def create(self, validated_data):
