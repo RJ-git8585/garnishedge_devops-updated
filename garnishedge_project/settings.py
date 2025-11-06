@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_rest_passwordreset',
     'rest_framework_simplejwt.token_blacklist',
+    'django_apscheduler',  # For scheduling periodic tasks
     'processor',
     'user_app'
 ]

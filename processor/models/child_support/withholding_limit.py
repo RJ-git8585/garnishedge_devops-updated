@@ -17,6 +17,7 @@ class WithholdingLimit(models.Model):
     weekly_de_code = models.CharField(max_length=10, null=True, blank=True)
     work_state = models.CharField(max_length=10, null=True, blank=True)
     issuing_state = models.CharField(max_length=10, null=True, blank=True)
+    effective_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

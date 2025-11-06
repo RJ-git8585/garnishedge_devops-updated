@@ -6,7 +6,6 @@ class GarnishmentFees(models.Model):
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, db_index=True,related_name="fees")
     garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE,related_name="fees", db_index=True)
     pay_period = models.ForeignKey('PayPeriod', on_delete=models.CASCADE,related_name="fees", db_index=True)
-    
     # Added unique related_name to avoid clash
     rule = models.ForeignKey(
         GarnishmentFeesRules,
@@ -15,10 +14,9 @@ class GarnishmentFees(models.Model):
     )
     amount = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(max_length=255)
-    
-
     payable_by = models.CharField(max_length=255, null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    effective_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

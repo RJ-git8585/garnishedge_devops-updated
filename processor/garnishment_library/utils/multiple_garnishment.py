@@ -334,7 +334,8 @@ class MultipleGarnishmentPriorityHelper:
                 support_amount = self._get_garnishment_amount(garnishment_data, GT.CHILD_SUPPORT, "ordered_amount")
                 arrear_amount = self._get_garnishment_amount(garnishment_data, GT.CHILD_SUPPORT, "arrear_amount")
 
-                
+                print("support_amount", support_amount)
+                print("arrear_amount", arrear_amount)
                 if not isinstance(support_amount, list):
                     support_amount = []
                 if not isinstance(arrear_amount, list):
@@ -374,6 +375,8 @@ class MultipleGarnishmentPriorityHelper:
                 self.logger.error(f"Error calculating final amounts: {e}")
                 cs_amounts, ar_amounts = {}, {}
             cs_amounts=FinanceUtils()._convert_result_structure(cs_amounts)
+            print("cs_amountsddd",cs_amounts)
+            print("ar_amountsddd",ar_amounts)
             ar_amounts=FinanceUtils()._convert_result_structure(ar_amounts)
             total_withholding_amount= FinanceUtils()._convert_result_structure({"total_withholding_amount":total_withholding_amount})
             amount_left_for_other_garn = de_twenty_five_percent-total_withholding_amount['total_withholding_amount'] if total_withholding_amount['total_withholding_amount'] > 0 else 0
@@ -450,7 +453,8 @@ class MultipleGarnishmentPriorityHelper:
                     ar_amounts = {f"arrear amount{i+1}": 0 for i in range(len(arrear_amount))}
             else:
                 raise CalculationError(f"Invalid allocation method: {alloc_method}")
-                
+            print("cs_amounts", cs_amounts) 
+            print("ar_amounts", ar_amounts) 
             return cs_amounts, ar_amounts
             
         except Exception as e:

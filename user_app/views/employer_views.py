@@ -136,7 +136,7 @@ class EmployerDetails(APIView):
         except EmployerProfile.DoesNotExist:
             return ResponseHelper.error_response(f'id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND)
         try:
-            serializer = EmployerProfileSerializer(employee, data=request.data)
+            serializer = EmployerProfileSerializer(employee, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
                 return ResponseHelper.success_response('Data updated successfully', serializer.data)

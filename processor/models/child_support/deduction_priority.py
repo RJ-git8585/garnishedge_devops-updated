@@ -5,10 +5,9 @@ class DeductionPriority(models.Model):
     deduction_type = models.ForeignKey('processor.deductions', on_delete=models.CASCADE, related_name="priority_deduction_type",db_index=True)
     priority_order = models.IntegerField()
     is_active = models.BooleanField(default=True)
+    effective_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     class Meta:
         db_table = "child_support_priority"
         verbose_name= "child_support_priority"
-
-

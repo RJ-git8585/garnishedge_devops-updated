@@ -1,6 +1,9 @@
 
 from rest_framework import status
 from django.conf import settings
+from django.db.models import Q
+from django.db import transaction
+from datetime import date
 
 from processor.garnishment_library.utils import StateAbbreviations, WLIdentifier
 from processor.garnishment_library.utils.response import ResponseHelper
@@ -240,7 +243,31 @@ class WithholdingLimitAPIView(APIView):
     """
     CRUD API for WithholdingLimit.
     Accepts state name/code and rule_number to resolve FK to WithholdingRules.
+    Supports effective date logic to automatically manage active/inactive records.
     """
+
+    def get_queryset(self, rule_id=None, include_inactive=False):
+        """
+        Get queryset filtered by rule_id if provided.
+        By default, only returns active limits with effective_date <= today or null.
+        Set include_inactive=True to get all limits regardless of active status.
+        """
+        queryset = WithholdingLimit.objects.select_related('rule__state')
+        
+        # Apply effective date filtering unless include_inactive is True
+        if not include_inactive:
+            today = date.today()
+            queryset = queryset.filter(
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
+        
+        if rule_id:
+            try:
+                queryset = queryset.filter(rule_id=int(rule_id))
+            except ValueError:
+                raise ValueError("rule_id must be an integer")
+        
+        return queryset
 
     @swagger_auto_schema(
         responses={
@@ -252,7 +279,8 @@ class WithholdingLimitAPIView(APIView):
     def get(self, request, pk=None, rule_id=None):
         try:
             if pk:
-                rec = WithholdingLimit.objects.select_related('rule__state').get(pk=pk)
+                queryset = self.get_queryset()
+                rec = queryset.get(pk=pk)
                 serializer = WithholdingLimitCRUDSerializer(rec)
                 return ResponseHelper.success_response(
                     message="Record fetched successfully",
@@ -261,20 +289,19 @@ class WithholdingLimitAPIView(APIView):
                 )
             # Optional filter by rule_id
             rule_id = rule_id or request.query_params.get('rule_id')
-            qs = WithholdingLimit.objects.select_related('rule__state').all()
-            if rule_id:
-                try:
-                    qs = qs.filter(rule_id=int(rule_id))
-                except ValueError:
-                    return ResponseHelper.error_response(
-                        message="rule_id must be an integer",
-                        status_code=status.HTTP_400_BAD_REQUEST
-                    )
+            # Check for include_inactive query parameter
+            include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+            qs = self.get_queryset(rule_id=rule_id, include_inactive=include_inactive)
             serializer = WithholdingLimitCRUDSerializer(qs, many=True)
             return ResponseHelper.success_response(
                 message="All data fetched successfully",
                 data=serializer.data,
                 status_code=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST
             )
         except WithholdingLimit.DoesNotExist:
             return ResponseHelper.error_response("WithholdingLimit not found", status_code=status.HTTP_404_NOT_FOUND)

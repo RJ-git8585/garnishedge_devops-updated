@@ -304,7 +304,8 @@ class MultipleChild(ChildSupportHelper):
             # Get support amounts ONCE - avoid redundant calculations
             tcsa = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)
             taa = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)
-            
+            print("tcsa",tcsa)
+            print("taa",taa)
             # Calculate TWA and WA using already extracted amounts
             twa = self.calculate_twa(tcsa, taa)
             wa = self.calculate_wa(ade, tcsa)
@@ -312,7 +313,6 @@ class MultipleChild(ChildSupportHelper):
             alloc_method = AllocationMethodResolver(
                 self.work_state
             ).get_allocation_method()
-            print("alloc_method",alloc_method)
             if ade >= twa:
                 cs_amounts = self._calculate_each_amount(tcsa,"child support amount") 
                 ar_amounts = self._calculate_each_amount(tcsa,"arrear amount") 

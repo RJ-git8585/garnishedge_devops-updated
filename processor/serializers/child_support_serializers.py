@@ -90,7 +90,8 @@ class WithholdingLimitCRUDSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'state', 'rule_number', 'rule_id', 'wl', 'supports_2nd_family',
             'arrears_of_more_than_12_weeks', 'number_of_orders', 'weekly_de_code',
-            'work_state', 'issuing_state', 'created_at', 'updated_at'
+            'work_state', 'issuing_state', 'effective_date', 'is_active',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'rule_id', 'created_at', 'updated_at']
 

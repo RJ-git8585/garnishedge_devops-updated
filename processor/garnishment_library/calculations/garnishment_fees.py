@@ -159,7 +159,7 @@ class GarFeesRulesEngine:
 
     def Rule_11(self, *_): return "Rule 11 is not defined"
 
-    def Rule_12(
+    def Rule_12(    
         self, *_): return "$2 for each deduction taken after levy expiry/release"
 
     def Rule_13(self, garnishment_type, pay_period, withhold_amt):

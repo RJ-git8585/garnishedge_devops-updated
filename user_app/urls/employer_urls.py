@@ -4,7 +4,7 @@ from user_app.views.employer_views import (
     EmployerDetails
 )
 
-app_name = 'employer'
+app_name = 'user'
 
 urlpatterns = [
 

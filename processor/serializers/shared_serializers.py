@@ -127,6 +127,7 @@ class ExemptConfigSerializer(serializers.ModelSerializer):
 
 
 class ThresholdAmountSerializer(serializers.ModelSerializer):
+    """Detailed serializer (with related config fields) retained for legacy usages."""
     debt_type = serializers.CharField(source='config.debt_type', read_only=True)
     ftb_type = serializers.CharField(source='config.ftb_type', read_only=True)
     is_filing_status = serializers.BooleanField(source='config.is_filing_status', read_only=True)
@@ -135,12 +136,12 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
     percent_limit = serializers.IntegerField(source='config.percent_limit', allow_null=True, read_only=True)
     state = serializers.CharField(source='config.state.state', read_only=True)
     pay_period = serializers.CharField(source='config.pay_period.name', read_only=True)
-    garn_start_date= serializers.DateField(source='config.garn_start_date', read_only=True)
+    garn_start_date = serializers.DateField(source='config.garn_start_date', read_only=True)
 
     class Meta:
         model = ThresholdAmount
         fields = [
-            'id','ftb_type',
+            'id', 'ftb_type',
             'debt_type', 'is_filing_status', 'wage_amount', 'percent_limit',
             'state', 'pay_period', 'lower_threshold_amount', 'lower_threshold_percent1', 'lower_threshold_percent2',
             'mid_threshold_amount', 'mid_threshold_percent',
@@ -149,10 +150,33 @@ class ThresholdAmountSerializer(serializers.ModelSerializer):
             'de_range_lower_to_upper_threshold_percent',
             'de_range_lower_to_mid_threshold_percent',
             'de_range_mid_to_upper_threshold_percent',
-            'filing_status_percent','garn_start_date','exempt_amt','home_state'
+            'filing_status_percent', 'garn_start_date', 'exempt_amt', 'home_state'
         ]
 
 
+class ThresholdAmountReadSerializer(serializers.ModelSerializer):
+    garn_start_date = serializers.DateField(source='config.garn_start_date', read_only=True, allow_null=True)
+
+    class Meta:
+        model = ThresholdAmount
+        fields = [
+            'id',
+            'lower_threshold_amount',
+            'lower_threshold_percent1',
+            'lower_threshold_percent2',
+            'mid_threshold_amount',
+            'mid_threshold_percent',
+            'upper_threshold_amount',
+            'upper_threshold_percent',
+            'gp_lower_threshold_amount',
+            'gp_lower_threshold_percent1',
+            'de_range_lower_to_upper_threshold_percent',
+            'de_range_lower_to_mid_threshold_percent',
+            'de_range_mid_to_upper_threshold_percent',
+            'filing_status_percent',
+            'garn_start_date',
+            'exempt_amt'
+        ]
 
 class ThresholdAmountCoreSerializer(serializers.ModelSerializer):
     class Meta:
@@ -160,67 +184,119 @@ class ThresholdAmountCoreSerializer(serializers.ModelSerializer):
         exclude = ("config",)  
     
 
+class SingleThresholdAmountField(serializers.Field):
+    """Handles validation and representation for a single ThresholdAmount instance."""
+
+    def get_attribute(self, instance):
+        # Pass the instance to to_representation so we can determine the linked threshold.
+        return instance
+
+    def to_representation(self, instance):
+        if instance is None:
+            return None
+
+        threshold = getattr(instance, "thresholdamount_set", None)
+        if threshold is None:
+            return None
+
+        if hasattr(threshold, "order_by"):
+            threshold_obj = threshold.order_by("id").first()
+        else:
+            threshold_obj = threshold
+
+        if not threshold_obj:
+            return None
+
+        return ThresholdAmountReadSerializer(threshold_obj).data
+
+    def to_internal_value(self, data):
+        if data is None:
+            return None
+
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("threshold_amount must be an object.")
+
+        payload = dict(data)
+        threshold_id = payload.get("id")
+        payload.pop("garn_start_date", None)
+
+        threshold_serializer = ThresholdAmountCoreSerializer(
+            data=payload,
+            context=self.context
+        )
+        threshold_serializer.is_valid(raise_exception=True)
+        result = dict(threshold_serializer.validated_data)
+        if threshold_id is not None:
+            result["id"] = threshold_id
+        return result
+
+
+def upsert_single_threshold(config_instance, threshold_data):
+    """Create, update, or delete the single ThresholdAmount linked to a config."""
+
+    if threshold_data is None:
+        config_instance.thresholdamount_set.all().delete()
+        return None
+
+    payload = dict(threshold_data)
+    threshold_id = payload.pop("id", None)
+
+    target = None
+    if threshold_id:
+        target = config_instance.thresholdamount_set.filter(id=threshold_id).first()
+
+    if target is None:
+        target = config_instance.thresholdamount_set.order_by("id").first()
+
+    if not payload:
+        if target:
+            config_instance.thresholdamount_set.exclude(id=target.id).delete()
+            return target
+        config_instance.thresholdamount_set.all().delete()
+        return None
+
+    if target:
+        for attr, value in payload.items():
+            setattr(target, attr, value)
+        target.save()
+        config_instance.thresholdamount_set.exclude(id=target.id).delete()
+        return target
+
+    new_threshold = config_instance.thresholdamount_set.create(**payload)
+    config_instance.thresholdamount_set.exclude(id=new_threshold.id).delete()
+    return new_threshold
+
+
 class ExemptConfigWithThresholdSerializer(serializers.ModelSerializer):
     state = StateField(required=False, allow_null=True)
     pay_period = PayPeriodField(required=False, allow_null=True)
     garnishment_type = GarnishmentTypeField(required=False, allow_null=True)
-    threshold_amounts = ThresholdAmountCoreSerializer(many=True, required=False)
+    threshold_amount = SingleThresholdAmountField(required=False, allow_null=True)
 
     class Meta:
         model = ExemptConfig
         fields = [
             "id", "debt_type", "is_filing_status", "wage_basis",
             "wage_amount", "percent_limit", "state", "pay_period", "garnishment_type",
-            "garn_start_date", "threshold_amounts","home_state"
+            "garn_start_date", "threshold_amount","home_state"
         ]
 
     def create(self, validated_data):
-        threshold_data = validated_data.pop("threshold_amounts", [])
+        threshold_data = validated_data.pop("threshold_amount", serializers.empty)
         config = ExemptConfig.objects.create(**validated_data)
-        for t in threshold_data:
-            ThresholdAmount.objects.create(config=config, **t)
+        if threshold_data is not serializers.empty:
+            upsert_single_threshold(config, threshold_data)
         return config
 
     def update(self, instance, validated_data):
-        print("Validated data in update:", validated_data)
+        threshold_data = validated_data.pop("threshold_amount", serializers.empty)
 
-        threshold_data = validated_data.pop("threshold_amounts", [])
-
-        #  Update parent
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        #  Convert incoming list → dict by id
-        incoming_by_id = {
-            item["id"]: item for item in threshold_data if item.get("id") is not None
-        }
-
-        #  Current children
-        existing_qs = instance.thresholds.all()
-        existing_by_id = {obj.id: obj for obj in existing_qs}
-
-        #  1) UPDATE
-        for threshold_id, existing_obj in existing_by_id.items():
-            if threshold_id in incoming_by_id:
-                payload = incoming_by_id[threshold_id]
-                for attr, value in payload.items():
-                    if attr != "id":
-                        setattr(existing_obj, attr, value)
-                existing_obj.save()
-
-        #  2) CREATE
-        for item in threshold_data:
-            if not item.get("id"):
-                item.pop("id", None)
-                instance.thresholds.create(**item)
-
-        #  3) DELETE missing
-        incoming_ids = {item.get("id") for item in threshold_data if item.get("id")}
-        ids_to_delete = set(existing_by_id.keys()) - incoming_ids
-
-        if ids_to_delete:
-            instance.thresholds.filter(id__in=ids_to_delete).delete()
+        if threshold_data is not serializers.empty:
+            upsert_single_threshold(instance, threshold_data)
 
         return instance
 
@@ -235,14 +311,14 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
     garnishment_type = serializers.CharField(source="garnishment_type.type", read_only=True)
     rule_id = RuleField(source="rule", required=True)
     effective_date = FlexibleDateField(required=True)
-    threshold_amounts = ThresholdAmountCoreSerializer(many=True, required=False)
+    threshold_amount = SingleThresholdAmountField(required=False, allow_null=True)
 
     class Meta:
         model = ExemptConfig
         fields = [
             "id", "rule_id", "debt_type", "is_filing_status", "wage_basis",
             "wage_amount", "percent_limit", "state", "pay_period", "garnishment_type",
-            "garn_start_date", "threshold_amounts", "home_state", "is_active", "effective_date"
+            "garn_start_date", "threshold_amount", "home_state", "is_active", "effective_date"
         ]
         read_only_fields = ["id"]
 
@@ -288,7 +364,7 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         """
         Create ExemptConfig specifically for the garnishment type
         """
-        threshold_data = validated_data.pop("threshold_amounts", [])
+        threshold_data = validated_data.pop("threshold_amount", serializers.empty)
         
         # Remove id from validated_data if present (should not set ID when creating)
         validated_data.pop("id", None)
@@ -304,11 +380,8 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         
         config = ExemptConfig.objects.create(**validated_data)
         
-        # Create threshold amounts - remove IDs for new records
-        for t in threshold_data:
-            # Remove id from threshold data when creating new threshold amounts
-            t.pop("id", None)
-            ThresholdAmount.objects.create(config=config, **t)
+        if threshold_data is not serializers.empty:
+            upsert_single_threshold(config, threshold_data)
         
         return config
 
@@ -322,18 +395,15 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
                 f"This serializer only works with {self.garnishment_type_name} garnishment type"
             )
         
-        threshold_data = validated_data.pop("threshold_amounts", [])
+        threshold_data = validated_data.pop("threshold_amount", serializers.empty)
         
         # Update the instance fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # Update thresholds → simple approach: delete and recreate
-        if threshold_data:
-            instance.thresholdamount_set.all().delete()
-            for t in threshold_data:
-                ThresholdAmount.objects.create(config=instance, **t)
+        if threshold_data is not serializers.empty:
+            upsert_single_threshold(instance, threshold_data)
         
         return instance
 
@@ -345,11 +415,7 @@ class BaseGarnishmentTypeExemptConfigSerializer(serializers.ModelSerializer):
         if instance.garnishment_type.type != self.garnishment_type_name:
             return None
             
-        rep = super().to_representation(instance)
-        rep["threshold_amounts"] = ThresholdAmountSerializer(
-            instance.thresholdamount_set.all(), many=True
-        ).data
-        return rep
+        return super().to_representation(instance)
 
 
 class CreditorDebtExemptConfigSerializer(BaseGarnishmentTypeExemptConfigSerializer):

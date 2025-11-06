@@ -69,7 +69,9 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            
             calculation_result = ChildSupport(work_state).calculate(record)
+            print("calculation_result",calculation_result)
             garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
             
             child_support_data = calculation_result[CRK.RESULT_AMT]
@@ -717,11 +719,12 @@ class GarnishmentCalculator:
             prepared_record[GDK.GARNISHMENT_ORDERS] = record.get(GDK.GARNISHMENT_ORDERS, [])
             
             multiple_garnishment = MultipleGarnishmentPriorityOrder(prepared_record, config_data)
+
             
             work_state = record.get(EE.WORK_STATE)
             pay_period = record.get(EE.PAY_PERIOD, "")  
             calculation_result = multiple_garnishment.calculate()
-
+            print("calculation_result",calculation_result)
             if calculation_result == CommonConstants.NOT_FOUND:
                 result[GRF.CALCULATION_STATUS] = GRF.NOT_FOUND
                 result[GRF.ERROR] = EM.NO_GARNISHMENT_CONFIGURATION
