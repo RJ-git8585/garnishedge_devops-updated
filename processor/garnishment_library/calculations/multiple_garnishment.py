@@ -298,7 +298,6 @@ class MultipleGarnishmentPriorityOrder:
 
 
                 if g_type == GT.CHILD_SUPPORT:
-                    print("result",result)
                     #processed_result = self.mg_helper.distribute_child_support_amount(result, available_for_garnishment)
                     processed_result= self.finance._convert_result_structure(result)
                     processed_result["ade"]=result["ade"]

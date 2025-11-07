@@ -151,12 +151,15 @@ class ConfigLoader:
     def preload_garnishment_fees(self) -> list:
         """
         Preloads garnishment fee configurations from the DB once.
+        Filters by is_active=True and effective_date <= today (or null).
         """
         try:
+            today = date.today()
             fees = (
                 GarnishmentFees.objects
                 .select_related("state", "garnishment_type", "pay_period", "rule")
-                .all()
+                .filter(is_active=True)
+                .filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
                 .order_by("-created_at")
             )
             serializer = GarnishmentFeesSerializer(fees, many=True)

@@ -1,8 +1,38 @@
 from rest_framework import serializers
+from datetime import datetime
 from processor.models.garnishment_fees import (GarnishmentFees,
                                                     GarnishmentFeesRules)
 from processor.models import GarnishmentFees, PayPeriod, GarnishmentFeesRules
 from processor.models import State, GarnishmentType
+from user_app.utils import DataProcessingUtils
+
+
+class FlexibleDateField(serializers.DateField):
+    """Custom date field that uses parse_date_field to handle various date formats."""
+    def to_internal_value(self, data):
+        """
+        Parse date using the flexible parse_date_field utility.
+        Accepts various date formats and converts them to YYYY-MM-DD.
+        """
+        if data is None or data == '':
+            raise serializers.ValidationError("This field is required.")
+        
+        # Use the parse_date_field utility to handle various formats
+        parsed_date_str = DataProcessingUtils.parse_date_field(data)
+        
+        if parsed_date_str is None:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+        
+        # Parse the YYYY-MM-DD string to a date object
+        try:
+            return datetime.strptime(parsed_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+
 
 
 class GarnishmentFeesRulesSerializer(serializers.ModelSerializer):
@@ -35,6 +65,8 @@ class GarnishmentFeesSerializer(serializers.ModelSerializer):
             "amount",
             "status",
             "payable_by",
+            "is_active",
+            "effective_date",
             "created_at",
             "updated_at",
         ]
@@ -101,6 +133,7 @@ class GarnishmentFeesSerializer(serializers.ModelSerializer):
     garnishment_type = GarnishmentTypeField()
     pay_period = PayPeriodField()
     rule = GarnishmentRuleField()
+    effective_date = FlexibleDateField(required=True)
 
     class Meta:
         model = GarnishmentFees
@@ -113,6 +146,8 @@ class GarnishmentFeesSerializer(serializers.ModelSerializer):
             "amount",
             "status",
             "payable_by",
+            "is_active",
+            "effective_date",
             "created_at",
             "updated_at",
         ]

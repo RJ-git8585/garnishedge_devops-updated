@@ -1,5 +1,7 @@
 import logging
+from datetime import date
 from typing import Any, Dict, Optional, Callable, List
+from django.db.models import Q
 from processor.models.garnishment_fees import GarnishmentFees
 from processor.serializers.garnishment_fees_serializers import GarnishmentFeesSerializer
 from user_app.constants import EmployeeFields, GarnishmentTypeFields
@@ -24,12 +26,16 @@ class GarFeesRulesEngine:
     def _load_rules(self) -> List[Dict[str, Any]]:
         """
         Loads and caches all garnishment fee rules from the database.
+        Filters by is_active=True and effective_date <= today (or null).
         
         """
+        today = date.today()
         fees = (
             GarnishmentFees.objects
             .select_related("state", "garnishment_type", "pay_period", "rule")
             .filter(state__state__iexact=self.work_state)
+            .filter(is_active=True)
+            .filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
             .order_by("-created_at")
         )
         serializer = GarnishmentFeesSerializer(fees, many=True)
