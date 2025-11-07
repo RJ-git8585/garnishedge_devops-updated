@@ -310,7 +310,6 @@ class MultipleChild(ChildSupportHelper):
             alloc_method = AllocationMethodResolver(
                 self.work_state
             ).get_allocation_method()
-            print("alloc_method",alloc_method)
             if ade >= twa:
                 cs_amounts = self._calculate_each_amount(tcsa,"child support amount") 
                 ar_amounts = self._calculate_each_amount(taa,"arrear amount") 

@@ -70,7 +70,9 @@ class GarnishmentCalculator:
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
             
             calculation_result = ChildSupport(work_state).calculate(record)
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+            # Use parameter value if provided, otherwise get from record
+            if garn_fees is None:
+                garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
             
             child_support_data = calculation_result[CRK.RESULT_AMT]
             arrear_amount_data = calculation_result[CRK.ARREAR_AMT]
@@ -217,7 +219,7 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
 
             calculation_result = FederalTax().calculate(record, config_data[GT.FEDERAL_TAX_LEVY])
             
@@ -257,7 +259,7 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
             result = StudentLoanCalculator().calculate(record)
             total_mandatory_deduction_val = ChildSupport(
                 work_state).calculate_md(record)
@@ -364,7 +366,7 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
             
             calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY])
             total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
@@ -424,7 +426,7 @@ class GarnishmentCalculator:
             case_id = data[0].get("case_id") if data else None
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
             
             calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
             if isinstance(calculation_result, tuple):
@@ -494,7 +496,7 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
             
             calculation_result = bankruptcy_calculator.calculate(record, config_data[CDK.BANKRUPTCY])
             
@@ -552,7 +554,7 @@ class GarnishmentCalculator:
         try:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
             
             if not garnishment_data:
                 return None
@@ -629,7 +631,7 @@ class GarnishmentCalculator:
         try:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
-            garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
+
 
             
             if not garnishment_data:

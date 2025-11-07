@@ -92,14 +92,18 @@ class MultipleGarnishmentPriorityOrder:
 
     def _get_priority_order(self) -> List[Dict[str, Any]]:
         try:
+            from datetime import date
+            from django.db.models import Q
+            
             work_state_name = StateAbbreviations(self.work_state).get_state_name_and_abbr()
             if not work_state_name:
                 raise ValueError("Could not resolve state name from abbreviation.")
             
-            
+            today = date.today()
             pri_order_qs = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type').filter(
-                state__state__iexact=work_state_name
-            ).order_by('priority_order')
+                state__state__iexact=work_state_name,
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today)).order_by('priority_order')
             
             if not pri_order_qs.exists():
                 logger.warning(f"No priority order found for state: {self.work_state}")
@@ -474,6 +478,8 @@ class MultipleGarnishmentPriorityOrder:
                 garnishment_results[g_type] = processed_result
 
             except Exception as e:
+                import traceback as t 
+                print("Exception in calculate: ",t.print_exc())
                 logger.exception(f"Error calculating garnishment '{g_type}' for state '{self.work_state}'.")
                 garnishment_results[g_type] = {
                     "withholding_amt": 0, 

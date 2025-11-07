@@ -314,6 +314,7 @@ class CreditorDebtHelper():
         using the general formula (used by multiple states).
         """
         try:
+            print("config_data",config_data)
             lower_threshold_amount =float(
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper_threshold_amount = float(
@@ -346,6 +347,8 @@ class CreditorDebtHelper():
                 return UtilityClass.build_response(withholding_amount, disposable_earning, CM.DE_GT_UPPER, f"{upper_threshold_percent*100}% of {CM.DISPOSABLE_EARNING}",
                                                     condition_values)
         except Exception as e:
+            import traceback as t 
+            print("Exception in _general_ftb_debt_logic: ",t.print_exc())
 
             return UtilityClass.build_response(
                 0, disposable_earning, "ERROR",

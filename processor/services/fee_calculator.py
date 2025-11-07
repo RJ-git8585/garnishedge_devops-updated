@@ -4,6 +4,7 @@ Handles all fee-related calculations and validations.
 """
 
 import logging
+import math
 from datetime import datetime, date
 from typing import Dict, Any, Optional
 from user_app.models import EmployeeDetail
@@ -105,7 +106,7 @@ class FeeCalculator:
         try:
             # Extract required fields for garnishment fees
             # If garn_fees is None or 0, use the rule engine to calculate the fee
-            if garn_fees is None or garn_fees == 0.0:
+            if garn_fees is None or math.isclose(garn_fees, 0.0, abs_tol=1e-9):
                 fee = GarFeesRulesEngine(work_state).apply_rule(
                     garnishment_type, pay_period, withholding_amt)
                 if isinstance(fee, (int, float)):

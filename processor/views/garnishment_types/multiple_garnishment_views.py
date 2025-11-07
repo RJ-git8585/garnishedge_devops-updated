@@ -3,11 +3,13 @@ from rest_framework.views import APIView
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 import logging
+from datetime import date
+from django.db.models import Q
+from django.db import transaction
 
 from processor.models import MultipleGarnPriorityOrders, State, GarnishmentType
 from processor.serializers.multiple_garnishment_serializers import MultipleGarnPriorityOrderCRUDSerializer
 from processor.garnishment_library.utils.response import ResponseHelper
-from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,30 @@ class MultipleGarnPriorityOrderAPIView(APIView):
     """
     CRUD API for MultipleGarnPriorityOrders.
     Accepts state name/code and garnishment type name; stores related IDs.
+    Supports effective_date filtering - only returns active records with effective_date <= today or null.
     """
+
+    def get_queryset(self, include_inactive=False):
+        """
+        Get queryset filtered by effective_date and is_active.
+        By default, only returns active records with effective_date <= today or null.
+        """
+        today = date.today()
+        queryset = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type')
+        
+        if not include_inactive:
+            queryset = queryset.filter(
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
+        
+        return queryset
+    
+    def get_object(self, pk, include_inactive=False):
+        """Get a specific MultipleGarnPriorityOrders instance by pk."""
+        try:
+            return self.get_queryset(include_inactive=include_inactive).get(pk=pk)
+        except MultipleGarnPriorityOrders.DoesNotExist:
+            return None
 
     @swagger_auto_schema(
         responses={
@@ -26,27 +51,41 @@ class MultipleGarnPriorityOrderAPIView(APIView):
         }
     )
     def get(self, request, pk=None):
+        """
+        Retrieve all records or a specific record by ID.
+        Query params:
+        - include_inactive: Set to 'true' to include inactive records
+        """
         try:
+            include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+            
             if pk:
-                rec = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type').get(pk=pk)
+                rec = self.get_object(pk, include_inactive=include_inactive)
+                if not rec:
+                    return ResponseHelper.error_response(
+                        message="MultipleGarnPriorityOrders not found",
+                        status_code=status.HTTP_404_NOT_FOUND
+                    )
                 serializer = MultipleGarnPriorityOrderCRUDSerializer(rec)
                 return ResponseHelper.success_response(
                     message="Record fetched successfully",
                     data=serializer.data,
                     status_code=status.HTTP_200_OK
                 )
-            qs = MultipleGarnPriorityOrders.objects.select_related('state', 'garnishment_type').all()
+            
+            qs = self.get_queryset(include_inactive=include_inactive).order_by('priority_order')
             serializer = MultipleGarnPriorityOrderCRUDSerializer(qs, many=True)
             return ResponseHelper.success_response(
                 message="All data fetched successfully",
                 data=serializer.data,
                 status_code=status.HTTP_200_OK
             )
-        except MultipleGarnPriorityOrders.DoesNotExist:
-            return ResponseHelper.error_response("MultipleGarnPriorityOrders not found", status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Unexpected error in MultipleGarnPriorityOrders GET")
-            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @swagger_auto_schema(request_body=MultipleGarnPriorityOrderCRUDSerializer)
     def post(self, request):
@@ -71,9 +110,18 @@ class MultipleGarnPriorityOrderAPIView(APIView):
     @swagger_auto_schema(request_body=MultipleGarnPriorityOrderCRUDSerializer)
     def put(self, request, pk=None):
         if not pk:
-            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+            return ResponseHelper.error_response(
+                message="pk required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            rec = MultipleGarnPriorityOrders.objects.get(pk=pk)
+            # Allow updating inactive records by using include_inactive=True
+            rec = self.get_object(pk, include_inactive=True)
+            if not rec:
+                return ResponseHelper.error_response(
+                    message="MultipleGarnPriorityOrders not found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
             serializer = MultipleGarnPriorityOrderCRUDSerializer(rec, data=request.data)
             if serializer.is_valid():
                 serializer.save()
@@ -87,28 +135,38 @@ class MultipleGarnPriorityOrderAPIView(APIView):
                 error=serializer.errors,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-        except MultipleGarnPriorityOrders.DoesNotExist:
-            return ResponseHelper.error_response("MultipleGarnPriorityOrders not found", status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error updating MultipleGarnPriorityOrders")
-            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def delete(self, request, pk=None):
         if not pk:
-            return ResponseHelper.error_response("pk required", status_code=status.HTTP_400_BAD_REQUEST)
+            return ResponseHelper.error_response(
+                message="pk required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            rec = MultipleGarnPriorityOrders.objects.get(pk=pk)
+            # Allow deleting inactive records by using include_inactive=True
+            rec = self.get_object(pk, include_inactive=True)
+            if not rec:
+                return ResponseHelper.error_response(
+                    message="MultipleGarnPriorityOrders not found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
             rec.delete()
             return ResponseHelper.success_response(
                 message="Deleted successfully",
-                data={},
                 status_code=status.HTTP_200_OK
             )
-        except MultipleGarnPriorityOrders.DoesNotExist:
-            return ResponseHelper.error_response("MultipleGarnPriorityOrders not found", status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error deleting MultipleGarnPriorityOrders")
-            return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class MultipleGarnPriorityOrderReorderAPIView(APIView):
@@ -148,9 +206,18 @@ class MultipleGarnPriorityOrderReorderAPIView(APIView):
                 return ResponseHelper.error_response(f"State '{state_in}' not found", status_code=status.HTTP_400_BAD_REQUEST)
 
             with transaction.atomic():
+                # Get the record (allow inactive for reordering)
                 rec = MultipleGarnPriorityOrders.objects.select_for_update().get(id=record_id)
                 # Scope: all priorities for this state (across all garnishment types)
-                items = list(MultipleGarnPriorityOrders.objects.select_for_update().filter(state=state_obj).order_by('priority_order', 'id'))
+                # Filter by effective_date and is_active for reordering
+                today = date.today()
+                items = list(
+                    MultipleGarnPriorityOrders.objects.select_for_update()
+                    .filter(state=state_obj)
+                    .filter(is_active=True)
+                    .filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
+                    .order_by('priority_order', 'id')
+                )
                 
                 # Ensure the record belongs to the same scope
                 if rec.state_id != state_obj.id:
@@ -165,9 +232,15 @@ class MultipleGarnPriorityOrderReorderAPIView(APIView):
                     if item.priority_order != idx:
                         MultipleGarnPriorityOrders.objects.filter(id=item.id).update(priority_order=idx)
 
-            # Return updated order for the state
-            updated = MultipleGarnPriorityOrders.objects.filter(state=state_obj).order_by('priority_order', 'id').values('id', 'priority_order')
-            return ResponseHelper.success_response(message="Reordered successfully", data={'order': list(updated)})
+            # Return updated order for the state (only active records)
+            updated = MultipleGarnPriorityOrders.objects.filter(
+                state=state_obj,
+                is_active=True
+            ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today)).order_by('priority_order', 'id').values('id', 'priority_order')
+            return ResponseHelper.success_response(
+                message="Reordered successfully",
+                data={'order': list(updated)}
+            )
         except MultipleGarnPriorityOrders.DoesNotExist:
             return ResponseHelper.error_response("MultipleGarnPriorityOrders not found", status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:

@@ -230,7 +230,6 @@ class PostCalculationView(APIView):
             'garnishment_data': garnishment_data_list,
             'garnishment_orders': garnishment_types
         })
-        print("enriched_case",enriched_case)
         return enriched_case
 
     def post(self, request, *args, **kwargs):

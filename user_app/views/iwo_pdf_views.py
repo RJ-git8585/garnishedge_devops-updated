@@ -10,6 +10,7 @@ from user_app.serializers import (IWOPDFFilesSerializer, WithholdingOrderDataSer
 import logging
 import time
 import random
+import secrets
 import traceback as t
 import string
 import json
@@ -217,7 +218,7 @@ class ConvertExcelToJsonView(APIView):
 
 
             # Generate dynamic batch ID
-            batch_id = f"B{int(time.time() % 1000):03d}{random.choice(string.ascii_uppercase)}"
+            batch_id = f"B{int(time.time() % 1000):03d}{secrets.choice(string.ascii_uppercase)}"
 
             # Build JSON structure
             output_json = {BatchDetail.BATCH_ID: batch_id, "payroll_data": []}

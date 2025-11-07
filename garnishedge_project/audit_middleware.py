@@ -9,6 +9,8 @@ from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+from .otel_config import get_tracer, add_audit_event, set_span_status
+from .user_context_middleware import set_current_user
 from .model_audit import AuditJSONEncoder
 try:
     from opentelemetry.semantic_conventions.trace import SpanAttributes
@@ -26,8 +28,7 @@ except ImportError:
             HTTP_USER_AGENT = "http.user_agent"
             HTTP_REQUEST_CONTENT_LENGTH = "http.request_content_length"
             HTTP_STATUS_CODE = "http.status_code"
-from .otel_config import get_tracer, add_audit_event, set_span_status
-from .user_context_middleware import set_current_user
+
 
 logger = logging.getLogger(__name__)
 User = get_user_model()

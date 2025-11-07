@@ -112,7 +112,6 @@ class EmployeeImportView(APIView):
             
             # Pre-fetch existing employees to avoid repeated queries
             existing_employee_ids = set(EmployeeDetail.objects.values_list('ee_id', flat=True))
-            print("existing_employee_ids",existing_employee_ids)
             # Get default values once
             default_filing_status = DataProcessingUtils.get_default_filing_status()
             default_marital_status = DataProcessingUtils.get_default_marital_status()

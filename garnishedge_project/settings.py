@@ -27,7 +27,7 @@ AUTH_USER_MODEL = 'user_app.EmployerProfile'
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 
 
-DEBUG = True
+DEBUG = False
 STATIC_URL = '/static/'
 ALLOWED_HOSTS = ['*']
 
