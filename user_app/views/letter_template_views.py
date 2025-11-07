@@ -8,14 +8,16 @@ from io import BytesIO
 import re
 
 from user_app.models import LetterTemplate
-from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer
+from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer
+from user_app.services.letter_template_data_service import LetterTemplateDataService
 from processor.garnishment_library.utils import ResponseHelper
+from rest_framework.decorators import api_view
 
 # PDF generation
 try:
     from weasyprint import HTML
     WEASYPRINT_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError) as e:
     WEASYPRINT_AVAILABLE = False
     try:
         from reportlab.lib.pagesizes import letter
@@ -247,6 +249,176 @@ class LetterTemplateUpdateAPI(APIView):
             )
 
 
+class LetterTemplateVariablesAPI(APIView):
+    """
+    API view to fetch available template variables for an employee.
+    This endpoint is used by the frontend to show available variables
+    that can be dragged and dropped into templates.
+    """
+    
+    @swagger_auto_schema(
+        request_body=LetterTemplateVariableValuesSerializer,
+        responses={
+            200: 'Success - Returns available template variables',
+            400: 'Invalid request data',
+            404: 'Employee or order not found',
+            500: 'Internal server error'
+        }
+    )
+    def get(self, request):
+        """
+        Get available template variables for an employee.
+        
+        Request Body (JSON):
+        {
+            "employee_id": "DA0001",  // required
+            "order_id": "CSE001"      // optional
+        }
+        
+        Returns:
+        {
+            "success": true,
+            "message": "Template variables fetched successfully",
+            "data": {
+                "employee_details": {
+                    "employee_id": "DA0001",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "full_name": "John Doe",
+                    ...
+                },
+                "order_data": {
+                    "case_id": "CSE001",
+                    "ordered_amount": "500.00",
+                    "withholding_amount": "450.00",
+                    ...
+                },
+                "sdu_data": {
+                    "sdu_payee": "State Disbursement Unit",
+                    "sdu_address": "123 Main St",
+                    ...
+                }
+            }
+        }
+        """
+        try:
+            serializer = LetterTemplateVariableValuesSerializer(data=request.data)
+            if not serializer.is_valid():
+                return ResponseHelper.error_response(
+                    'Invalid request data',
+                    serializer.errors,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            employee_id = serializer.validated_data['employee_id']
+            order_id = serializer.validated_data.get('order_id')
+            
+            # Clean up order_id if it's empty string
+            if order_id == '':
+                order_id = None
+            
+            # Fetch all data
+            try:
+                employee_data = LetterTemplateDataService.fetch_employee_data(employee_id)
+                order_data = LetterTemplateDataService.fetch_order_data(employee_id, order_id)
+                sdu_data = LetterTemplateDataService.fetch_sdu_data(employee_id, order_id)
+            except ValueError as e:
+                return ResponseHelper.error_response(
+                    str(e),
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Structure the response with simple key-value pairs
+            response_data = {
+                "employee_details": employee_data
+            }
+            
+            # Add order data if available
+            if order_data:
+                response_data["order_data"] = order_data
+            else:
+                response_data["order_data"] = {}
+            
+            # Add SDU data if available
+            if sdu_data:
+                response_data["sdu_data"] = sdu_data
+            else:
+                response_data["sdu_data"] = {}
+            
+            return ResponseHelper.success_response(
+                'Template variables fetched successfully',
+                response_data
+            )
+            
+        except Exception as e:
+            return ResponseHelper.error_response(
+                'Failed to fetch template variables',
+                str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+#get available variables for drag and drop
+class LetterTemplateAvailableVariablesAPI(APIView):
+    """
+    API view to fetch available template variable names (without data).
+    This endpoint is used by the frontend to show available variables
+    that can be dragged and dropped when creating templates.
+    No employee_id or order_id required - just returns the list of available variables.
+    """
+    
+    @swagger_auto_schema(
+        responses={
+            200: 'Success - Returns available template variable names organized by category',
+            500: 'Internal server error'
+        }
+    )
+    def get(self, request):
+        """
+        Get available template variable names organized by category.
+        This endpoint returns only the variable names and descriptions,
+        not actual data values. Used for drag-and-drop in template editor.
+        
+        Returns:
+        {
+            "success": true,
+            "message": "Available template variables fetched successfully",
+            "data": {
+                "employee_details": {
+                    "employee_id": "Employee ID (ee_id)",
+                    "first_name": "First Name",
+                    "last_name": "Last Name",
+                    ...
+                },
+                "order_data": {
+                    "case_id": "Case ID",
+                    "ordered_amount": "Ordered Amount",
+                    "withholding_amount": "Withholding Amount",
+                    ...
+                },
+                "sdu_data": {
+                    "sdu_payee": "SDU Payee",
+                    "sdu_address": "SDU Address",
+                    ...
+                }
+            }
+        }
+        """
+        try:
+            available_variables = LetterTemplateDataService.get_available_variables()
+            
+            return ResponseHelper.success_response(
+                'Available template variables fetched successfully',
+                available_variables
+            )
+            
+        except Exception as e:
+            return ResponseHelper.error_response(
+                'Failed to fetch available template variables',
+                str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class LetterTemplateDeleteAPI(APIView):
     """
     API view to delete a letter template.
@@ -299,7 +471,17 @@ class LetterTemplateFillAPI(APIView):
     def post(self, request):
         """
         Fill template variables and export in specified format.
-        Request body:
+        
+        Two modes supported:
+        1. Automatic mode (recommended):
+        {
+            "template_id": 1,
+            "employee_id": "EMP001",  // or employee primary key
+            "order_id": "CASE001",     // optional: order case_id or primary key
+            "format": "pdf"            // optional: pdf, doc, docx, or txt (default: pdf)
+        }
+        
+        2. Manual mode (backward compatible):
         {
             "template_id": 1,
             "variable_values": {
@@ -307,8 +489,11 @@ class LetterTemplateFillAPI(APIView):
                 "date": "2024-01-01",
                 ...
             },
-            "format": "pdf"  // pdf, doc, docx, or txt
+            "format": "pdf"
         }
+        
+        If both employee_id and variable_values are provided, variable_values will override
+        the auto-fetched values for those specific keys.
         """
         try:
             serializer = LetterTemplateFillSerializer(data=request.data)
@@ -320,8 +505,15 @@ class LetterTemplateFillAPI(APIView):
                 )
             
             template_id = serializer.validated_data['template_id']
-            variable_values = serializer.validated_data.get('variable_values', {})
+            employee_id = serializer.validated_data.get('employee_id')
+            order_id = serializer.validated_data.get('order_id')
+            # Handle None or empty dict for variable_values
+            manual_variable_values = serializer.validated_data.get('variable_values') or {}
             export_format = serializer.validated_data.get('format', 'pdf').lower()
+            
+            # Clean up employee_id if it's empty string
+            if employee_id == '':
+                employee_id = None
             
             try:
                 template = LetterTemplate.objects.get(pk=template_id)
@@ -330,6 +522,34 @@ class LetterTemplateFillAPI(APIView):
                     f'Letter template with id "{template_id}" not found',
                     status_code=status.HTTP_404_NOT_FOUND
                 )
+            
+            # Determine variable values
+            if employee_id:
+                # Automatic mode: Fetch data from database
+                try:
+                    # Fetch all template variables from employee, order, and SDU data
+                    auto_variable_values = LetterTemplateDataService.get_all_template_variables(
+                        employee_id=employee_id,
+                        order_id=order_id
+                    )
+                    
+                    # Merge with manual variable_values (manual values override auto-fetched)
+                    variable_values = {**auto_variable_values, **manual_variable_values}
+                    
+                except ValueError as e:
+                    # Employee or order not found
+                    return ResponseHelper.error_response(
+                        str(e),
+                        status_code=status.HTTP_404_NOT_FOUND
+                    )
+                except Exception as e:
+                    return ResponseHelper.error_response(
+                        f'Failed to fetch employee/order data: {str(e)}',
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            else:
+                # Manual mode: Use provided variable_values
+                variable_values = manual_variable_values
             
             # Fill template variables
             filled_content = self._fill_template(template.html_content, variable_values)

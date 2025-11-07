@@ -5,10 +5,12 @@ from user_app.views import (
     LetterTemplateCreateAPI,
     LetterTemplateUpdateAPI,
     LetterTemplateDeleteAPI,
-    LetterTemplateFillAPI
+    LetterTemplateFillAPI,
+    LetterTemplateVariablesAPI,
+    LetterTemplateAvailableVariablesAPI
 )
 
-app_name = 'letter_template'
+app_name = 'letter'
 
 urlpatterns = [
     # List all templates
@@ -28,5 +30,11 @@ urlpatterns = [
     
     # Fill template variables and export
     path('fill/', LetterTemplateFillAPI.as_view(), name='letter-template-fill'),
+    
+    # Get available template variables for an employee (for drag-and-drop in template editor)
+    path('template-variable-values/', LetterTemplateVariablesAPI.as_view(), name='letter-template-variables'),
+    
+    # Get available template variable names only (for drag-and-drop when creating templates)
+    path('template-variables/', LetterTemplateAvailableVariablesAPI.as_view(), name='letter-template-available-variables'),
 ]
 
