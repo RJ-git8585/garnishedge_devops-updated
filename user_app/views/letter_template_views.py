@@ -8,7 +8,7 @@ from io import BytesIO
 import re
 
 from user_app.models import LetterTemplate
-from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer
+from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer
 from user_app.services.letter_template_data_service import LetterTemplateDataService
 from processor.garnishment_library.utils import ResponseHelper
 from rest_framework.decorators import api_view
@@ -257,24 +257,10 @@ class LetterTemplateVariablesAPI(APIView):
     """
     
     @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter(
-                'employee_id',
-                openapi.IN_QUERY,
-                description="Employee ID (ee_id) or primary key",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                'order_id',
-                openapi.IN_QUERY,
-                description="Optional: Order ID (case_id) or primary key. If not provided, uses most recent active order.",
-                type=openapi.TYPE_STRING,
-                required=False
-            )
-        ],
+        request_body=LetterTemplateVariableValuesSerializer,
         responses={
             200: 'Success - Returns available template variables',
+            400: 'Invalid request data',
             404: 'Employee or order not found',
             500: 'Internal server error'
         }
@@ -283,9 +269,11 @@ class LetterTemplateVariablesAPI(APIView):
         """
         Get available template variables for an employee.
         
-        Query Parameters:
-        - employee_id (required): Employee ID (ee_id) or primary key
-        - order_id (optional): Order ID (case_id) or primary key
+        Request Body (JSON):
+        {
+            "employee_id": "DA0001",  // required
+            "order_id": "CSE001"      // optional
+        }
         
         Returns:
         {
@@ -314,14 +302,20 @@ class LetterTemplateVariablesAPI(APIView):
         }
         """
         try:
-            employee_id = request.query_params.get('employee_id')
-            order_id = request.query_params.get('order_id')
-            
-            if not employee_id:
+            serializer = LetterTemplateVariableValuesSerializer(data=request.data)
+            if not serializer.is_valid():
                 return ResponseHelper.error_response(
-                    'employee_id query parameter is required',
+                    'Invalid request data',
+                    serializer.errors,
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+            
+            employee_id = serializer.validated_data['employee_id']
+            order_id = serializer.validated_data.get('order_id')
+            
+            # Clean up order_id if it's empty string
+            if order_id == '':
+                order_id = None
             
             # Fetch all data
             try:

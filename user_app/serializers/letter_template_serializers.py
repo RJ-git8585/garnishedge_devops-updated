@@ -105,3 +105,19 @@ class LetterTemplateFillSerializer(serializers.Serializer):
             })
         
         return attrs
+
+
+class LetterTemplateVariableValuesSerializer(serializers.Serializer):
+    """
+    Serializer for fetching template variable values for an employee.
+    """
+    employee_id = serializers.CharField(
+        required=True,
+        help_text="Employee ID (ee_id) or primary key"
+    )
+    order_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Optional: Order ID (case_id) or primary key. If not provided, uses most recent active order."
+    )
