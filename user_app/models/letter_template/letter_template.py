@@ -1,5 +1,4 @@
 from django.db import models
-import json
 
 
 class LetterTemplate(models.Model):
@@ -9,11 +8,6 @@ class LetterTemplate(models.Model):
     name = models.CharField(max_length=255, unique=True, help_text="Unique name for the letter template")
     description = models.TextField(blank=True, null=True, help_text="Description of the letter template")
     html_content = models.TextField(help_text="HTML content of the letter template with variable placeholders like {{variable_name}}")
-    variables = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="JSON object containing variable definitions and their default values"
-    )
     is_active = models.BooleanField(default=True, help_text="Whether the template is active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
