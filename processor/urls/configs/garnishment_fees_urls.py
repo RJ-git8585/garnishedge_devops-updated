@@ -10,18 +10,18 @@ app_name = 'garnishment_fees'
 
 urlpatterns = [
     # CRUD operations - GET (list all), POST (create)
-    path("rules/", GarnishmentFeesAPIView.as_view(), name="garnishment-fees-list-create"),
+    path("details/", GarnishmentFeesAPIView.as_view(), name="garnishment-fees-list-create"),
     
     # CRUD operations - GET (retrieve), PUT (update), DELETE (delete) by id
     path(
-        "rules/<int:pk>/",
+        "details/<int:pk>/",
         GarnishmentFeesAPIView.as_view(),
         name="garnishment-fees-detail",
     ),
     
     # Filter by state, pay_period, garnishment_type
     path(
-        "rules/filter/<str:state>/<str:pay_period>/<str:garnishment_type_name>/",
+        "details/filter/<str:state>/<str:pay_period>/<str:garnishment_type_name>/",
         GarnishmentFeesListByFilterAPI.as_view(),
         name="garnishment-fees-filter",
     ),
