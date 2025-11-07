@@ -35,6 +35,6 @@ urlpatterns = [
     path('template-variable-values/', LetterTemplateVariablesAPI.as_view(), name='letter-template-variables'),
     
     # Get available template variable names only (for drag-and-drop when creating templates)
-    path('template-variables', LetterTemplateAvailableVariablesAPI.as_view(), name='letter-template-available-variables'),
+    path('template-variables/', LetterTemplateAvailableVariablesAPI.as_view(), name='letter-template-available-variables'),
 ]
 
