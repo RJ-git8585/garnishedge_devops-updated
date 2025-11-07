@@ -3,6 +3,8 @@ import sys
 import os
 from django.apps import AppConfig
 
+from processor.apscheduler_patches import ensure_custom_job_execution_fields
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,6 +17,8 @@ class ProcessorConfig(AppConfig):
         Initialize scheduler when Django starts.
         This prevents the scheduler from running during migrations or tests.
         """
+        ensure_custom_job_execution_fields()
+
         # Only start scheduler in the main process (not during migrations or tests)
         # Check if we're running migrations, tests, or collectstatic
         if 'migrate' in sys.argv or 'makemigrations' in sys.argv:

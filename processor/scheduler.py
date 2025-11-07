@@ -43,10 +43,10 @@ def start_scheduler():
         return
     
     try:
-        # Schedule the update_effective_dates command to run daily at 2:00 AM
+        # Schedule the update_effective_dates command to run daily at 9:40 PM
         scheduler.add_job(
             update_effective_dates_job,
-            trigger=CronTrigger(hour=2, minute=0),  # Run daily at 2:00 AM
+            trigger=CronTrigger(hour=21, minute=40),  # Run daily at 9:40 PM
             id="update_effective_dates_daily",
             name="Update Effective Dates Daily",
             replace_existing=True,
@@ -58,7 +58,7 @@ def start_scheduler():
         
         scheduler.start()
         logger.info("Scheduler started successfully")
-        logger.info("Scheduled update_effective_dates to run daily at 2:00 AM")
+        logger.info("Scheduled update_effective_dates to run daily at 9:40 PM")
         
     except Exception as e:
         logger.exception(f"Error starting scheduler: {e}")

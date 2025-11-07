@@ -2,7 +2,6 @@
 Individual garnishment calculation handlers.
 Contains specific calculation logic for each garnishment type.
 """
-
 import logging
 from typing import Dict, Any, List, Set
 from processor.garnishment_library.calculations import (
@@ -71,7 +70,6 @@ class GarnishmentCalculator:
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
             
             calculation_result = ChildSupport(work_state).calculate(record)
-            print("calculation_result",calculation_result)
             garn_fees = record.get(EE.GARNISHMENT_FEES, 0)
             
             child_support_data = calculation_result[CRK.RESULT_AMT]
@@ -643,7 +641,6 @@ class GarnishmentCalculator:
             
             child_support_priority = WithholdingProcessor()
             calculation_result = child_support_priority.calculate(record)
-            print("calculation_result",calculation_result)
             # Get total withholding amount for garnishment fee calculation
             total_withholding_amount = calculation_result.get('calculations', {}).get('total_withholding_amount', 0)
             garnishment_fees_amount = self.fee_calculator.get_rounded_garnishment_fee(
@@ -724,7 +721,6 @@ class GarnishmentCalculator:
             work_state = record.get(EE.WORK_STATE)
             pay_period = record.get(EE.PAY_PERIOD, "")  
             calculation_result = multiple_garnishment.calculate()
-            print("calculation_result",calculation_result)
             if calculation_result == CommonConstants.NOT_FOUND:
                 result[GRF.CALCULATION_STATUS] = GRF.NOT_FOUND
                 result[GRF.ERROR] = EM.NO_GARNISHMENT_CONFIGURATION
@@ -902,7 +898,6 @@ class GarnishmentCalculator:
                         type_total_withheld = withholding_amount
                         garnishment_fees_amount = self.fee_calculator.get_rounded_garnishment_fee(
                     work_state, garnishment_type, pay_period, type_total_withheld)
-                        print("garnishment_fees_amount",garnishment_fees_amount)
                         
                         # Add detailed calculation information to the result
                         detailed_result = {

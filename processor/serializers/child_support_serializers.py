@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from processor.models import *
+from user_app.utils import DataProcessingUtils
+from datetime import datetime
 
 class WithholdingRulesSerializer(serializers.ModelSerializer):
     state = serializers.CharField(source='state.state', read_only=True)
@@ -8,6 +10,33 @@ class WithholdingRulesSerializer(serializers.ModelSerializer):
         model = WithholdingRules
         fields = ['state', 'rule', 'allocation_method', 'withholding_limit']
 
+
+
+class FlexibleDateField(serializers.DateField):
+    """Custom date field that uses parse_date_field to handle various date formats."""
+    def to_internal_value(self, data):
+        """
+        Parse date using the flexible parse_date_field utility.
+        Accepts various date formats and converts them to YYYY-MM-DD.
+        """
+        if data is None or data == '':
+            raise serializers.ValidationError("This field is required.")
+        
+        # Use the parse_date_field utility to handle various formats
+        parsed_date_str = DataProcessingUtils.parse_date_field(data)
+        
+        if parsed_date_str is None:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+        
+        # Parse the YYYY-MM-DD string to a date object
+        try:
+            return datetime.strptime(parsed_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
 class WithholdingRulesCRUDSerializer(serializers.ModelSerializer):
     """
     Serializer for CRUD on WithholdingRules that accepts state name/code as input
@@ -83,6 +112,7 @@ class WithholdingLimitCRUDSerializer(serializers.ModelSerializer):
     """
     state = serializers.CharField(source='rule.state.state')
     rule_id = serializers.IntegerField( required=True)
+    effective_date = FlexibleDateField(required=True)
 
     class Meta:
         model = WithholdingLimit

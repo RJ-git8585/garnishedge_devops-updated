@@ -23,6 +23,8 @@ from processor.models import ExemptConfig, WithholdingLimit, GarnishmentFees, De
 
 logger = logging.getLogger(__name__)
 
+SCHEDULER_JOB_ID = "update_effective_dates_daily"
+
 
 class Command(BaseCommand):
     help = 'Update is_active status for ExemptConfig, WithholdingLimit, GarnishmentFees, and DeductionPriority based on effective_date'
@@ -35,28 +37,36 @@ class Command(BaseCommand):
         self.stdout.write(f"Processing effective dates for {today}")
         
         try:
+            summaries = []
+
             # Process ExemptConfig
-            exempt_total = self._process_exempt_configs(today)
-            
+            exempt_summary = self._process_exempt_configs(today)
+            summaries.append(exempt_summary)
+
             # Process WithholdingLimit
-            withholding_total = self._process_withholding_limits(today)
-            
+            withholding_summary = self._process_withholding_limits(today)
+            summaries.append(withholding_summary)
+
             # Process GarnishmentFees
-            fees_total = self._process_garnishment_fees(today)
-            
+            fees_summary = self._process_garnishment_fees(today)
+            summaries.append(fees_summary)
+
             # Process DeductionPriority
-            priority_total = self._process_deduction_priorities(today)
-            
+            priority_summary = self._process_deduction_priorities(today)
+            summaries.append(priority_summary)
+
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Completed processing. "
-                    f"ExemptConfig: {exempt_total} activated. "
-                    f"WithholdingLimit: {withholding_total} activated. "
-                    f"GarnishmentFees: {fees_total} activated. "
-                    f"DeductionPriority: {priority_total} activated."
+                    f"ExemptConfig: {exempt_summary['activated_count']} activated. "
+                    f"WithholdingLimit: {withholding_summary['activated_count']} activated. "
+                    f"GarnishmentFees: {fees_summary['activated_count']} activated. "
+                    f"DeductionPriority: {priority_summary['activated_count']} activated."
                 )
             )
-            
+
+            self._record_job_execution_summary(summaries)
+
         except Exception as e:
             logger.exception(f"Error processing effective dates: {e}")
             self.stdout.write(
@@ -71,29 +81,33 @@ class Command(BaseCommand):
         """
         self.stdout.write("Processing ExemptConfig records...")
         
+        activated_ids = []
+        deactivated_ids = []
+        today_activated_count = 0
+
         # Step 1: Activate configs whose effective_date is today
         configs_to_activate = ExemptConfig.objects.filter(
             effective_date=today,
             is_active=False
         )
         
-        activated_count = 0
         for config in configs_to_activate:
             # Before activating, check if there are matching active configs to deactivate
-            self._deactivate_matching_exempt_configs(config, today)
+            deactivated_ids.extend(self._deactivate_matching_exempt_configs(config, today))
             config.is_active = True
             config.save(update_fields=['is_active', 'updated_at'])
-            activated_count += 1
+            today_activated_count += 1
+            activated_ids.append(config.id)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Activated ExemptConfig ID {config.id} (effective_date: {config.effective_date})"
                 )
             )
         
-        if activated_count > 0:
+        if today_activated_count > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Successfully activated {activated_count} ExemptConfig(s)"
+                    f"Successfully activated {today_activated_count} ExemptConfig(s)"
                 )
             )
         else:
@@ -108,10 +122,11 @@ class Command(BaseCommand):
         
         past_activated_count = 0
         for config in past_configs:
-            self._deactivate_matching_exempt_configs(config, today)
+            deactivated_ids.extend(self._deactivate_matching_exempt_configs(config, today))
             config.is_active = True
             config.save(update_fields=['is_active', 'updated_at'])
             past_activated_count += 1
+            activated_ids.append(config.id)
             logger.info(f"Activated past ExemptConfig ID {config.id} (effective_date: {config.effective_date})")
         
         if past_activated_count > 0:
@@ -121,7 +136,13 @@ class Command(BaseCommand):
                 )
             )
         
-        return activated_count + past_activated_count
+        return {
+            "table": "ExemptConfig",
+            "activated_ids": activated_ids,
+            "deactivated_ids": deactivated_ids,
+            "activated_count": len(activated_ids),
+            "deactivated_count": len(deactivated_ids),
+        }
     
     def _process_withholding_limits(self, today):
         """
@@ -130,29 +151,33 @@ class Command(BaseCommand):
         """
         self.stdout.write("Processing WithholdingLimit records...")
         
+        activated_ids = []
+        deactivated_ids = []
+        today_activated_count = 0
+
         # Step 1: Activate limits whose effective_date is today
         limits_to_activate = WithholdingLimit.objects.filter(
             effective_date=today,
             is_active=False
         )
         
-        activated_count = 0
         for limit in limits_to_activate:
             # Before activating, check if there are matching active limits to deactivate
-            self._deactivate_matching_withholding_limits(limit, today)
+            deactivated_ids.extend(self._deactivate_matching_withholding_limits(limit, today))
             limit.is_active = True
             limit.save(update_fields=['is_active', 'updated_at'])
-            activated_count += 1
+            today_activated_count += 1
+            activated_ids.append(limit.id)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Activated WithholdingLimit ID {limit.id} (effective_date: {limit.effective_date})"
                 )
             )
         
-        if activated_count > 0:
+        if today_activated_count > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Successfully activated {activated_count} WithholdingLimit(s)"
+                    f"Successfully activated {today_activated_count} WithholdingLimit(s)"
                 )
             )
         else:
@@ -167,10 +192,11 @@ class Command(BaseCommand):
         
         past_activated_count = 0
         for limit in past_limits:
-            self._deactivate_matching_withholding_limits(limit, today)
+            deactivated_ids.extend(self._deactivate_matching_withholding_limits(limit, today))
             limit.is_active = True
             limit.save(update_fields=['is_active', 'updated_at'])
             past_activated_count += 1
+            activated_ids.append(limit.id)
             logger.info(f"Activated past WithholdingLimit ID {limit.id} (effective_date: {limit.effective_date})")
         
         if past_activated_count > 0:
@@ -180,7 +206,13 @@ class Command(BaseCommand):
                 )
             )
         
-        return activated_count + past_activated_count
+        return {
+            "table": "WithholdingLimit",
+            "activated_ids": activated_ids,
+            "deactivated_ids": deactivated_ids,
+            "activated_count": len(activated_ids),
+            "deactivated_count": len(deactivated_ids),
+        }
     
     def _deactivate_matching_exempt_configs(self, new_config, today):
         """
@@ -223,6 +255,10 @@ class Command(BaseCommand):
                 Q(effective_date__isnull=True) | Q(effective_date__lt=new_config.effective_date)
             )
             
+            ids_to_deactivate = list(matching_configs.values_list('id', flat=True))
+            if not ids_to_deactivate:
+                return []
+
             deactivated_count = matching_configs.update(is_active=False)
             
             if deactivated_count > 0:
@@ -234,12 +270,15 @@ class Command(BaseCommand):
                 logger.info(
                     f"Deactivated {deactivated_count} previous ExemptConfig(s) when activating config ID {new_config.id}"
                 )
-        
+
+            return ids_to_deactivate
+
         except Exception as e:
             logger.exception(
                 f"Error deactivating matching ExemptConfig(s) for config ID {new_config.id}: {e}"
             )
             # Don't fail the command if deactivation fails for one config, just log it
+            return []
     
     def _deactivate_matching_withholding_limits(self, new_limit, today):
         """
@@ -295,6 +334,10 @@ class Command(BaseCommand):
                 Q(effective_date__isnull=True) | Q(effective_date__lt=new_limit.effective_date)
             )
             
+            ids_to_deactivate = list(matching_limits.values_list('id', flat=True))
+            if not ids_to_deactivate:
+                return []
+
             deactivated_count = matching_limits.update(is_active=False)
             
             if deactivated_count > 0:
@@ -306,12 +349,15 @@ class Command(BaseCommand):
                 logger.info(
                     f"Deactivated {deactivated_count} previous WithholdingLimit(s) when activating limit ID {new_limit.id}"
                 )
-        
+
+            return ids_to_deactivate
+
         except Exception as e:
             logger.exception(
                 f"Error deactivating matching WithholdingLimit(s) for limit ID {new_limit.id}: {e}"
             )
             # Don't fail the command if deactivation fails for one limit, just log it
+            return []
     
     def _process_garnishment_fees(self, today):
         """
@@ -320,29 +366,33 @@ class Command(BaseCommand):
         """
         self.stdout.write("Processing GarnishmentFees records...")
         
+        activated_ids = []
+        deactivated_ids = []
+        today_activated_count = 0
+
         # Step 1: Activate fees whose effective_date is today
         fees_to_activate = GarnishmentFees.objects.filter(
             effective_date=today,
             is_active=False
         )
         
-        activated_count = 0
         for fee in fees_to_activate:
             # Before activating, check if there are matching active fees to deactivate
-            self._deactivate_matching_garnishment_fees(fee, today)
+            deactivated_ids.extend(self._deactivate_matching_garnishment_fees(fee, today))
             fee.is_active = True
             fee.save(update_fields=['is_active', 'updated_at'])
-            activated_count += 1
+            today_activated_count += 1
+            activated_ids.append(fee.id)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Activated GarnishmentFees ID {fee.id} (effective_date: {fee.effective_date})"
                 )
             )
         
-        if activated_count > 0:
+        if today_activated_count > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Successfully activated {activated_count} GarnishmentFees record(s)"
+                    f"Successfully activated {today_activated_count} GarnishmentFees record(s)"
                 )
             )
         else:
@@ -357,10 +407,11 @@ class Command(BaseCommand):
         
         past_activated_count = 0
         for fee in past_fees:
-            self._deactivate_matching_garnishment_fees(fee, today)
+            deactivated_ids.extend(self._deactivate_matching_garnishment_fees(fee, today))
             fee.is_active = True
             fee.save(update_fields=['is_active', 'updated_at'])
             past_activated_count += 1
+            activated_ids.append(fee.id)
             logger.info(f"Activated past GarnishmentFees ID {fee.id} (effective_date: {fee.effective_date})")
         
         if past_activated_count > 0:
@@ -370,7 +421,13 @@ class Command(BaseCommand):
                 )
             )
         
-        return activated_count + past_activated_count
+        return {
+            "table": "GarnishmentFees",
+            "activated_ids": activated_ids,
+            "deactivated_ids": deactivated_ids,
+            "activated_count": len(activated_ids),
+            "deactivated_count": len(deactivated_ids),
+        }
     
     def _process_deduction_priorities(self, today):
         """
@@ -379,29 +436,33 @@ class Command(BaseCommand):
         """
         self.stdout.write("Processing DeductionPriority records...")
         
+        activated_ids = []
+        deactivated_ids = []
+        today_activated_count = 0
+
         # Step 1: Activate priorities whose effective_date is today
         priorities_to_activate = DeductionPriority.objects.filter(
             effective_date=today,
             is_active=False
         )
         
-        activated_count = 0
         for priority in priorities_to_activate:
             # Before activating, check if there are matching active priorities to deactivate
-            self._deactivate_matching_deduction_priorities(priority, today)
+            deactivated_ids.extend(self._deactivate_matching_deduction_priorities(priority, today))
             priority.is_active = True
             priority.save(update_fields=['is_active', 'updated_at'])
-            activated_count += 1
+            today_activated_count += 1
+            activated_ids.append(priority.id)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Activated DeductionPriority ID {priority.id} (effective_date: {priority.effective_date})"
                 )
             )
         
-        if activated_count > 0:
+        if today_activated_count > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Successfully activated {activated_count} DeductionPriority record(s)"
+                    f"Successfully activated {today_activated_count} DeductionPriority record(s)"
                 )
             )
         else:
@@ -416,10 +477,11 @@ class Command(BaseCommand):
         
         past_activated_count = 0
         for priority in past_priorities:
-            self._deactivate_matching_deduction_priorities(priority, today)
+            deactivated_ids.extend(self._deactivate_matching_deduction_priorities(priority, today))
             priority.is_active = True
             priority.save(update_fields=['is_active', 'updated_at'])
             past_activated_count += 1
+            activated_ids.append(priority.id)
             logger.info(f"Activated past DeductionPriority ID {priority.id} (effective_date: {priority.effective_date})")
         
         if past_activated_count > 0:
@@ -429,7 +491,13 @@ class Command(BaseCommand):
                 )
             )
         
-        return activated_count + past_activated_count
+        return {
+            "table": "DeductionPriority",
+            "activated_ids": activated_ids,
+            "deactivated_ids": deactivated_ids,
+            "activated_count": len(activated_ids),
+            "deactivated_count": len(deactivated_ids),
+        }
     
     def _deactivate_matching_garnishment_fees(self, new_fee, today):
         """
@@ -471,7 +539,11 @@ class Command(BaseCommand):
             matching_fees = matching_fees.filter(
                 Q(effective_date__isnull=True) | Q(effective_date__lt=new_fee.effective_date)
             )
-            
+
+            ids_to_deactivate = list(matching_fees.values_list('id', flat=True))
+            if not ids_to_deactivate:
+                return []
+
             deactivated_count = matching_fees.update(is_active=False)
             
             if deactivated_count > 0:
@@ -483,12 +555,15 @@ class Command(BaseCommand):
                 logger.info(
                     f"Deactivated {deactivated_count} previous GarnishmentFees record(s) when activating fee ID {new_fee.id}"
                 )
-        
+
+            return ids_to_deactivate
+
         except Exception as e:
             logger.exception(
                 f"Error deactivating matching GarnishmentFees record(s) for fee ID {new_fee.id}: {e}"
             )
             # Don't fail the command if deactivation fails for one fee, just log it
+            return []
     
     def _deactivate_matching_deduction_priorities(self, new_priority, today):
         """
@@ -513,6 +588,10 @@ class Command(BaseCommand):
                 Q(effective_date__isnull=True) | Q(effective_date__lt=new_priority.effective_date)
             )
             
+            ids_to_deactivate = list(matching_priorities.values_list('id', flat=True))
+            if not ids_to_deactivate:
+                return []
+
             deactivated_count = matching_priorities.update(is_active=False)
             
             if deactivated_count > 0:
@@ -524,10 +603,78 @@ class Command(BaseCommand):
                 logger.info(
                     f"Deactivated {deactivated_count} previous DeductionPriority record(s) when activating priority ID {new_priority.id}"
                 )
-        
+
+            return ids_to_deactivate
+
         except Exception as e:
             logger.exception(
                 f"Error deactivating matching DeductionPriority record(s) for priority ID {new_priority.id}: {e}"
             )
             # Don't fail the command if deactivation fails for one priority, just log it
+            return []
+
+    def _record_job_execution_summary(self, summaries):
+        """Persist summary data for the most recent scheduler job execution."""
+        if not summaries:
+            return
+
+        try:
+            from django_apscheduler.models import DjangoJobExecution
+        except Exception as exc:
+            logger.warning("Unable to import DjangoJobExecution to record summary: %s", exc)
+            return
+
+        job_execution = (
+            DjangoJobExecution.objects.filter(job_id=SCHEDULER_JOB_ID)
+            .order_by("-run_time")
+            .first()
+        )
+
+        if job_execution is None:
+            logger.debug(
+                "No DjangoJobExecution record found for job_id %s; skipping summary update",
+                SCHEDULER_JOB_ID,
+            )
+            return
+
+        activated_entries = []
+        deactivated_entries = []
+        tables_seen = []
+
+        for summary in summaries:
+            table = summary.get("table")
+            activated = summary.get("activated_ids", []) or []
+            if activated:
+                activated_entries.extend((table, value) for value in activated)
+                tables_seen.append(table)
+
+            deactivated = summary.get("deactivated_ids", []) or []
+            if deactivated:
+                deactivated_entries.extend((table, value) for value in deactivated)
+                tables_seen.append(table)
+
+        unique_tables = []
+        for table in tables_seen:
+            if table and table not in unique_tables:
+                unique_tables.append(table)
+
+        table_name_value = ",".join(unique_tables) if unique_tables else None
+        activate_id_value = activated_entries[-1][1] if activated_entries else None
+        deactivate_id_value = deactivated_entries[-1][1] if deactivated_entries else None
+
+        updates = {}
+        if getattr(job_execution, "table_name", None) != table_name_value:
+            updates["table_name"] = table_name_value
+        if getattr(job_execution, "activate_id", None) != activate_id_value:
+            updates["activate_id"] = activate_id_value
+        if getattr(job_execution, "deactivate_id", None) != deactivate_id_value:
+            updates["deactivate_id"] = deactivate_id_value
+
+        if not updates:
+            return
+
+        for field, value in updates.items():
+            setattr(job_execution, field, value)
+
+        job_execution.save(update_fields=list(updates.keys()))
 

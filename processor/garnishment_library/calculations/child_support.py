@@ -254,7 +254,6 @@ class SingleChild(ChildSupportHelper):
             mandatory_deductions = self.calculate_md(payroll_taxes)
             de = self.calculate_de(gross_pay, mandatory_deductions)
             withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
-            print("withholding_limit",withholding_limit)
             ade = self.calculate_ade(withholding_limit, de)
             
             # Get support amounts
@@ -304,18 +303,17 @@ class MultipleChild(ChildSupportHelper):
             # Get support amounts ONCE - avoid redundant calculations
             tcsa = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)
             taa = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)
-            print("tcsa",tcsa)
-            print("taa",taa)
+            
             # Calculate TWA and WA using already extracted amounts
             twa = self.calculate_twa(tcsa, taa)
             wa = self.calculate_wa(ade, tcsa)
-            
             alloc_method = AllocationMethodResolver(
                 self.work_state
             ).get_allocation_method()
+            print("alloc_method",alloc_method)
             if ade >= twa:
                 cs_amounts = self._calculate_each_amount(tcsa,"child support amount") 
-                ar_amounts = self._calculate_each_amount(tcsa,"arrear amount") 
+                ar_amounts = self._calculate_each_amount(taa,"arrear amount") 
             else:
                 cs_amounts, ar_amounts = {}, {}
                 if alloc_method == AllocationMethods.PRORATE:
