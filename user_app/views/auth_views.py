@@ -8,7 +8,9 @@ from user_app.models.employer import EmployerProfile
 from processor.garnishment_library.utils.response import ResponseHelper
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.hashers import check_password
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError as JWTTokenError
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from datetime import datetime, timedelta
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -237,3 +239,202 @@ class PasswordResetConfirmView(APIView):
             return Response({"error": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": str(e), "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR})
+
+
+class ValidateTokenAPIView(APIView):
+    """
+    API view to validate an access token.
+    Accepts token either in Authorization header or as a request body parameter.
+    """
+
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'Authorization',
+                openapi.IN_HEADER,
+                description='Bearer token (e.g., Bearer <token>)',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'token': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Access token to validate'
+                ),
+            },
+            required=[]
+        ),
+        responses={
+            200: openapi.Response(
+                'Token validation result',
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'valid': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'token_details': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'exp': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'expires_at': openapi.Schema(type=openapi.TYPE_STRING),
+                                'token_type': openapi.Schema(type=openapi.TYPE_STRING),
+                            }
+                        ),
+                        'user_data': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'username': openapi.Schema(type=openapi.TYPE_STRING),
+                                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                                'employer_name': openapi.Schema(type=openapi.TYPE_STRING),
+                            }
+                        )
+                    }
+                )
+            ),
+            400: 'Invalid token or missing token',
+            401: 'Invalid or expired token'
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Validate an access token.
+        Token can be provided in:
+        1. Authorization header: "Bearer <token>"
+        2. Request body: {"token": "<token>"}
+        """
+        token = None
+        
+        # Try to get token from Authorization header
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+        
+        # If not in header, try to get from request body
+        if not token:
+            token = request.data.get('token')
+        
+        if not token:
+            return ResponseHelper.error_response(
+                message='Token is required. Provide it in Authorization header (Bearer <token>) or request body ({"token": "<token>"})',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Validate the token
+            jwt_auth = JWTAuthentication()
+            validated_token = jwt_auth.get_validated_token(token)
+            user = jwt_auth.get_user(validated_token)
+            
+            # Extract token details
+            access_token = AccessToken(token)
+            token_payload = access_token.payload
+            
+            # Calculate expiration datetime
+            exp_timestamp = token_payload.get('exp')
+            expires_at = datetime.fromtimestamp(exp_timestamp).isoformat() if exp_timestamp else None
+            
+            # Prepare response data
+            response_data = {
+                'valid': True,
+                'token_details': {
+                    'user_id': token_payload.get('user_id'),
+                    'exp': exp_timestamp,
+                    'expires_at': expires_at,
+                    'token_type': token_payload.get('token_type', 'access'),
+                },
+                'user_data': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'employer_name': getattr(user, 'employer_name', None),
+                }
+            }
+            
+            return ResponseHelper.success_response(
+                message='Token is valid',
+                data=response_data,
+                status_code=status.HTTP_200_OK
+            )
+            
+        except (InvalidToken, JWTTokenError) as e:
+            return ResponseHelper.error_response(
+                message='Invalid or expired token',
+                error=str(e),
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return ResponseHelper.error_response(
+                message='Error validating token',
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def get(self, request, *args, **kwargs):
+        """
+        Validate token from Authorization header (GET method for convenience).
+        """
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth_header.startswith('Bearer '):
+            return ResponseHelper.error_response(
+                message='Authorization header with Bearer token is required',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        token = auth_header.split(' ')[1]
+        
+        try:
+            # Validate the token
+            jwt_auth = JWTAuthentication()
+            validated_token = jwt_auth.get_validated_token(token)
+            user = jwt_auth.get_user(validated_token)
+            
+            # Extract token details
+            access_token = AccessToken(token)
+            token_payload = access_token.payload
+            
+            # Calculate expiration datetime
+            exp_timestamp = token_payload.get('exp')
+            expires_at = datetime.fromtimestamp(exp_timestamp).isoformat() if exp_timestamp else None
+            
+            # Prepare response data
+            response_data = {
+                'valid': True,
+                'token_details': {
+                    'user_id': token_payload.get('user_id'),
+                    'exp': exp_timestamp,
+                    'expires_at': expires_at,
+                    'token_type': token_payload.get('token_type', 'access'),
+                },
+                'user_data': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'employer_name': getattr(user, 'employer_name', None),
+                }
+            }
+            
+            return ResponseHelper.success_response(
+                message='Token is valid',
+                data=response_data,
+                status_code=status.HTTP_200_OK
+            )
+            
+        except (InvalidToken, JWTTokenError) as e:
+            return ResponseHelper.error_response(
+                message='Invalid or expired token',
+                error=str(e),
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return ResponseHelper.error_response(
+                message='Error validating token',
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
