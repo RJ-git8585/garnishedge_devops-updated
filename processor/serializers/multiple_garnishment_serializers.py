@@ -1,5 +1,36 @@
 from rest_framework import serializers
 from processor.models import MultipleGarnPriorityOrders, State, GarnishmentType
+from user_app.utils import DataProcessingUtils
+from datetime import datetime
+
+
+
+class FlexibleDateField(serializers.DateField):
+    """Custom date field that uses parse_date_field to handle various date formats."""
+    def to_internal_value(self, data):
+        """
+        Parse date using the flexible parse_date_field utility.
+        Accepts various date formats and converts them to YYYY-MM-DD.
+        """
+        if data is None or data == '':
+            raise serializers.ValidationError("This field is required.")
+        
+        # Use the parse_date_field utility to handle various formats
+        parsed_date_str = DataProcessingUtils.parse_date_field(data)
+        
+        if parsed_date_str is None:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+        
+        # Parse the YYYY-MM-DD string to a date object
+        try:
+            return datetime.strptime(parsed_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise serializers.ValidationError(
+                f"Date has wrong format. Use one of these formats instead: YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, etc."
+            )
+
 
 
 class MultipleGarnPriorityOrderCRUDSerializer(serializers.ModelSerializer):
@@ -9,11 +40,12 @@ class MultipleGarnPriorityOrderCRUDSerializer(serializers.ModelSerializer):
     """
     state = serializers.CharField(source='state.state')
     garnishment_type = serializers.CharField(source='garnishment_type.type')
+    effective_date = FlexibleDateField(required=True)
 
     class Meta:
         model = MultipleGarnPriorityOrders
         fields = [
-            'id', 'state', 'garnishment_type', 'priority_order', 'created_at', 'updated_at'
+            'id', 'state', 'garnishment_type', 'priority_order', 'created_at', 'updated_at','effective_date','is_active'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

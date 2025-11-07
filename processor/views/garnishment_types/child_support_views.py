@@ -409,8 +409,10 @@ class DeductionPriorityAPIView(APIView):
             return ResponseHelper.error_response(str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @swagger_auto_schema(request_body=DeductionPriorityCRUDSerializer)
-    def post(self, request):
+    def post(self, request, pk=None):
         try:
+            if pk is not None:
+                logger.warning("POST received with pk=%s; ignoring pk and proceeding with create", pk)
             serializer = DeductionPriorityCRUDSerializer(data=request.data)
             if serializer.is_valid():
                 serializer.save()

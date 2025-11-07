@@ -186,11 +186,12 @@ class DeductionPriorityCRUDSerializer(serializers.ModelSerializer):
     """
     state = serializers.CharField(source='state.state')
     deduction = serializers.CharField(source='deduction_type.type')
+    effective_date = FlexibleDateField(required=True)
 
     class Meta:
         model = DeductionPriority
         fields = [
-            'id', 'state', 'deduction', 'priority_order', 'created_at', 'updated_at'
+            'id', 'state', 'deduction', 'priority_order', 'effective_date', 'created_at', 'updated_at','is_active'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
