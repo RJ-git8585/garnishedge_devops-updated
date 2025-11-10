@@ -57,7 +57,7 @@ class LetterTemplateFillSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         allow_blank=True,
-        help_text="Employee ID (ee_id) or primary key. If provided, system will auto-fetch employee, order, and SDU data."
+        help_text="Employee ID (ee_id) or primary key. If provided, system will auto-fetch employee, order, and Payee data."
     )
     order_id = serializers.CharField(
         required=False,

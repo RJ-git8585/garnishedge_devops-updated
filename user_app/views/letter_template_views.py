@@ -323,7 +323,7 @@ class LetterTemplateVariablesAPI(APIView):
             try:
                 employee_data = LetterTemplateDataService.fetch_employee_data(employee_id)
                 order_data = LetterTemplateDataService.fetch_order_data(employee_id, order_id)
-                sdu_data = LetterTemplateDataService.fetch_sdu_data(employee_id, order_id)
+                payee_data = LetterTemplateDataService.fetch_payee_data(employee_id, order_id)
             except ValueError as e:
                 return ResponseHelper.error_response(
                     str(e),
@@ -341,9 +341,9 @@ class LetterTemplateVariablesAPI(APIView):
             else:
                 response_data["order_data"] = {}
             
-            # Add SDU data if available
-            if sdu_data:
-                response_data["sdu_data"] = sdu_data
+            # Add Payee data if available (keeping key as 'sdu_data' for backward compatibility)
+            if payee_data:
+                response_data["sdu_data"] = payee_data
             else:
                 response_data["sdu_data"] = {}
             
@@ -529,7 +529,7 @@ class LetterTemplateFillAPI(APIView):
             if employee_id:
                 # Automatic mode: Fetch data from database
                 try:
-                    # Fetch all template variables from employee, order, and SDU data
+                    # Fetch all template variables from employee, order, and Payee data
                     auto_variable_values = LetterTemplateDataService.get_all_template_variables(
                         employee_id=employee_id,
                         order_id=order_id
