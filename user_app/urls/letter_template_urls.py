@@ -8,7 +8,8 @@ from user_app.views import (
     LetterTemplateFillAPI,
     LetterTemplateVariablesAPI,
     LetterTemplateAvailableVariablesAPI,
-    LetterTemplateOrderFilterAPI
+    LetterTemplateOrderFilterAPI,
+    LetterTemplateExportCSVAPI
 )
 
 app_name = 'letter'
@@ -40,5 +41,8 @@ urlpatterns = [
     
     # Filter orders by employee_id for letter management
     path('filter-orders/', LetterTemplateOrderFilterAPI.as_view(), name='letter-template-filter-orders'),
+    
+    # Export employee details, order, payee, and GarnishmentResult data to CSV
+    path('export-csv/', LetterTemplateExportCSVAPI.as_view(), name='letter-template-export-csv'),
 ]
 

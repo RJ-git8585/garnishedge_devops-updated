@@ -4,13 +4,15 @@ from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.http import HttpResponse
-from io import BytesIO
+from io import BytesIO, StringIO
 import re
+import csv
 
-from user_app.models import LetterTemplate, GarnishmentOrder, EmployeeDetail
-from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer, GarnishmentOrderSerializer
+from user_app.models import LetterTemplate, GarnishmentOrder, EmployeeDetail, PayeeDetails
+from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer, GarnishmentOrderSerializer, LetterTemplateExportSerializer
 from user_app.services.letter_template_data_service import LetterTemplateDataService
 from processor.garnishment_library.utils import ResponseHelper
+from processor.models.garnishment_result.result import GarnishmentResult
 from rest_framework.decorators import api_view
 
 # PDF generation
@@ -782,4 +784,275 @@ class LetterTemplateOrderFilterAPI(APIView):
                 str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class LetterTemplateExportCSVAPI(APIView):
+    """
+    API view to export employee details, order, payee, and GarnishmentResult data to CSV or TXT.
+    Only exports data for employees who have records in GarnishmentResult.
+    """
+    
+    @swagger_auto_schema(
+        request_body=LetterTemplateExportSerializer,
+        responses={
+            200: 'File generated successfully',
+            400: 'Invalid format or request data',
+            404: 'No data found',
+            500: 'Internal server error'
+        }
+    )
+    def post(self, request):
+        """
+        Export employee details, order, payee, and GarnishmentResult withholding_amount to CSV or TXT.
+        Only exports data for employees present in GarnishmentResult.
+        
+        Request Body (JSON):
+        {
+            "format": "csv"  // optional: csv or txt (default: csv)
+        }
+        
+        Returns:
+        CSV or TXT file with columns:
+        - Employee Details: ee_id, first_name, last_name, ssn, home_state, work_state, etc.
+        - Order Details: case_id, ordered_amount, withholding_amount (from order), issued_date, etc.
+        - Payee Details: payee, payee_type, routing_number, bank_account, etc.
+        - GarnishmentResult: withholding_amount (from GarnishmentResult)
+        """
+        try:
+            # Validate request data
+            serializer = LetterTemplateExportSerializer(data=request.data)
+            if not serializer.is_valid():
+                return ResponseHelper.error_response(
+                    'Invalid request data',
+                    serializer.errors,
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get export format from request body
+            export_format = serializer.validated_data.get('format', 'csv').lower()
+            
+            # Get all GarnishmentResult records with related data
+            results = GarnishmentResult.objects.select_related(
+                'ee',  # EmployeeDetail
+                'case',  # GarnishmentOrder
+                'case__issuing_state',  # State
+                'case__garnishment_type',  # GarnishmentType
+                'ee__home_state',  # State
+                'ee__work_state',  # State
+                'ee__client',  # Client
+                'ee__filing_status',  # FedFilingStatus
+            ).all()
+            
+            if not results.exists():
+                return ResponseHelper.error_response(
+                    'No garnishment results found',
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Define header columns (without Batch ID and Processed At)
+            header = [
+                # Employee Details
+                'Employee ID (ee_id)',
+                'First Name',
+                'Middle Name',
+                'Last Name',
+                'SSN',
+                'Home State',
+                'Work State',
+                'Gender',
+                'Marital Status',
+                'Number of Exemptions',
+                'Number of Dependent Children',
+                'Filing Status',
+                'Client ID',
+                'Client Name',
+                
+                # Order Details
+                'Case ID',
+                'Ordered Amount',
+                'Withholding Amount (Order)',
+                'Garnishment Type',
+                'Issued Date',
+                'Received Date',
+                'Start Date',
+                'Stop Date',
+                'Deduction Code',
+                'FEIN',
+                'Garnishing Authority',
+                'FIPS Code',
+                'Payee (Order)',
+                'Is Consumer Debt',
+                
+                # Payee Details
+                'Payee (PayeeDetails)',
+                'Payee Type',
+                'Routing Number',
+                'Bank Account',
+                'Case Number Required',
+                'Case Number Format',
+                'FIPS Required',
+                'FIPS Length',
+                
+                # GarnishmentResult
+                'Withholding Amount (Result)',
+            ]
+            
+            if export_format == 'csv':
+                return self._generate_csv(results, header)
+            else:  # txt
+                return self._generate_txt(results, header)
+                
+        except Exception as e:
+            return ResponseHelper.error_response(
+                'Failed to export data',
+                str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _generate_csv(self, results, header):
+        """Generate CSV file from results."""
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write CSV header
+        writer.writerow(header)
+        
+        # Write data rows
+        for result in results:
+            employee = result.ee
+            order = result.case
+            
+            # Get payee details (try PayeeDetails first, fallback to order.payee)
+            payee_details = PayeeDetails.objects.filter(
+                case_id=order,
+                is_active=True
+            ).first()
+            
+            # Employee Details
+            row = [
+                employee.ee_id or '',
+                employee.first_name or '',
+                employee.middle_name or '',
+                employee.last_name or '',
+                employee.ssn or '',
+                employee.home_state.state if employee.home_state else '',
+                employee.work_state.state if employee.work_state else '',
+                employee.gender or '',
+                employee.marital_status or '',
+                employee.number_of_exemptions or 0,
+                employee.number_of_dependent_child or 0,
+                employee.filing_status.name if employee.filing_status else '',
+                employee.client.client_id if employee.client else '',
+                employee.client.legal_name if employee.client else '',
+                
+                # Order Details
+                order.case_id or '',
+                str(order.ordered_amount) if order.ordered_amount else '0.00',
+                str(order.withholding_amount) if order.withholding_amount else '0.00',
+                order.garnishment_type.type if order.garnishment_type else '',
+                order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
+                order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
+                order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
+                order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
+                order.deduction_code or '',
+                order.fein or '',
+                order.garnishing_authority or '',
+                order.fips_code or '',
+                order.payee or '',
+                'Yes' if order.is_consumer_debt else 'No',
+                
+                # Payee Details
+                payee_details.payee if payee_details else '',
+                payee_details.payee_type if payee_details else '',
+                payee_details.routing_number if payee_details else '',
+                payee_details.bank_account if payee_details else '',
+                'Yes' if payee_details and payee_details.case_number_required else 'No',
+                payee_details.case_number_format if payee_details else '',
+                'Yes' if payee_details and payee_details.fips_required else 'No',
+                payee_details.fips_length if payee_details else '',
+                
+                # GarnishmentResult
+                str(result.withholding_amount) if result.withholding_amount else '0.00',
+            ]
+            writer.writerow(row)
+        
+        # Prepare HTTP response with CSV
+        output.seek(0)
+        response = HttpResponse(output.getvalue(), content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="garnishment_export.csv"'
+        return response
+    
+    def _generate_txt(self, results, header):
+        """Generate TXT file from results."""
+        output = StringIO()
+        
+        # Write header row
+        output.write('\t'.join(header))
+        output.write('\n')
+        
+        # Write data rows
+        for result in results:
+            employee = result.ee
+            order = result.case
+            
+            # Get payee details (try PayeeDetails first, fallback to order.payee)
+            payee_details = PayeeDetails.objects.filter(
+                case_id=order,
+                is_active=True
+            ).first()
+            
+            # Employee Details
+            row = [
+                employee.ee_id or '',
+                employee.first_name or '',
+                employee.middle_name or '',
+                employee.last_name or '',
+                employee.ssn or '',
+                employee.home_state.state if employee.home_state else '',
+                employee.work_state.state if employee.work_state else '',
+                employee.gender or '',
+                employee.marital_status or '',
+                str(employee.number_of_exemptions) if employee.number_of_exemptions else '0',
+                str(employee.number_of_dependent_child) if employee.number_of_dependent_child else '0',
+                employee.filing_status.name if employee.filing_status else '',
+                employee.client.client_id if employee.client else '',
+                employee.client.legal_name if employee.client else '',
+                
+                # Order Details
+                order.case_id or '',
+                str(order.ordered_amount) if order.ordered_amount else '0.00',
+                str(order.withholding_amount) if order.withholding_amount else '0.00',
+                order.garnishment_type.type if order.garnishment_type else '',
+                order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
+                order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
+                order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
+                order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
+                order.deduction_code or '',
+                order.fein or '',
+                order.garnishing_authority or '',
+                order.fips_code or '',
+                order.payee or '',
+                'Yes' if order.is_consumer_debt else 'No',
+                
+                # Payee Details
+                payee_details.payee if payee_details else '',
+                payee_details.payee_type if payee_details else '',
+                payee_details.routing_number if payee_details else '',
+                payee_details.bank_account if payee_details else '',
+                'Yes' if payee_details and payee_details.case_number_required else 'No',
+                payee_details.case_number_format if payee_details else '',
+                'Yes' if payee_details and payee_details.fips_required else 'No',
+                str(payee_details.fips_length) if payee_details and payee_details.fips_length else '',
+                
+                # GarnishmentResult
+                str(result.withholding_amount) if result.withholding_amount else '0.00',
+            ]
+            output.write('\t'.join(row))
+            output.write('\n')
+        
+        # Prepare HTTP response with TXT
+        output.seek(0)
+        response = HttpResponse(output.getvalue(), content_type='text/plain')
+        response['Content-Disposition'] = 'attachment; filename="garnishment_export.txt"'
+        return response
 
