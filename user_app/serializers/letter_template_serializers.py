@@ -75,10 +75,10 @@ class LetterTemplateFillSerializer(serializers.Serializer):
     )
     
     format = serializers.ChoiceField(
-        choices=['pdf', 'doc', 'docx', 'txt'],
+        choices=['pdf', 'doc', 'docx', 'txt', 'text'],
         default='pdf',
         required=False,
-        help_text="Export format: pdf, doc, docx, or txt"
+        help_text="Export format: pdf, doc, docx, txt, or text"
     )
     
     def validate(self, attrs):
