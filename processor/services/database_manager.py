@@ -9,18 +9,24 @@ from typing import Dict, Any, List
 from processor.models import (
     StateTaxLevyAppliedRule, StateTaxLevyConfig, CreditorDebtAppliedRule
 )
+from processor.models.garnishment_result.result import GarnishmentResult
+from processor.models.shared_model.garnishment_type import GarnishmentType
 from processor.serializers import StateTaxLevyConfigSerializers
 from user_app.models import (
     EmployeeBatchData, GarnishmentBatchData, PayrollBatchData
 )
+from user_app.models.employee.employee_details import EmployeeDetail
+from user_app.models.garnishment_order.garnishment_orders import GarnishmentOrder
 from user_app.constants import (
     EmployeeFields as EE,
     GarnishmentTypeFields as GT,
     CalculationFields as CA,
     PayrollTaxesFields as PT,
     CalculationResponseFields as CR,
-    GarnishmentDataKeys as GDK
+    GarnishmentDataKeys as GDK,
+    GarnishmentResultFields as GRF
 )
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +40,7 @@ class DatabaseManager:
         self.logger = logger
 
     def process_and_store_case(self, case_info: Dict, batch_id: str, 
-                              config_data: Dict, garn_fees: float = None) -> Dict:
+                              config_data: Dict,result:Dict, garn_fees: float = None) -> Dict:
         """
         Process and store garnishment case data in the database.
         """
@@ -44,17 +50,17 @@ class DatabaseManager:
                 state = self._get_state_name(case_info.get(EE.WORK_STATE))
                 pay_period = case_info.get(EE.PAY_PERIOD).title()
 
-                # Store employee data
-                self._store_employee_data(case_info, ee_id)
 
-                # Store payroll data
-                self._store_payroll_data(case_info, ee_id)
+                # # Store payroll data
+                # self._store_payroll_data(case_info, ee_id)
 
-                # Store garnishment data
-                self._store_garnishment_data(case_info, ee_id)
+                self._store_garnishment_results(case_info, ee_id, batch_id, result)
 
-                # Process garnishment rules
-                self._process_garnishment_rules(case_info, state, pay_period, ee_id)
+                # Store garnishment data (result will be passed separately if available)
+                # Note: result parameter is optional and can be passed later via update_calculation_results
+
+                # # Process garnishment rules
+                # self._process_garnishment_rules(case_info, state, pay_period, ee_id)
 
                 return {"status": "success", "employee_id": ee_id}
 
@@ -62,31 +68,19 @@ class DatabaseManager:
             self.logger.error(f"Error processing case for employee {case_info.get(EE.EMPLOYEE_ID)}: {e}")
             return {"error": f"Error processing case: {str(e)}"}
 
+    def _process_garnishment_rules(self, case_info: Dict, state: str, pay_period: str, ee_id: str) -> None:
+        """
+        Process and store garnishment rules.
+        This is a placeholder method - implement as needed.
+        """
+        # TODO: Implement garnishment rules processing if needed
+        pass
+
     def _get_state_name(self, work_state: str) -> str:
         """Get formatted state name."""
         from processor.garnishment_library.calculations import StateAbbreviations
         return StateAbbreviations(work_state).get_state_name_and_abbr().title()
 
-    def _store_employee_data(self, case_info: Dict, ee_id: str) -> None:
-        """Store employee batch data."""
-        employee_defaults = {
-            EE.CASE_ID: self._get_first_case_id(case_info),
-            EE.WORK_STATE: case_info.get(EE.WORK_STATE),
-            EE.NO_OF_EXEMPTION_INCLUDING_SELF: case_info.get(EE.NO_OF_EXEMPTION_INCLUDING_SELF),
-            EE.PAY_PERIOD: case_info.get(EE.PAY_PERIOD),
-            EE.FILING_STATUS: case_info.get(EE.FILING_STATUS),
-            EE.AGE: case_info.get(EE.AGE),
-            EE.IS_BLIND: case_info.get(EE.IS_BLIND),
-            EE.IS_SPOUSE_BLIND: case_info.get(EE.IS_SPOUSE_BLIND),
-            EE.SPOUSE_AGE: case_info.get(EE.SPOUSE_AGE),
-            EE.SUPPORT_SECOND_FAMILY: case_info.get(EE.SUPPORT_SECOND_FAMILY),
-            EE.NO_OF_STUDENT_DEFAULT_LOAN: case_info.get(EE.NO_OF_STUDENT_DEFAULT_LOAN),
-            EE.ARREARS_GREATER_THAN_12_WEEKS: case_info.get(EE.ARREARS_GREATER_THAN_12_WEEKS),
-            EE.NO_OF_DEPENDENT_EXEMPTION: case_info.get(EE.NO_OF_DEPENDENT_EXEMPTION),
-        }
-        
-        EmployeeBatchData.objects.update_or_create(
-            ee_id=ee_id, defaults=employee_defaults)
 
     def _store_payroll_data(self, case_info: Dict, ee_id: str) -> None:
         """Store payroll tax data."""
@@ -116,89 +110,6 @@ class DatabaseManager:
         PayrollBatchData.objects.update_or_create(
             case_id=first_case_id, defaults={**payroll_defaults, "ee_id": ee_id})
 
-    def _store_garnishment_data(self, case_info: Dict, ee_id: str) -> None:
-        """Store garnishment batch data."""
-        unique_garnishments_to_create = {}
-        
-        for garnishment_group in case_info.get(CA.GARNISHMENT_DATA, []):
-            garnishment_type = garnishment_group.get(
-                EE.GARNISHMENT_TYPE, garnishment_group.get(GDK.TYPE, ""))
-            
-            for garnishment in garnishment_group.get(GDK.DATA, []):
-                case_id_garnish = garnishment.get(EE.CASE_ID)
-                if case_id_garnish:
-                    unique_garnishments_to_create[case_id_garnish] = GarnishmentBatchData(
-                        case_id=case_id_garnish,
-                        garnishment_type=garnishment_type,
-                        ordered_amount=garnishment.get(CA.ORDERED_AMOUNT),
-                        arrear_amount=garnishment.get(CA.ARREAR_AMOUNT),
-                        current_medical_support=garnishment.get(CA.CURRENT_MEDICAL_SUPPORT),
-                        past_due_medical_support=garnishment.get(CA.PAST_DUE_MEDICAL_SUPPORT),
-                        current_spousal_support=garnishment.get(CA.CURRENT_SPOUSAL_SUPPORT),
-                        past_due_spousal_support=garnishment.get(CA.PAST_DUE_SPOUSAL_SUPPORT),
-                        ee_id=ee_id
-                    )
-
-        if unique_garnishments_to_create:
-            GarnishmentBatchData.objects.bulk_create(
-                unique_garnishments_to_create.values(),
-                update_conflicts=True,
-                unique_fields=["case_id"],
-                update_fields=[
-                    "garnishment_type", "ordered_amount", "arrear_amount",
-                    "current_medical_support", "past_due_medical_support",
-                    "current_spousal_support", "past_due_spousal_support", "ee_id"
-                ]
-            )
-
-    def _process_garnishment_rules(self, case_info: Dict, state: str, 
-                                  pay_period: str, ee_id: str) -> None:
-        """Process and store garnishment rules."""
-        garnishment_type_data = case_info.get(EE.GARNISHMENT_DATA)
-        
-        if garnishment_type_data:
-            for garnishment_group in garnishment_type_data:
-                garnishment_type = garnishment_group.get(GDK.TYPE, "").lower()
-                garnishment_data_list = garnishment_group.get(GDK.DATA, [])
-                
-                for garnishment_item in garnishment_data_list:
-                    case_id = garnishment_item.get(EE.CASE_ID, 0)
-                    
-                    if garnishment_type == GT.STATE_TAX_LEVY.lower():
-                        self._process_state_tax_levy_rule(state, case_id, ee_id, pay_period)
-                    elif garnishment_type == GT.CREDITOR_DEBT.lower():
-                        self._process_creditor_debt_rule(case_id, ee_id, state, pay_period)
-
-    def _process_state_tax_levy_rule(self, state: str, case_id: int, 
-                                   ee_id: str, pay_period: str) -> None:
-        """Process state tax levy rules."""
-        try:
-            rule = StateTaxLevyConfig.objects.get(state__iexact=state)
-            serializer_data = StateTaxLevyConfigSerializers(rule).data
-            serializer_data.update({
-                CR.WITHHOLDING_BASIS: None,  # Will be updated by calculation
-                CR.WITHHOLDING_CAP: None,    # Will be updated by calculation
-                EE.EMPLOYEE_ID: ee_id,
-                EE.PAY_PERIOD: pay_period
-            })
-            serializer_data.pop('id', None)
-            StateTaxLevyAppliedRule.objects.update_or_create(
-                case_id=case_id, defaults=serializer_data)
-        except StateTaxLevyConfig.DoesNotExist:
-            self.logger.warning(f"State tax levy config not found for state: {state}")
-
-    def _process_creditor_debt_rule(self, case_id: int, ee_id: str, 
-                                  state: str, pay_period: str) -> None:
-        """Process creditor debt rules."""
-        data = {
-            EE.EMPLOYEE_ID: ee_id,
-            CR.WITHHOLDING_BASIS: None,  # Will be updated by calculation
-            EE.STATE: state,
-            CR.WITHHOLDING_CAP: None,    # Will be updated by calculation
-            EE.PAY_PERIOD: pay_period
-        }
-        CreditorDebtAppliedRule.objects.update_or_create(
-            case_id=case_id, defaults=data)
 
     def _get_first_case_id(self, case_info: Dict) -> int:
         """Get the first case ID from garnishment data."""
@@ -210,59 +121,304 @@ class DatabaseManager:
                 first_case_id = first_case_data[0].get(EE.CASE_ID, 0)
         return first_case_id
 
-    def update_calculation_results(self, case_id: int, result: Dict) -> None:
-        """Update calculation results in the database."""
+    def _store_garnishment_results(self, case_info: Dict, ee_id: str, batch_id: str = None, result: Dict = None) -> None:
+        """Store calculation results in the GarnishmentResult table."""
         try:
-            # Update withholding basis and cap if present
-            withholding_basis = result.get(CR.WITHHOLDING_BASIS)
-            withholding_cap = result.get(CR.WITHHOLDING_CAP)
+            if not result:
+                self.logger.warning(f"No result data provided for employee {ee_id}")
+                return
+
+            # Extract basic information from result
+
+            calculation_status = result.get(GRF.CALCULATION_STATUS)
+            garnishment_details = result.get(GRF.GARNISHMENT_DETAILS, [])
+            calculation_metrics = result.get(GRF.CALCULATION_METRICS, {})
+            er_deductions = result.get(CR.ER_DEDUCTION, {})
+
+            # Extract calculation metrics
+            disposable_earnings = calculation_metrics.get(GRF.DISPOSABLE_EARNINGS)
+            total_mandatory_deductions = calculation_metrics.get(GRF.TOTAL_MANDATORY_DEDUCTIONS)
+            allowable_disposable_earnings = calculation_metrics.get(GRF.ALLOWABLE_DISPOSABLE_EARNINGS)
+
+            # Extract garnishment fees (from ER_DEDUCTION, which is shared across all garnishments)
+            garnishment_fees_note = er_deductions.get(GRF.GARNISHMENT_FEES, "No Provision")
             
-            if withholding_basis is not None or withholding_cap is not None:
-                # Update state tax levy rules if applicable
-                StateTaxLevyAppliedRule.objects.filter(case_id=case_id).update(
-                    **{k: v for k, v in {
-                        CR.WITHHOLDING_BASIS: withholding_basis,
-                        CR.WITHHOLDING_CAP: withholding_cap
-                    }.items() if v is not None}
-                )
+            # Handle garnishment_details as a list (new structure)
+            # For single garnishments: list with one item
+            # For multiple garnishments: list with multiple items
+            if not isinstance(garnishment_details, list):
+                self.logger.error(f"garnishment_details is not a list for employee {ee_id}")
+                return
+            
+            if not garnishment_details:
+                self.logger.warning(f"No garnishment details found for employee {ee_id}")
+                return
+            
+            # Process each garnishment detail in the list
+            for garnishment_detail in garnishment_details:
+                # Extract garnishment type from the detail (moved inside each item)
+                garnishment_type = garnishment_detail.get(GRF.GARNISHMENT_TYPE)
                 
-                # Update creditor debt rules if applicable
-                CreditorDebtAppliedRule.objects.filter(case_id=case_id).update(
-                    **{k: v for k, v in {
-                        CR.WITHHOLDING_BASIS: withholding_basis,
-                        CR.WITHHOLDING_CAP: withholding_cap
-                    }.items() if v is not None}
-                )
+                # Extract garnishment details from this item
+                withholding_amounts = garnishment_detail.get(GRF.WITHHOLDING_AMOUNTS, [])
+                arrear_amounts = garnishment_detail.get(GRF.ARREAR_AMOUNTS, [])
+                total_withheld = garnishment_detail.get(GRF.TOTAL_WITHHELD)
+                net_withholding = garnishment_detail.get(GRF.NET_WITHHOLDING)
                 
-        except Exception as e:
-            self.logger.error(f"Error updating calculation results for case {case_id}: {e}")
+                # Extract withholding basis, cap, and limit rule from this garnishment detail
+                withholding_basis = garnishment_detail.get(GRF.WITHHOLDING_BASIS)
+                withholding_cap = garnishment_detail.get(GRF.WITHHOLDING_CAP)
+                withholding_limit_rule = garnishment_detail.get(GRF.WITHHOLDING_LIMIT_RULE)
+                
+                # For multiple garnishments, each item may have its own garnishment_fees
+                # Otherwise use the shared one from er_deductions
+                detail_garnishment_fees = garnishment_detail.get(GRF.GARNISHMENT_FEES)
+                if detail_garnishment_fees is not None:
+                    garnishment_fees_note = detail_garnishment_fees
 
-    def get_employee_batch_data(self, ee_id: str) -> Dict:
-        """Get employee batch data by employee ID."""
+                # Get payroll data for gross_pay and net_pay
+                gross_pay = case_info.get(CA.GROSS_PAY)
+                net_pay = case_info.get(CA.NET_PAY)
+
+                # Look up EmployeeDetail by ee_id
+                try:
+                    employee = EmployeeDetail.objects.get(ee_id=ee_id)
+                except EmployeeDetail.DoesNotExist:
+                    self.logger.error(f"EmployeeDetail not found for ee_id: {ee_id}")
+                    continue
+                except EmployeeDetail.MultipleObjectsReturned:
+                    self.logger.warning(f"Multiple EmployeeDetail found for ee_id: {ee_id}, using first")
+                    employee = EmployeeDetail.objects.filter(ee_id=ee_id).first()
+
+                # Look up GarnishmentType by type
+                garnishment_type_obj = None
+                if garnishment_type:
+                    try:
+                        garnishment_type_obj = GarnishmentType.objects.get(type__iexact=garnishment_type)
+                    except GarnishmentType.DoesNotExist:
+                        self.logger.error(f"GarnishmentType not found for type: {garnishment_type}. Skipping this garnishment detail.")
+                        continue
+                    except GarnishmentType.MultipleObjectsReturned:
+                        self.logger.warning(f"Multiple GarnishmentType found for type: {garnishment_type}, using first")
+                        garnishment_type_obj = GarnishmentType.objects.filter(type__iexact=garnishment_type).first()
+                else:
+                    self.logger.error(f"No garnishment_type provided in garnishment detail. Skipping this detail.")
+                    continue
+
+                # Handle multiple withholding amounts - create one record per case_id
+                if withholding_amounts:
+                    # Group by case_id if available
+                    case_withholdings = {}
+                    for withholding in withholding_amounts:
+                        case_id = withholding.get(GRF.CASE_ID)
+                        amount = withholding.get(GRF.AMOUNT, 0)
+                        if isinstance(amount, str) and amount.lower() in [GRF.INSUFFICIENT_PAY, "insufficient_pay"]:
+                            amount = 0
+                        
+                        if case_id:
+                            if case_id not in case_withholdings:
+                                case_withholdings[case_id] = {
+                                    'withholding_amount': 0,
+                                    'withholding_arrear': 0
+                                }
+                            case_withholdings[case_id]['withholding_amount'] += float(amount) if amount else 0
+                        else:
+                            # If no case_id, use a default or create a single record
+                            default_case_id = "unknown"
+                            if default_case_id not in case_withholdings:
+                                case_withholdings[default_case_id] = {
+                                    'withholding_amount': 0,
+                                    'withholding_arrear': 0
+                                }
+                            case_withholdings[default_case_id]['withholding_amount'] += float(amount) if amount else 0
+
+                    # Process arrear amounts
+                    for arrear in arrear_amounts:
+                        case_id = arrear.get(GRF.CASE_ID)
+                        amount = arrear.get(GRF.AMOUNT, 0)
+                        if isinstance(amount, str) and amount.lower() in [GRF.INSUFFICIENT_PAY, "insufficient_pay"]:
+                            amount = 0
+                        
+                        if case_id and case_id in case_withholdings:
+                            case_withholdings[case_id]['withholding_arrear'] += float(amount) if amount else 0
+                        elif case_id:
+                            case_withholdings[case_id] = {
+                                'withholding_amount': 0,
+                                'withholding_arrear': float(amount) if amount else 0
+                            }
+
+                    # Create records for each case
+                    for case_id_str, amounts in case_withholdings.items():
+                        # Get ordered_amount and arrear_amount from case_info if available
+                        ordered_amount = None
+                        arrear_amount = None
+                        garnishment_order_obj = None
+                        
+                        # Look up GarnishmentOrder by case_id if it's not "unknown"
+                        if case_id_str != "unknown":
+                            try:
+                                garnishment_order_obj = GarnishmentOrder.objects.get(case_id=str(case_id_str))
+                                # Get ordered_amount and arrear_amount from the order if available
+                                ordered_amount = garnishment_order_obj.ordered_amount
+                                arrear_amount = garnishment_order_obj.arrear_amount
+                            except GarnishmentOrder.DoesNotExist:
+                                self.logger.warning(f"GarnishmentOrder not found for case_id: {case_id_str}. Skipping record creation.")
+                                continue
+                            except GarnishmentOrder.MultipleObjectsReturned:
+                                self.logger.warning(f"Multiple GarnishmentOrder found for case_id: {case_id_str}, using first")
+                                garnishment_order_obj = GarnishmentOrder.objects.filter(case_id=str(case_id_str)).first()
+                                if garnishment_order_obj:
+                                    ordered_amount = garnishment_order_obj.ordered_amount
+                                    arrear_amount = garnishment_order_obj.arrear_amount
+                                else:
+                                    self.logger.warning(f"Could not retrieve GarnishmentOrder for case_id: {case_id_str}. Skipping record creation.")
+                                    continue
+                        else:
+                            # If case_id is "unknown", we can't create a record since case_id is required
+                            self.logger.warning(f"case_id is 'unknown' for employee {ee_id}. Skipping record creation as case_id is required.")
+                            continue
+                        
+                        # If not found in order, try to extract from garnishment data
+                        if ordered_amount is None and case_info.get(EE.GARNISHMENT_DATA):
+                            for group in case_info.get(EE.GARNISHMENT_DATA, []):
+                                for case_data in group.get(GDK.DATA, []):
+                                    if str(case_data.get(EE.CASE_ID)) == str(case_id_str):
+                                        ordered_amount = case_data.get("ordered_amount", 0)
+                                        arrear_amount = case_data.get("arrear_amount", 0)
+                                        break
+
+                        result_data = {
+                            'batch_id': batch_id or 'unknown',
+                            'ee': employee,
+                            'case': garnishment_order_obj,
+                            'gross_pay': gross_pay,
+                            'net_pay': net_pay,
+                            'total_mandatory_deduction': total_mandatory_deductions,
+                            'disposable_earning': disposable_earnings,
+                            'allowable_disposable_earning': allowable_disposable_earnings,
+                            'ordered_amount': ordered_amount,
+                            'arrear_amount': arrear_amount,
+                            'withholding_amount': amounts.get('withholding_amount'),
+                            'withholding_arrear': amounts.get('withholding_arrear'),
+                            'garnishment_type': garnishment_type_obj,
+                            'withholding_limit_rule': withholding_limit_rule,
+                            'withholding_basis': withholding_basis,
+                            'withholding_cap': withholding_cap,
+                            'garnishment_fees_note': str(garnishment_fees_note) if garnishment_fees_note else None,
+                            'processed_at': timezone.now()
+                        }
+
+                        # Create new GarnishmentResult record
+                        GarnishmentResult.objects.create(**result_data)
+
+                else:
+                    # No withholding amounts - try to find a case_id from garnishment data
+                    # Since case_id is required, we need to find a GarnishmentOrder
+                    garnishment_order_obj = None
+                    ordered_amount = None
+                    arrear_amount = None
+                    
+                    # Try to get case_id from garnishment data
+                    if case_info.get(EE.GARNISHMENT_DATA):
+                        for group in case_info.get(EE.GARNISHMENT_DATA, []):
+                            for case_data in group.get(GDK.DATA, []):
+                                case_id_str = case_data.get(EE.CASE_ID)
+                                if case_id_str:
+                                    try:
+                                        garnishment_order_obj = GarnishmentOrder.objects.get(case_id=str(case_id_str))
+                                        ordered_amount = garnishment_order_obj.ordered_amount
+                                        arrear_amount = garnishment_order_obj.arrear_amount
+                                        break
+                                    except GarnishmentOrder.DoesNotExist:
+                                        continue
+                                    except GarnishmentOrder.MultipleObjectsReturned:
+                                        garnishment_order_obj = GarnishmentOrder.objects.filter(case_id=str(case_id_str)).first()
+                                        if garnishment_order_obj:
+                                            ordered_amount = garnishment_order_obj.ordered_amount
+                                            arrear_amount = garnishment_order_obj.arrear_amount
+                                        break
+                    
+                    if not garnishment_order_obj:
+                        self.logger.warning(f"No GarnishmentOrder found for employee {ee_id} with no withholding amounts for garnishment type {garnishment_type}. Skipping this garnishment detail.")
+                        continue
+                    
+                    # Create a single record with aggregated data
+                    result_data = {
+                        'batch_id': batch_id or 'unknown',
+                        'ee': employee,
+                        'case': garnishment_order_obj,
+                        'gross_pay': gross_pay,
+                        'net_pay': net_pay,
+                        'total_mandatory_deduction': total_mandatory_deductions,
+                        'disposable_earning': disposable_earnings,
+                        'allowable_disposable_earning': allowable_disposable_earnings,
+                        'withholding_amount': total_withheld,
+                        'withholding_arrear': sum(float(a.get(GRF.AMOUNT, 0)) for a in arrear_amounts if not isinstance(a.get(GRF.AMOUNT), str)),
+                        'garnishment_type': garnishment_type_obj,
+                        'withholding_limit_rule': withholding_limit_rule,
+                        'withholding_basis': withholding_basis,
+                        'withholding_cap': withholding_cap,
+                        'garnishment_fees_note': str(garnishment_fees_note) if garnishment_fees_note else None,
+                        'processed_at': timezone.now()
+                    }
+
+                    # Create new GarnishmentResult record
+                    GarnishmentResult.objects.create(**result_data)
+
+
+        except Exception as e:
+            self.logger.error(f"Error storing garnishment results for employee {ee_id}: {e}", exc_info=True)
+
+    def update_calculation_results(self, case_id: int, result: Dict, batch_id: str = None, case_info: Dict = None) -> None:
+        """
+        Update calculation results in the database.
+        This is a public method that extracts case_info and calls _store_garnishment_results.
+        
+        Args:
+            case_id: The case ID
+            result: The calculation result dictionary
+            batch_id: Optional batch ID (will be extracted from payroll data if not provided)
+            case_info: Optional case info dictionary (will be built from payroll data if not provided)
+        """
         try:
-            employee = EmployeeBatchData.objects.get(ee_id=ee_id)
-            return {
-                'ee_id': employee.ee_id,
-                'work_state': employee.work_state,
-                'pay_period': employee.pay_period,
-                'filing_status': employee.filing_status,
-                'age': employee.age,
-                'is_blind': employee.is_blind,
-                'is_spouse_blind': employee.is_spouse_blind,
-                'spouse_age': employee.spouse_age,
-                'support_second_family': employee.support_second_family,
-                'no_of_student_default_loan': employee.no_of_student_default_loan,
-                'arrears_greater_than_12_weeks': employee.arrears_greater_than_12_weeks,
-                'no_of_dependent_exemption': employee.no_of_dependent_exemption,
-            }
-        except EmployeeBatchData.DoesNotExist:
-            return {}
-        except Exception as e:
-            self.logger.error(f"Error getting employee batch data for {ee_id}: {e}")
-            return {}
+            # Extract employee_id from result
+            ee_id = result.get(GRF.EMPLOYEE_ID)
+            if not ee_id:
+                self.logger.warning(f"No employee_id found in result for case {case_id}")
+                return
 
-    def get_payroll_batch_data(self, case_id: int) -> Dict:
-        """Get payroll batch data by case ID."""
+            # If case_info is not provided, try to build it from PayrollBatchData
+            if not case_info:
+                try:
+                    payroll_data = PayrollBatchData.objects.get(case_id=case_id)
+                    if not batch_id:
+                        batch_id = getattr(payroll_data, 'batch_id', None) if hasattr(payroll_data, 'batch_id') else None
+                    # Build a minimal case_info dict with necessary fields
+                    case_info = {
+                        EE.EMPLOYEE_ID: payroll_data.ee_id,
+                        CA.GROSS_PAY: payroll_data.gross_pay,
+                        CA.NET_PAY: payroll_data.net_pay,
+                        EE.GARNISHMENT_DATA: []  # Will be populated if needed
+                    }
+                except PayrollBatchData.DoesNotExist:
+                    # If payroll data doesn't exist, create minimal case_info
+                    case_info = {
+                        EE.EMPLOYEE_ID: ee_id,
+                        CA.GROSS_PAY: result.get(GRF.CALCULATION_METRICS, {}).get('gross_pay'),
+                        CA.NET_PAY: None,
+                        EE.GARNISHMENT_DATA: []
+                    }
+                    if not batch_id:
+                        batch_id = None
+
+            # Call the internal method to store results
+            self._store_garnishment_results(case_info, ee_id, batch_id, result)
+
+        except Exception as e:
+            self.logger.error(f"Error updating calculation results for case {case_id}: {e}", exc_info=True)
+
+    def _store_payroll_batch_data(self, case_id: int) -> Dict:
+        """Store payroll batch data by case ID."""
         try:
             payroll = PayrollBatchData.objects.get(case_id=case_id)
             return {
@@ -292,23 +448,4 @@ class DatabaseManager:
             self.logger.error(f"Error getting payroll batch data for case {case_id}: {e}")
             return {}
 
-    def get_garnishment_batch_data(self, case_id: int) -> Dict:
-        """Get garnishment batch data by case ID."""
-        try:
-            garnishment = GarnishmentBatchData.objects.get(case_id=case_id)
-            return {
-                'case_id': garnishment.case_id,
-                'garnishment_type': garnishment.garnishment_type,
-                'ordered_amount': garnishment.ordered_amount,
-                'arrear_amount': garnishment.arrear_amount,
-                'current_medical_support': garnishment.current_medical_support,
-                'past_due_medical_support': garnishment.past_due_medical_support,
-                'current_spousal_support': garnishment.current_spousal_support,
-                'past_due_spousal_support': garnishment.past_due_spousal_support,
-                'ee_id': garnishment.ee_id,
-            }
-        except GarnishmentBatchData.DoesNotExist:
-            return {}
-        except Exception as e:
-            self.logger.error(f"Error getting garnishment batch data for case {case_id}: {e}")
-            return {}
+

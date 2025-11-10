@@ -75,7 +75,7 @@ class ConfigLoader:
         """Load state tax levy configuration data."""
         try:
             today = date.today()
-            queryset = StateTaxLevyExemptAmtConfig.objects.select_related('state').filter(
+            queryset = StateTaxLevyExemptAmtConfig.objects.select_related('state','pay_period').filter(
                 is_active=True
             )
             serializer = StateTaxLevyExemptAmtConfigSerializers(queryset, many=True)

@@ -2,7 +2,7 @@
 Service to fetch and map employee, order, and SDU data for letter templates.
 """
 from django.db.models import Q
-from user_app.models import EmployeeDetail, GarnishmentOrder, SDU, Client
+from user_app.models import EmployeeDetail, GarnishmentOrder, PayeeDetails, Client
 from datetime import datetime
 
 
@@ -217,7 +217,7 @@ class LetterTemplateDataService:
             order = orders.first()
         
         # Fetch SDU data
-        sdu = SDU.objects.filter(
+        sdu = PayeeDetails.objects.filter(
             case_id=order,
             is_active=True
         ).select_related('state').first()

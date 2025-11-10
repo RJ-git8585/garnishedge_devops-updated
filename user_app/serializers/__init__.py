@@ -7,5 +7,5 @@ from .shared_serializers import *
 from .payroll_serializers import *
 from .client_serializers import *
 from .peo_serializers import *
-from .sdu_serializers import *
+from .payee_serializers import *
 from .letter_template_serializers import *

@@ -63,6 +63,7 @@ class BaseService:
         """
         Determine if a case contains multiple garnishment types.
         Returns True if more than one garnishment type is present.
+
         """
         garnishment_data = case_data.get(EE.GARNISHMENT_DATA, [])
         return len(garnishment_data) > 1
@@ -71,6 +72,7 @@ class BaseService:
         """
         Extract garnishment types for a specific case.
         Used for multi-garnishment case processing.
+
         """
         garnishment_types = set()
         garnishment_data = case_data.get(EE.GARNISHMENT_DATA, [])
@@ -87,6 +89,7 @@ class BaseService:
         """
         Filter configuration data to include only relevant types for a specific case.
         This is particularly useful for multi-garnishment cases.
+        
         """
         filtered_config = {}
         

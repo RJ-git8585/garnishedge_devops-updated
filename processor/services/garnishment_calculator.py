@@ -114,15 +114,15 @@ class GarnishmentCalculator:
                             GRF.CASE_ID: case_id
                         })
                     
-                    result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
-                    result[GRF.GARNISHMENT_DETAILS][GRF.ARREAR_AMOUNTS] = arrear_amounts
+                    result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
+                    result[GRF.GARNISHMENT_DETAILS][0][GRF.ARREAR_AMOUNTS] = arrear_amounts
                 else:
                     # Fallback
-                    result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                    result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                         {GRF.AMOUNT: GRF.INSUFFICIENT_PAY, GRF.TYPE: GRF.CURRENT_SUPPORT} 
                         for _ in child_support_data
                     ]
-                    result[GRF.GARNISHMENT_DETAILS][GRF.ARREAR_AMOUNTS] = [
+                    result[GRF.GARNISHMENT_DETAILS][0][GRF.ARREAR_AMOUNTS] = [
                     {GRF.AMOUNT: GRF.INSUFFICIENT_PAY, GRF.TYPE: GRF.ARREAR} 
                     for _ in arrear_amount_data
                     ]
@@ -189,11 +189,11 @@ class GarnishmentCalculator:
                         for idx, amt in enumerate(arrear_amount_data.values())
                     ]
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
-                result[GRF.GARNISHMENT_DETAILS][GRF.ARREAR_AMOUNTS] = arrear_amounts
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.ARREAR_AMOUNTS] = arrear_amounts
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_withhold_amt, 2)
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = round(total_withhold_amt )
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = round(total_withhold_amt, 2)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = round(total_withhold_amt )
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(de, 2)
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(ade, 2)
@@ -235,13 +235,13 @@ class GarnishmentCalculator:
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
             else:
                 withholding_amount = round(calculation_result.get("withholding_amt", 0), 2)
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.FEDERAL_TAX_LEVY}
                 ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = withholding_amount
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = CM.NA
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = CM.NA
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = CM.NA
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = CM.NA
             
             return result
             
@@ -334,14 +334,14 @@ class GarnishmentCalculator:
                     work_state, garnishment_type, pay_period, total_student_loan_amt, garn_fees)
                 garnishment_fees_amount = garnishment_fees
                 
-                standardized_result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_student_loan_amt, 2)
+                standardized_result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = round(total_student_loan_amt, 2)
                 standardized_result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
 
-            standardized_result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
+            standardized_result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
             standardized_result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(result[CRK.DISPOSABLE_EARNING], 2)
             standardized_result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-            standardized_result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = CM.NA
-            standardized_result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = CM.NA
+            standardized_result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = CM.NA
+            standardized_result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = CM.NA
             
             return standardized_result
         except Exception as e:
@@ -364,6 +364,8 @@ class GarnishmentCalculator:
             work_state = record.get(EE.WORK_STATE)
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
+            data = garnishment_data[0].get(GDK.DATA, [])
+            case_id = data[0].get("case_id") if data else None
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
 
@@ -385,22 +387,25 @@ class GarnishmentCalculator:
             if isinstance(calculation_result, dict) and calculation_result.get(CR.WITHHOLDING_AMT, 0) <= 0:
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
+                    {GRF.AMOUNT: EM.INSUFFICIENT_PAY, GRF.CASE_ID: case_id}
+                ]
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result.get(CR.DISPOSABLE_EARNING, 0), 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
             else:
                 withholding_amount = round(calculation_result[CR.WITHHOLDING_AMT], 2)
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
-                    {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.STATE_TAX_LEVY}
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
+                    {GRF.AMOUNT: withholding_amount, GRF.CASE_ID: case_id}
                 ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = withholding_amount
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
             
@@ -451,29 +456,29 @@ class GarnishmentCalculator:
             if calculation_result[CR.WITHHOLDING_AMT] <= 0:
                 
                 result[GRF.CALCULATION_STATUS] = GRF.INSUFFICIENT_PAY
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: EM.INSUFFICIENT_PAY, GRF.CASE_ID: case_id}
                 ]
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = EM.GARNISHMENT_FEES_INSUFFICIENT_PAY
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
             else:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.CASE_ID: case_id}
                 ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = withholding_amount
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.CONDITION_VALUES] = calculation_result.get(GRF.CONDITION_VALUES, {})
 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
 
@@ -527,16 +532,16 @@ class GarnishmentCalculator:
             else:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: GRF.BANKRUPTCY}
                 ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = withholding_amount
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
             
@@ -602,16 +607,16 @@ class GarnishmentCalculator:
             else:
                 withholding_amount = max(round(calculation_result[CR.WITHHOLDING_AMT], 2), 0)
                 
-                result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = [
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = [
                     {GRF.AMOUNT: withholding_amount, GRF.TYPE: garnishment_type}
                 ]
-                result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = withholding_amount
-                result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = withholding_amount
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = withholding_amount
                 
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(calculation_result[CR.DISPOSABLE_EARNING], 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(total_mandatory_deduction_val, 2)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
-                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_BASIS] = calculation_result.get(CR.WITHHOLDING_BASIS, CM.NA)
+                result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_CAP] = calculation_result.get(CR.WITHHOLDING_CAP, CM.NA)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
             
@@ -661,8 +666,8 @@ class GarnishmentCalculator:
             result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = calculations.get('total_withholding_amount', 0.0)
             
             # Update garnishment details
-            result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = calculations.get('total_withholding_amount', 0.0)
-            result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = calculations.get('total_withholding_amount', 0.0)
+            result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = calculations.get('total_withholding_amount', 0.0)
+            result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = calculations.get('total_withholding_amount', 0.0)
             
             # Map withholding amounts from deduction details
             withholding_amounts = []
@@ -686,8 +691,8 @@ class GarnishmentCalculator:
                             GRF.DEDUCTION_TYPE: deduction_type
                         })
             
-            result[GRF.GARNISHMENT_DETAILS][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
-            result[GRF.GARNISHMENT_DETAILS][GRF.ARREAR_AMOUNTS] = arrear_amounts
+            result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
+            result[GRF.GARNISHMENT_DETAILS][0][GRF.ARREAR_AMOUNTS] = arrear_amounts
             
             # Update garnishment fees
             result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
@@ -710,7 +715,6 @@ class GarnishmentCalculator:
         try:
             # Create standardized result for multiple garnishment
             result = self.create_standardized_result("multiple_garnishment", record)
-            result["garnishment_types"] = []
             
             # Prepare record for multiple garnishment calculation
             # The MultipleGarnishmentPriorityOrder expects garnishment_orders to be in the record
@@ -757,6 +761,9 @@ class GarnishmentCalculator:
                         result_amounts = type_result.get(CRK.RESULT_AMT, {})
                         arrear_amounts = type_result.get(CRK.ARREAR_AMT, {})
                         
+                        # Initialize separate lists for withholding and arrear amounts
+                        type_arrear_amounts = []
+                        
                         # Get garnishment data from input to extract case IDs
                         garnishment_data = record.get(EE.GARNISHMENT_DATA, [])
                         child_support_garnishment = None
@@ -773,6 +780,7 @@ class GarnishmentCalculator:
                             arrear_amounts_list = list(arrear_amounts.values())
                             total_withheld_amount = sum(result_amounts_list) + sum(arrear_amounts_list)
                             
+                            # Add current support amounts to withholding_amounts
                             for i, (key, amount) in enumerate(result_amounts.items()):
                                 case_id = cases[i].get(EE.CASE_ID, f"{GRF.CASE_PREFIX}{i}") if i < len(cases) else f"{GRF.CASE_PREFIX}{i}"
                                 type_withholding_amounts.append({
@@ -782,9 +790,10 @@ class GarnishmentCalculator:
                                 })
                                 type_total_withheld += amount
                             
+                            # Add arrear amounts to separate arrear_amounts list
                             for i, (key, amount) in enumerate(arrear_amounts.items()):
                                 case_id = cases[i].get(EE.CASE_ID, f"{GRF.CASE_PREFIX}{i}") if i < len(cases) else f"{GRF.CASE_PREFIX}{i}"
-                                type_withholding_amounts.append({
+                                type_arrear_amounts.append({
                                     GRF.AMOUNT: round(amount, 2),
                                     GRF.TYPE: GRF.ARREAR,
                                     GRF.CASE_ID: case_id
@@ -801,7 +810,7 @@ class GarnishmentCalculator:
                                 type_total_withheld += amount
                             
                             for i, (key, amount) in enumerate(arrear_amounts.items()):
-                                type_withholding_amounts.append({
+                                type_arrear_amounts.append({
                                     GRF.AMOUNT: round(amount, 2),
                                     GRF.TYPE: GRF.ARREAR,
                                     GRF.CASE_INDEX: i
@@ -815,17 +824,23 @@ class GarnishmentCalculator:
                         child_support_result = {
                             GRF.GARNISHMENT_TYPE: garnishment_type,
                             GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
+                            GRF.ARREAR_AMOUNTS: type_arrear_amounts,
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
+                            GRF.NET_WITHHOLDING: round(type_total_withheld),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             GRF.GARNISHMENT_FEES : garnishment_fees_amount,
-                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0)
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                            GRF.WITHHOLDING_BASIS: CM.NA,
+                            GRF.WITHHOLDING_CAP: CM.NA,
+                            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                            GRF.CONDITION_VALUES: {}
                         }
                         
                         # Add error details if present
                         if error_details is not None:
                             child_support_result["error_details"] = error_details
                             
-                        result[GRF.GARNISHMENT_TYPES].append(child_support_result)
+                        result[GRF.GARNISHMENT_DETAILS].append(child_support_result)
                         total_withheld += type_total_withheld
                         continue
                     
@@ -874,14 +889,18 @@ class GarnishmentCalculator:
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             GRF.GARNISHMENT_FEES : garnishment_fees_amount,
-                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0)
+                            CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                            GRF.WITHHOLDING_BASIS: CM.NA,
+                            GRF.WITHHOLDING_CAP: CM.NA,
+                            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                            GRF.CONDITION_VALUES: {}
                         }
                         
                         # Add error details if present
                         if error_details is not None:
                             student_loan_result["error_details"] = error_details
                             
-                        result[GRF.GARNISHMENT_TYPES].append(student_loan_result)
+                        result[GRF.GARNISHMENT_DETAILS].append(student_loan_result)
                         total_withheld += type_total_withheld
                         continue
                     
@@ -909,6 +928,10 @@ class GarnishmentCalculator:
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             GRF.GARNISHMENT_FEES : garnishment_fees_amount,
                             CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
+                            GRF.WITHHOLDING_BASIS: CM.NA,
+                            GRF.WITHHOLDING_CAP: CM.NA,
+                            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                            GRF.CONDITION_VALUES: {},
 
                             # Preserve all detailed calculation information
                             "success": type_result.get("success", True),
@@ -923,7 +946,7 @@ class GarnishmentCalculator:
                             detailed_result["error_details"] = error_details
                         
                         # Add garnishment type to result with detailed information
-                        result[GRF.GARNISHMENT_TYPES].append(detailed_result)
+                        result[GRF.GARNISHMENT_DETAILS].append(detailed_result)
                         total_withheld += type_total_withheld
                         continue  # Skip the generic processing below
                     
@@ -955,8 +978,10 @@ class GarnishmentCalculator:
                             GRF.WITHHOLDING_AMOUNTS: type_withholding_amounts,
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
-                            CR.WITHHOLDING_BASIS: type_withholding_basis,
-                            CR.WITHHOLDING_CAP: type_withholding_cap,
+                            GRF.WITHHOLDING_BASIS: type_withholding_basis,
+                            GRF.WITHHOLDING_CAP: type_withholding_cap,
+                            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                            GRF.CONDITION_VALUES: type_result.get(GRF.CONDITION_VALUES, {}),
                             CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
                             GRF.GARNISHMENT_FEES: garnishment_fees_amount
                         }
@@ -965,7 +990,7 @@ class GarnishmentCalculator:
                         if error_details is not None:
                             garnishment_result["error_details"] = error_details
                             
-                        result[GRF.GARNISHMENT_TYPES].append(garnishment_result)
+                        result[GRF.GARNISHMENT_DETAILS].append(garnishment_result)
 
                     else:
                         garnishment_fees_amount = self.fee_calculator.get_rounded_garnishment_fee(
@@ -978,14 +1003,18 @@ class GarnishmentCalculator:
                             GRF.TOTAL_WITHHELD: round(type_total_withheld, 2),
                             GRF.STATUS: type_result.get(GRF.CALCULATION_STATUS, 'processed'),
                             CRK.AMOUNT_LEFT_FOR_OTHER_GARN: type_result.get(CRK.AMOUNT_LEFT_FOR_OTHER_GARN, 0),
-                            GRF.GARNISHMENT_FEES: garnishment_fees_amount
+                            GRF.GARNISHMENT_FEES: garnishment_fees_amount,
+                            GRF.WITHHOLDING_BASIS: CM.NA,
+                            GRF.WITHHOLDING_CAP: CM.NA,
+                            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+                            GRF.CONDITION_VALUES: {}
                         }
                         
                         # Add error details if present
                         if error_details is not None:
                             garnishment_result["error_details"] = error_details
                             
-                        result[GRF.GARNISHMENT_TYPES].append(garnishment_result)
+                        result[GRF.GARNISHMENT_DETAILS].append(garnishment_result)
                         
                     
                     total_withheld += type_total_withheld
@@ -996,10 +1025,8 @@ class GarnishmentCalculator:
             # garnishment_fees_amount = self.get_rounded_garnishment_fee(
             #         work_state, record, calculation_result[CR.WITHHOLDING_AMT])
             
-            # Update garnishment details
-            result[GRF.GARNISHMENT_DETAILS][GRF.TOTAL_WITHHELD] = round(total_withheld, 2)
-            result[GRF.GARNISHMENT_DETAILS][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
-            result[GRF.GARNISHMENT_DETAILS][GRF.NET_WITHHOLDING] = total_withheld
+            # Note: Aggregate totals are not stored in GARNISHMENT_DETAILS list
+            # Each item in the list already contains its own TOTAL_WITHHELD, GARNISHMENT_FEES, etc.
             
             # Update calculation metrics
             if GT.CHILD_SUPPORT in calculation_result:
@@ -1027,26 +1054,33 @@ class GarnishmentCalculator:
         """
         Creates a standardized result structure for garnishment calculations.
         This ensures consistency across all garnishment types.
+        For multiple garnishments, creates an empty list. For single garnishments, creates a list with one item.
         """
-        result = {
+        # For multiple garnishments, create an empty list. For single garnishments, create a list with one item.
+        is_multiple = garnishment_type == "multiple_garnishment"
+        
+        garnishment_details = [] if is_multiple else [{
             GRF.GARNISHMENT_TYPE: garnishment_type,
+            GRF.WITHHOLDING_AMOUNTS: [],
+            GRF.ARREAR_AMOUNTS: [],
+            GRF.TOTAL_WITHHELD: 0.0,
+            GRF.NET_WITHHOLDING: 0.0,
+            GRF.WITHHOLDING_BASIS: CM.NA,
+            GRF.WITHHOLDING_CAP: CM.NA,
+            GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER,
+            GRF.CONDITION_VALUES: {}
+        }]
+        
+        result = {
             GRF.EMPLOYEE_ID: record.get(EE.EMPLOYEE_ID),
             GRF.WORK_STATE: record.get(EE.WORK_STATE),
+            GRF.IS_MULTIPLE_GARNISHMENT_TYPE:record.get(GRF.IS_MULTIPLE_GARNISHMENT_TYPE),
             GRF.CALCULATION_STATUS: GRF.SUCCESS if not error_message else GRF.ERROR,
-            GRF.GARNISHMENT_DETAILS: {
-                GRF.WITHHOLDING_AMOUNTS: [],
-                GRF.ARREAR_AMOUNTS: [],
-                GRF.TOTAL_WITHHELD: 0.0,
-                GRF.NET_WITHHOLDING: 0.0
-            },
+            GRF.GARNISHMENT_DETAILS: garnishment_details,
             GRF.CALCULATION_METRICS: {
                 GRF.DISPOSABLE_EARNINGS: 0.0,
                 GRF.TOTAL_MANDATORY_DEDUCTIONS: 0.0,
-                GRF.ALLOWABLE_DISPOSABLE_EARNINGS: 0.0,
-
-                GRF.WITHHOLDING_BASIS: CM.NA,
-                GRF.WITHHOLDING_CAP: CM.NA,
-                GRF.WITHHOLDING_LIMIT_RULE: CommonConstants.WITHHOLDING_RULE_PLACEHOLDER
+                GRF.ALLOWABLE_DISPOSABLE_EARNINGS: 0.0
             },
             CR.ER_DEDUCTION: {
                 GRF.GARNISHMENT_FEES: 0.0

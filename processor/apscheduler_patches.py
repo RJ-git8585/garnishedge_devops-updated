@@ -32,3 +32,6 @@ def ensure_custom_job_execution_fields():
         logger.debug("Added custom field '%s' to DjangoJobExecution at runtime", field_name)
 
 
+
+
+

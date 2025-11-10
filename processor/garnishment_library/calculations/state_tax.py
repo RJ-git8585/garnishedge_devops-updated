@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .child_support import  ChildSupportHelper
 from processor.garnishment_library.utils import StateAbbreviations
+from processor.serializers import ThresholdAmountSerializer
 from .creditor_debt import StateWiseCreditorDebtFormulas,CreditorDebtHelper
 from user_app.constants import (
     StateList,
@@ -15,12 +16,12 @@ from user_app.constants import (
     ExemptConfigFields as EC,
     CalculationMessages as CM,
     CommonConstants as CC,
-    GarnishmentConstants as GC
+    GarnishmentConstants as GC,
+    GarnishmentTypeFields as GT
 
 )
 import  traceback as t
 from ..utils.response import UtilityClass, CalculationResponse
-from processor.serializers.shared_serializers import ThresholdAmountSerializer
 logger = logging.getLogger(__name__)
 
 
@@ -56,15 +57,15 @@ class StateTaxViewHelper:
         try:
             state = state.strip()
             obj = (
-            StateTaxLevyConfig.objects
-            .select_related("state")
-            .filter(state__state__iexact=state)
-            .first()
-        )
-            if obj.exists():
+                StateTaxLevyConfig.objects
+                .select_related("state")
+                .filter(state__state__iexact=state)
+                .first()
+            )
+            if obj:
                 return {
-                    "wl_percent": obj[0].withholding_limit,
-                    "deduct_from": obj[0].deduction_basis
+                    "wl_percent": obj.withholding_limit,
+                    "deduct_from": obj.deduction_basis
                 }
             return CC.NOT_FOUND
         except Exception as e:
@@ -91,8 +92,14 @@ class StateTaxViewHelper:
         General logic for states using lower/upper threshold and percent.
         """
         try:
+            if config_data is None:
+                logger.error("config_data is None in apply_general_debt_logic")
+                return UtilityClass.build_response(0, disposable_earning, "ERROR", "Configuration data is missing")
+            
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
+
+            print("config_data",config_data)
 
             # Prepare condition values
             condition_values = {
@@ -133,6 +140,9 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
 
     def cal_massachusetts(self, disposable_earning, gross_pay, config_data, percent=GC.MASSACHUSETTS_PERCENT):
         try:
+            if config_data is None:
+                logger.error("config_data is None in cal_massachusetts")
+                return UtilityClass.build_response(0, disposable_earning, "ERROR", "Configuration data is missing")
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
             
             # Prepare condition values
@@ -165,19 +175,30 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
     def cal_arizona(self, disposable_earning,garn_start_date,pay_period,state):
         try:
             filed_start =CreditorDebtHelper()._gar_start_date_check(garn_start_date)
-            data = ThresholdAmount.objects.filter(
-                                    config__pay_period__name__iexact=pay_period,
-                                    config__state__state__iexact=state,config__start_gt_5dec24=filed_start
+            data = ThresholdAmount.objects.select_related(
+                'config', 'config__state', 'config__pay_period', 'config__garnishment_type'
+            ).filter(
+                config__pay_period__name__iexact=pay_period,
+                config__state__state__iexact=state, 
+                config__garnishment_type__type__iexact=GT.STATE_TAX_LEVY
+            )
+            serializer=ThresholdAmountSerializer(data, many=True)
+            # Convert queryset to list of dictionaries manually
 
-                                )
-            serializer = ThresholdAmountSerializer(
-                    data, many=True)
-            return StateWiseCreditorDebtFormulas().cal_arizona(disposable_earning,garn_start_date, serializer.data[0])
+            config_data=CreditorDebtHelper()._exempt_amt_config_data( serializer.data, state, pay_period, garn_start_date, 
+                            is_consumer_debt=None, non_consumer_debt=None, 
+                            home_state=None, ftb_type=None)
+            return StateWiseCreditorDebtFormulas().cal_arizona(disposable_earning,garn_start_date, config_data)
         except Exception as e:
+            import traceback as t
+            print("Exception in cal_arizona: ",t.print_exc())
             return UtilityClass.build_response(0, disposable_earning, "ERROR", str(e))
 
     def cal_minnesota(self, disposable_earning, config_data, percent=GC.DEFAULT_PERCENT):
         try:
+            if config_data is None:
+                logger.error("config_data is None in cal_minnesota")
+                return UtilityClass.build_response(0, disposable_earning, "ERROR", "Configuration data is missing")
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
             
             # Prepare condition values
@@ -209,6 +230,9 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
     def cal_newyork(self, disposable_earning, gross_pay, config_data,
                     percent1=GC.NEWYORK_PERCENT1, percent2=GC.NEWYORK_PERCENT2):
         try:
+            if config_data is None:
+                logger.error("config_data is None in cal_newyork")
+                return UtilityClass.build_response(0, disposable_earning, "ERROR", "Configuration data is missing")
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
             
             # Prepare condition values
@@ -242,6 +266,9 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
 
     def cal_west_virginia(self, no_of_exemption_including_self, net_pay, config_data):
         try:
+            if config_data is None:
+                logger.error("config_data is None in cal_west_virginia")
+                return UtilityClass.build_response(0, net_pay, "ERROR", "Configuration data is missing")
             exempt_amt = GC.EXEMPT_AMOUNT
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
 
@@ -274,6 +301,9 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
 
     def cal_new_mexico(self, disposable_earning, config_data, percent=GC.DEFAULT_PERCENT):
         try:
+            if config_data is None:
+                logger.error("config_data is None in cal_new_mexico")
+                return UtilityClass.build_response(0, disposable_earning, "ERROR", "Configuration data is missing")
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
             
             # Prepare condition values
@@ -333,14 +363,13 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             gross_pay = record.get(EE.GROSS_PAY, 0)
             wages = record.get(CF.WAGES, 0)
             commission_and_bonus = record.get(CF.COMMISSION_AND_BONUS, 0)
-            pay_period = record.get(EE.PAY_PERIOD.lower()).strip().lower()
+            pay_period = record.get(EE.PAY_PERIOD, "").strip().lower()
             non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PT.PAYROLL_TAXES, {})
             cs_helper = ChildSupportHelper(state)
             gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
             disposable_earning = cs_helper.calculate_de(gross_pay, mandatory_deductions)
-            pay_period = record.get(EE.PAY_PERIOD, "").lower()
 
             payroll_taxes = record.get(PT.PAYROLL_TAXES, {})
             no_of_exemption_including_self = record.get(
@@ -350,20 +379,73 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
                 CF.MEDICAL_INSURANCE, 0)
             garn_start_date = record.get(EE.GARN_START_DATE)
 
+            print("config_data",config_data)
+
             # Helper to get exempt amount config for state and pay period
             def get_exempt_amt_config_data(config_data, state, pay_period):
                 try:
-                    return next(
-                        i for i in config_data
-                        if i[EE.STATE].lower() == state.lower() and i[EE.PAY_PERIOD].lower() == pay_period.lower()
-                    )
-                except StopIteration:
+                    # Normalize inputs
+                    state_normalized = state.strip().lower() if state else ""
+                    pay_period_normalized = pay_period.strip().lower() if pay_period else ""
+                    # Debug: print first few items to see structure
+                    if config_data:
+                        print(f"First config item keys: {list(config_data[0].keys()) if config_data[0] else 'empty'}")
+                        if len(config_data) > 0:
+                            print(f"First config item state: '{config_data[0].get(EE.STATE, 'KEY_NOT_FOUND')}', pay_period: '{config_data[0].get(EE.PAY_PERIOD, 'KEY_NOT_FOUND')}'")
+                    
+                    # Search for matching config - compare state and pay_period (both as normalized strings)
+                    for i in config_data:
+                        if not isinstance(i, dict):
+                            continue
+                        try:
+                            config_state = i.get(EE.STATE, "").strip().lower() if i.get(EE.STATE) else ""
+                            config_pay_period = i.get(EE.PAY_PERIOD, "").strip().lower() if i.get(EE.PAY_PERIOD) else ""
+                            
+                            if config_state == state_normalized and config_pay_period == pay_period_normalized:
+                                print(f"Match found! state: '{config_state}', pay_period: '{config_pay_period}'")
+                                return i
+                        except (KeyError, AttributeError) as e:
+                            logger.warning(f"Error accessing config item: {e}")
+                            continue
+                    
+                    # No match found - log available states and pay periods for debugging
+                    available_states = set()
+                    available_pay_periods = set()
+                    for i in config_data:
+                        if isinstance(i, dict):
+                            if EE.STATE in i:
+                                available_states.add(i[EE.STATE])
+                            if EE.PAY_PERIOD in i:
+                                available_pay_periods.add(i[EE.PAY_PERIOD])
+                    
                     logger.error(
-                        f"Exempt amount config not found for state '{state}' and pay period '{pay_period}'")
+                        f"Exempt amount config not found for state '{state_normalized}' and pay period '{pay_period_normalized}'. "
+                        f"Available states: {available_states}, Available pay periods: {available_pay_periods}")
+                    return None
+                except Exception as e:
+                    logger.error(f"Error in get_exempt_amt_config_data: {e}", exc_info=True)
                     return None
 
             exempt_amt_config = get_exempt_amt_config_data(
                 config_data, state, pay_period)
+            
+
+            # Check if exempt_amt_config is required but not found
+            states_requiring_config = [
+                StateList.IDAHO, StateList.GEORGIA, StateList.COLORADO,
+                StateList.MASSACHUSETTS, StateList.MAINE, StateList.INDIANA,
+                StateList.MINNESOTA, StateList.NEW_YORK, StateList.VERMONT,
+                StateList.IOWA, StateList.WEST_VIRGINIA, StateList.NEW_MEXICO
+            ]
+            
+            if exempt_amt_config is None and state.lower() in [s.lower() for s in states_requiring_config]:
+                logger.error(
+                    f"Exempt amount config is required for state '{state}' and pay period '{pay_period}' but was not found")
+                return UtilityClass.build_response(
+                    0, disposable_earning, "ERROR",
+                    f"Configuration not found for state '{state}' and pay period '{pay_period}'",
+                    {"state": state, "pay_period": pay_period}
+                )
 
             # Helper to get percent for state
             def percent():
@@ -429,6 +511,8 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             return CC.NOT_FOUND
 
         except Exception as e:
+            import traceback as t
+            print("Exception in state tax levy calculation: ",t.print_exc())
 
             logger.error(f"Error in state tax levy calculation: {e}")
             return Response(

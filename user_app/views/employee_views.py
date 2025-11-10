@@ -94,6 +94,16 @@ class EmployeeImportView(APIView):
             except Exception:
                 pass
             
+            # Convert name fields to strings to preserve values like "child2"
+            # This ensures that even if Excel/pandas reads them as numbers, they're converted back to strings
+            name_fields = ['first_name', 'middle_name', 'last_name']
+            for field in name_fields:
+                if field in df.columns:
+                    # Convert to string, preserving the original value representation
+                    df[field] = df[field].apply(
+                        lambda x: str(x).strip() if pd.notna(x) and str(x).strip().lower() not in ['nan', 'none', ''] else None
+                    )
+            
             # Determine ee_id column after normalization
             ee_id_candidates = ['ee_id', 'employee_id', 'employee id', 'ee id', 'eeid', 'id']
             ee_id_column = next((c for c in ee_id_candidates if c in df.columns), None)
@@ -720,6 +730,16 @@ class UpsertEmployeeDataView(APIView):
                 df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
             except Exception:
                 pass
+            
+            # Convert name fields to strings to preserve values like "child2"
+            # This ensures that even if Excel/pandas reads them as numbers, they're converted back to strings
+            name_fields = ['first_name', 'middle_name', 'last_name']
+            for field in name_fields:
+                if field in df.columns:
+                    # Convert to string, preserving the original value representation
+                    df[field] = df[field].apply(
+                        lambda x: str(x).strip() if pd.notna(x) and str(x).strip().lower() not in ['nan', 'none', ''] else None
+                    )
 
             # Process data in batches for better performance
             batch_size = 100

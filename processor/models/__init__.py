@@ -5,3 +5,4 @@ from .federal_tax_levy import *
 from .shared_model import *
 from .garnishment_fees import *
 from .exempt import *
+from .garnishment_result import *

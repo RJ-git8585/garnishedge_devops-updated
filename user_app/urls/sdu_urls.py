@@ -1,16 +1,16 @@
 from django.urls import path
-from user_app.views.sdu_views import SDUByIDAPIView, SDUByStateAPIView, SDUImportView, ExportSDUDataView
+from user_app.views.payee_views import PayeeByIDAPIView, PayeeByStateAPIView, PayeeImportView, ExportPayeeDataView
 
 app_name = 'sdu'
 
 urlpatterns = [
     # CRUD by id
-    path('details/', SDUByIDAPIView.as_view(), name='detail'),
-    path('details/<int:id>/', SDUByIDAPIView.as_view(), name='sdu-by-id'),
+    path('details/', PayeeByIDAPIView.as_view(), name='detail'),
+    path('details/<int:id>/', PayeeByIDAPIView.as_view(), name='sdu-by-id'),
     # Get SDUs by state name or abbreviation 
-    path('state/<str:state>/', SDUByStateAPIView.as_view(), name='sdu-by-state'),
+    path('state/<str:state>/', PayeeByStateAPIView.as_view(), name='sdu-by-state'),
     # Import/Upsert SDUs from file
-    path('import/', SDUImportView.as_view(), name='sdu-import'),
+    path('import/', PayeeImportView.as_view(), name='sdu-import'),
     # Export SDUs to Excel
-    path('export/', ExportSDUDataView.as_view(), name='sdu-export'),
+    path('export/', ExportPayeeDataView.as_view(), name='sdu-export'),
 ]

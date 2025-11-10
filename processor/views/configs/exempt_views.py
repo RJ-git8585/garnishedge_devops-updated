@@ -48,7 +48,6 @@ class ExemptConfigAPIView(APIView):
         if not include_inactive:
             today = date.today()
             queryset = queryset.filter(
-                is_active=True
             ).filter(Q(effective_date__isnull=True) | Q(effective_date__lte=today))
         
         if garnishment_type:

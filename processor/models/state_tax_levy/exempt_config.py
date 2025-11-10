@@ -7,7 +7,7 @@ class StateTaxLevyExemptAmtConfig(models.Model):
         related_name="state_tax_levy_exempt_amounts"
     )
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, db_index=True)
-    pay_period = models.CharField(max_length=255)
+    pay_period = models.ForeignKey('processor.PayPeriod', on_delete=models.CASCADE, db_index=True)
     minimum_hourly_wage_basis = models.CharField(max_length=255)
     minimum_wage_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)

@@ -209,7 +209,7 @@ class CalculationDataView:
             
             # Store the case data
             store_result = self.database_manager.process_and_store_case(
-                case_info, batch_id, config_data, garn_fees
+                case_info, batch_id, config_data,result, garn_fees
             )
             
             if store_result.get("error"):
@@ -218,7 +218,7 @@ class CalculationDataView:
             # Update calculation results in database
             first_case_id = self.base_service._extract_case_id_from_garnishment_data(case_info, "")
             if first_case_id and isinstance(result, dict):
-                self.database_manager.update_calculation_results(first_case_id, result)
+                self.database_manager.update_calculation_results(first_case_id, result, batch_id, case_info)
             
             # Clean up result for return
             if isinstance(result, dict):

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from user_app.models.iwo_pdf.iwo_pdf_extraction import WithholdingOrderData
-from user_app.models import EmployeeDetail, EmployerProfile, SDU,GarnishmentOrder
+from user_app.models import EmployeeDetail, EmployerProfile, PayeeDetails,GarnishmentOrder
 from processor.models import State,GarnishmentType
 from datetime import datetime
 

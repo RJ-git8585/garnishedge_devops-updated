@@ -307,8 +307,8 @@ class DataProcessingUtils:
             'garnishment type': 'garnishment_type',
             'garnishmenttype': 'garnishment_type',
             'type': 'garnishment_type',
-            'ftb_order': 'franchise_tax_board',  # Handle FTB_Order variant
-            'ftborder': 'franchise_tax_board',
+            'ftb_order': 'ftb_order',  # Handle FTB_Order variant
+            'ftborder': 'ftb_order'   ,
             'number of exemptions': 'number_of_exemptions',
             'numberofexemptions': 'number_of_exemptions',
             'number of exemption': 'number_of_exemptions',  # Handle singular form
@@ -357,7 +357,11 @@ class DataProcessingUtils:
             # Clean NaN values first
             value = DataProcessingUtils.clean_nan_values(value)
             
-            # Handle special cases
+            # Handle special cases - name fields should always be treated as strings
+            if normalized_key in ['first_name', 'middle_name', 'last_name']:
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_string_field(value)
+                continue
+            
             if normalized_key == "ssn" and value is None:
                 cleaned_row[normalized_key] = ""
                 continue

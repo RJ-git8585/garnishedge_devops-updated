@@ -40,7 +40,7 @@ def _calculate_garnishment_worker(case_info, batch_id, config_data):
         
         # Create a new instance of CalculationDataView for this worker thread
         calculation_service = CalculationDataView()
-        result = calculation_service.calculate_garnishment_result(case_info, batch_id, config_data)
+        result = calculation_service.process_and_store_case(case_info, batch_id, config_data)
         
         # Close database connections after processing to free up resources
         connections.close_all()
@@ -201,7 +201,6 @@ class PostCalculationView(APIView):
 
         # Get the first garnishment order for some fields (issuing_state, etc.)
         first_garnishment = garnishment_orders.first()
-        # print("first_garnishment",first_garnishment[0])
 
         # Build enriched case - merge original case data with employee data
         enriched_case = case.copy()  # Start with original case data
