@@ -7,7 +7,8 @@ from user_app.views import (
     LetterTemplateDeleteAPI,
     LetterTemplateFillAPI,
     LetterTemplateVariablesAPI,
-    LetterTemplateAvailableVariablesAPI
+    LetterTemplateAvailableVariablesAPI,
+    LetterTemplateOrderFilterAPI
 )
 
 app_name = 'letter'
@@ -36,5 +37,8 @@ urlpatterns = [
     
     # Get available template variable names only (for drag-and-drop when creating templates)
     path('template-variables/', LetterTemplateAvailableVariablesAPI.as_view(), name='letter-template-available-variables'),
+    
+    # Filter orders by employee_id for letter management
+    path('filter-orders/', LetterTemplateOrderFilterAPI.as_view(), name='letter-template-filter-orders'),
 ]
 

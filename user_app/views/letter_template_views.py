@@ -7,8 +7,8 @@ from django.http import HttpResponse
 from io import BytesIO
 import re
 
-from user_app.models import LetterTemplate
-from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer
+from user_app.models import LetterTemplate, GarnishmentOrder, EmployeeDetail
+from user_app.serializers import LetterTemplateSerializer, LetterTemplateFillSerializer, LetterTemplateVariableValuesSerializer, GarnishmentOrderSerializer
 from user_app.services.letter_template_data_service import LetterTemplateDataService
 from processor.garnishment_library.utils import ResponseHelper
 from rest_framework.decorators import api_view
@@ -559,11 +559,11 @@ class LetterTemplateFillAPI(APIView):
                 return self._generate_pdf(filled_content, template.name)
             elif export_format in ['doc', 'docx']:
                 return self._generate_docx(filled_content, template.name)
-            elif export_format == 'txt':
+            elif export_format in ['txt', 'text']:
                 return self._generate_txt(filled_content, template.name)
             else:
                 return ResponseHelper.error_response(
-                    f'Unsupported format: {export_format}. Supported formats: pdf, doc, docx, txt',
+                    f'Unsupported format: {export_format}. Supported formats: pdf, doc, docx, txt, text',
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
                 
@@ -685,4 +685,101 @@ class LetterTemplateFillAPI(APIView):
             # Normalize whitespace
             text = re.sub(r'\s+', ' ', text)
             return text.strip()
+
+
+class LetterTemplateOrderFilterAPI(APIView):
+    """
+    API view to filter orders by employee_id for letter management.
+    This endpoint returns all orders associated with a specific employee.
+    """
+    
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'employee_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Employee ID (ee_id) or primary key',
+                    required=['employee_id']
+                )
+            },
+            required=['employee_id']
+        ),
+        responses={
+            200: 'Success - Returns filtered orders',
+            400: 'Invalid request data',
+            404: 'Employee not found',
+            500: 'Internal server error'
+        }
+    )
+    def post(self, request):
+        """
+        Filter orders by employee_id for letter management.
+        
+        Request Body (JSON):
+        {
+            "employee_id": "DA0001"  // required: Employee ID (ee_id) or primary key
+        }
+        
+        Returns:
+        {
+            "success": true,
+            "message": "Orders fetched successfully",
+            "data": [
+                {
+                    "id": 1,
+                    "case_id": "CSE001",
+                    "ssn": "...",
+                    "issuing_state": "California",
+                    "garnishment_type": "Child Support",
+                    "ordered_amount": "500.00",
+                    "withholding_amount": "450.00",
+                    ...
+                },
+                ...
+            ]
+        }
+        """
+        try:
+            employee_id = request.data.get('employee_id')
+            
+            if not employee_id:
+                return ResponseHelper.error_response(
+                    'employee_id is required in request body',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get employee by ee_id or primary key
+            try:
+                if isinstance(employee_id, str):
+                    employee = EmployeeDetail.objects.get(ee_id=employee_id)
+                else:
+                    employee = EmployeeDetail.objects.get(pk=employee_id)
+            except EmployeeDetail.DoesNotExist:
+                return ResponseHelper.error_response(
+                    f'Employee with id "{employee_id}" not found',
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Fetch all orders for this employee
+            orders = GarnishmentOrder.objects.filter(
+                employee=employee
+            ).select_related(
+                'employee', 'issuing_state', 'garnishment_type'
+            ).order_by('-created_at')
+            
+            # Serialize the orders
+            serializer = GarnishmentOrderSerializer(orders, many=True)
+            
+            return ResponseHelper.success_response(
+                f'Orders fetched successfully for employee {employee_id}',
+                serializer.data
+            )
+            
+        except Exception as e:
+            return ResponseHelper.error_response(
+                'Failed to fetch orders',
+                str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
