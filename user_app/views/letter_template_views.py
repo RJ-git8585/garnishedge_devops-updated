@@ -257,7 +257,6 @@ class LetterTemplateVariablesAPI(APIView):
     """
     
     @swagger_auto_schema(
-        request_body=LetterTemplateVariableValuesSerializer,
         responses={
             200: 'Success - Returns available template variables',
             400: 'Invalid request data',

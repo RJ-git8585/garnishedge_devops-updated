@@ -27,8 +27,10 @@ AUTH_USER_MODEL = 'user_app.EmployerProfile'
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 
 
-DEBUG = False
+# Set DEBUG based on environment, default to True for development
+DEBUG = env.bool('DEBUG', default=True)
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 ALLOWED_HOSTS = ['*']
 
 

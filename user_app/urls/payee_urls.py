@@ -1,7 +1,7 @@
 from django.urls import path
 from user_app.views.payee_views import PayeeByIDAPIView, PayeeByStateAPIView, PayeeImportView, ExportPayeeDataView
 
-app_name = 'sdu'
+app_name = 'payee'
 
 urlpatterns = [
     # CRUD by id

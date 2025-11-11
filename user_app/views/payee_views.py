@@ -1,4 +1,4 @@
-from user_app.models import PayeeDetails
+from user_app.models import PayeeDetails, PayeeAddress
 from processor.models.shared_model.state import State
 from processor.garnishment_library.utils.response import ResponseHelper
 import logging
@@ -154,16 +154,16 @@ class PayeeByStateAPIView(APIView):
     )
     def get(self, request, state=None):
         """
-        Retrieve SDU(s) for a specific state name or abbreviation using SDU table.
+        Retrieve SDU(s) for a specific state name or abbreviation using PayeeAddress table.
         """
         if not state:
             return ResponseHelper.error_response('State is required in URL to fetch payee', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            # Filter payee by related State's name or abbreviation (case-insensitive)
+            # Filter payee by related State's name or abbreviation in PayeeAddress (case-insensitive)
             payee = PayeeDetails.objects.filter(
-                state__state__iexact=state.strip()
+                address__state__state__iexact=state.strip()
             ) | PayeeDetails.objects.filter(
-                state__state_code__iexact=state.strip()
+                address__state__state_code__iexact=state.strip()
             )
             payee = payee.distinct()
             if not payee.exists():
@@ -229,32 +229,70 @@ class PayeeImportView(APIView):
             
             for _, row in df.iterrows():
                 try:
+                    # Extract address data if present (state is now part of address)
+                    address_data = None
+                    if any(row.get(field) for field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']):
+                        address_data = {
+                            "address_1": row.get("address_1"),
+                            "address_2": row.get("address_2"),
+                            "city": row.get("city"),
+                            "state": row.get("state"),  # State is now part of address (FK to State)
+                            "zip_code": row.get("zip_code"),
+                            "zip_plus_4": row.get("zip_plus_4"),
+                        }
+                        # Remove None values
+                        address_data = {k: v for k, v in address_data.items() if v is not None}
+                        if not address_data:
+                            address_data = None
+                    
+                    # Handle last_used date conversion
+                    last_used = row.get("last_used")
+                    if last_used:
+                        try:
+                            # Try to parse if it's a string
+                            if isinstance(last_used, str):
+                                last_used = pd.to_datetime(last_used).date()
+                            elif hasattr(last_used, 'date'):
+                                last_used = last_used.date()
+                        except (ValueError, AttributeError):
+                            last_used = None
+                    
                     sdu_data = {
+                        "payee_type": row.get("payee_type"),
                         "payee": row.get("payee"),
-                        "state": row.get("state"),
                         "case_id": row.get("case_id"),
-                        "address": row.get("address"),
-                        "contact": row.get("contact"),
-                        "fips_code": row.get("fips_code"),
+                        "routing_number": row.get("routing_number"),
+                        "bank_account": row.get("bank_account"),
+                        "case_number_required": row.get("case_number_required", False),
+                        "case_number_format": row.get("case_number_format"),
+                        "fips_required": row.get("fips_required", False),
+                        "fips_length": row.get("fips_length"),
+                        "last_used": last_used,
                         "is_active": row.get("is_active", True),
                     }
                     
-                    # Check if case_id and state exist (required for unique identification)
-                    case_id = sdu_data.get("case_id")
-                    state = sdu_data.get("state")
-                    fips_code = sdu_data.get("fips_code")
+                    # Add address data if present
+                    if address_data:
+                        sdu_data["address"] = address_data
                     
-                    if not case_id or not fips_code:
-                        # Skip rows without required identifiers
+                    # Remove None values from sdu_data (except for boolean fields)
+                    sdu_data = {k: v for k, v in sdu_data.items() if v is not None or k in ['case_number_required', 'fips_required', 'is_active']}
+                    
+                    # Check if case_id exists (required for unique identification)
+                    case_id = sdu_data.get("case_id")
+                    
+                    if not case_id:
+                        # Skip rows without required identifier
                         continue
                     
-                    # Try to find existing SDU by case_id and fips_code
+                    # Try to find existing SDU by case_id and payee (or other unique combination)
+                    # Since state is no longer on PayeeDetails, we'll use case_id and payee for lookup
                     existing_sdu = PayeeDetails.objects.filter(
                         case_id__case_id=case_id,
-                        fips_code=fips_code
+                        payee=sdu_data.get("payee")
                     ).first()
                     
-                    sdu_identifier = f"{case_id}_{fips_code}"
+                    sdu_identifier = f"{case_id}_{sdu_data.get('payee', 'unknown')}"
                     
                     if existing_sdu:
                         # Update existing SDU
@@ -358,18 +396,29 @@ class ExportPayeeDataView(APIView):
             ws = wb.active
             ws.title = "payee"
 
-            # Define header fields
+            # Define header fields - include all PayeeDetails fields and address fields
+            # Note: state is now part of address, not PayeeDetails
             header_fields = [
-                "id", "payee", "state", "case_id", "address", 
-                "contact", "fips_code", "is_active"
+                "id", "payee_id", "payee_type", "payee", "case_id",
+                "routing_number", "bank_account", "case_number_required",
+                "case_number_format", "fips_required", "fips_length",
+                "last_used", "is_active", "created_at", "updated_at",
+                "address_1", "address_2", "city", "state", "zip_code", "zip_plus_4"
             ]
 
             ws.append(header_fields)
 
             # Write data rows to the worksheet
             for sdu in serializer.data:
-                row = [sdu.get(field, '') for field in header_fields]
-                ws.append(row)
+                row_data = []
+                for field in header_fields:
+                    if field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']:
+                        # Extract from nested address object
+                        address = sdu.get('address', {}) or {}
+                        row_data.append(address.get(field, ''))
+                    else:
+                        row_data.append(sdu.get(field, ''))
+                ws.append(row_data)
 
             # Save workbook to in-memory buffer
             buffer = BytesIO()

@@ -4,7 +4,7 @@ class PayeeDetails(models.Model):
     """
     State Disbursement Unit - where child support or garnishment payments are sent.
     """
-    state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="sdus")
+    
     case_id = models.ForeignKey(
         'user_app.GarnishmentOrder', on_delete=models.CASCADE, related_name="sdus"
     )
@@ -26,9 +26,9 @@ class PayeeDetails(models.Model):
         db_table = 'payee_details'
 
         indexes = [
-            models.Index(fields=["state_id"]),
-            models.Index(fields=["case_id"])]
+            models.Index(fields=["case_id"]),
+            models.Index(fields=["payee_id"])]
 
 
     def __str__(self):
-        return self.payee_name
+        return self.payee

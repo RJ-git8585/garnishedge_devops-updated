@@ -7,11 +7,6 @@ from drf_yasg import openapi
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 
-from debug_toolbar.toolbar import debug_toolbar_urls
-from drf_yasg import openapi
-from rest_framework import permissions
-from drf_yasg.views import get_schema_view
-
 schema_view = get_schema_view(
     openapi.Info(
         title="GarnishEdge API",
@@ -67,7 +62,7 @@ urlpatterns = [
     path('employer/', include('user_app.urls.employer_urls', namespace='employer')),
     path('client/', include('user_app.urls.client_urls', namespace='client')),
     path('order/', include('user_app.urls.garnishment_order_urls', namespace='garnishment_order')),
-    path('sdu/', include('user_app.urls.sdu_urls', namespace='sdu')),
+    path('payee/', include('user_app.urls.payee_urls', namespace='payee')),
     path('state/', include('processor.urls.garnishment_types.state_urls', namespace='state')),
     path('garnishment/', include('processor.urls.garnishment_types.calculation_urls', namespace='garnishment_calculation')),
     path('garnishment_fees/', include('processor.urls.configs.garnishment_fees_urls', namespace='garnishment_fees')),
@@ -83,3 +78,8 @@ urlpatterns = [
     path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule')),
     path('letter/', include('user_app.urls.letter_template_urls', namespace='letter_template'))
 ]
+
+# Serve static files in development
+if settings.DEBUG:
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+    urlpatterns += staticfiles_urlpatterns()
