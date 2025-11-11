@@ -41,7 +41,7 @@ class PayeeByIDAPIView(APIView):
         try:
             if id:
                 try:
-                    sdu = PayeeDetails.objects.get(id=id)
+                    sdu = PayeeDetails.objects.get(payee_id=id)
                     serializer = PayeeSerializer(sdu)
                     return ResponseHelper.success_response(
                         f'SDU with id "{id}" fetched successfully', serializer.data
@@ -97,7 +97,7 @@ class PayeeByIDAPIView(APIView):
         if not id:
             return ResponseHelper.error_response('id is required in URL to update SDU', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            sdu = PayeeDetails.objects.get(id=id)
+            sdu = PayeeDetails.objects.get(payee_id=id)
         except PayeeDetails.DoesNotExist:
             return ResponseHelper.error_response(f'SDU with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND)
         try:
@@ -128,7 +128,7 @@ class PayeeByIDAPIView(APIView):
         if not id:
             return ResponseHelper.error_response('id is required in URL to delete SDU', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            sdu = PayeeDetails.objects.get(id=id)
+            sdu = PayeeDetails.objects.get(payee_id=id)
             sdu.delete()
             return ResponseHelper.success_response(f'SDU with id "{id}" deleted successfully')
         except PayeeDetails.DoesNotExist:
