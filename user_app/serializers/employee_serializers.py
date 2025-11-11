@@ -94,7 +94,7 @@ class EmployeeAddressSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = EmplopyeeAddress
-        fields = ['address_type', 'address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'state', 'county', 'country']
+        fields = ['address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'state', 'county', 'country']
 
 
 
