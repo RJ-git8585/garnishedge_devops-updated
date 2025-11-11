@@ -848,52 +848,67 @@ class LetterTemplateExportCSVAPI(APIView):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
             
-            # Define header columns (without Batch ID and Processed At)
+            # Define header columns with table name prefixes
             header = [
-                # Employee Details
-                'Employee ID (ee_id)',
-                'First Name',
-                'Middle Name',
-                'Last Name',
-                'SSN',
-                'Home State',
-                'Work State',
-                'Gender',
-                'Marital Status',
-                'Number of Exemptions',
-                'Number of Dependent Children',
-                'Filing Status',
-                'Client ID',
-                'Client Name',
+                # Employee Details (employee_ prefix)
+                'employee_ee_id',
+                'employee_first_name',
+                'employee_middle_name',
+                'employee_last_name',
+                'employee_ssn',
+                'employee_home_state',
+                'employee_work_state',
+                'employee_gender',
+                'employee_marital_status',
+                'employee_number_of_exemptions',
+                'employee_number_of_dependent_children',
+                'employee_filing_status',
+                'employee_client_id',
+                'employee_client_name',
                 
-                # Order Details
-                'Case ID',
-                'Ordered Amount',
-                'Withholding Amount (Order)',
-                'Garnishment Type',
-                'Issued Date',
-                'Received Date',
-                'Start Date',
-                'Stop Date',
-                'Deduction Code',
-                'FEIN',
-                'Garnishing Authority',
-                'FIPS Code',
-                'Payee (Order)',
-                'Is Consumer Debt',
+                # Employee Address (employee_address_ prefix)
+                'employee_address_address_1',
+                'employee_address_address_2',
+                'employee_address_city',
+                'employee_address_state',
+                'employee_address_zip_code',
+                'employee_address_geo_code',
+                'employee_address_county',
+                'employee_address_country',
                 
-                # Payee Details
-                'Payee (PayeeDetails)',
-                'Payee Type',
-                'Routing Number',
-                'Bank Account',
-                'Case Number Required',
-                'Case Number Format',
-                'FIPS Required',
-                'FIPS Length',
+                # Order Details (garnishment_order_ prefix)
+                'garnishment_order_case_id',
+                'garnishment_order_ordered_amount',
+                'garnishment_order_amount_of_deduction',
+                'garnishment_order_garnishment_type',
+                'garnishment_order_issued_date',
+                'garnishment_order_received_date',
+                'garnishment_order_start_date',
+                'garnishment_order_stop_date',
+                'garnishment_order_deduction_code',
+                'garnishment_order_fips_code',
+                'garnishment_order_is_consumer_debt',
                 
-                # GarnishmentResult
-                'Withholding Amount (Result)',
+                # Payee Details (payee_ prefix)
+                'payee_payee',
+                'payee_payee_type',
+                'payee_routing_number',
+                'payee_bank_account',
+                'payee_case_number_required',
+                'payee_case_number_format',
+                'payee_fips_required',
+                'payee_fips_length',
+                
+                # Payee Address (payee_address_ prefix)
+                'payee_address_address_1',
+                'payee_address_address_2',
+                'payee_address_city',
+                'payee_address_state',
+                'payee_address_zip_code',
+                'payee_address_zip_plus_4',
+                
+                # GarnishmentResult (result_ prefix)
+                'result_withholding_amount',
             ]
             
             if export_format == 'csv':
@@ -921,13 +936,28 @@ class LetterTemplateExportCSVAPI(APIView):
             employee = result.ee
             order = result.case
             
-            # Get payee details (try PayeeDetails first, fallback to order.payee)
+            # Get payee details
             payee_details = PayeeDetails.objects.filter(
                 case_id=order,
                 is_active=True
             ).first()
             
-            # Employee Details
+            # Get employee address (OneToOneField with related_name='employee_addresses')
+            try:
+                employee_address = employee.employee_addresses
+            except (AttributeError, Exception):
+                # RelatedObjectDoesNotExist is raised when OneToOneField doesn't exist
+                employee_address = None
+            
+            # Get payee address
+            payee_address = None
+            if payee_details:
+                try:
+                    payee_address = payee_details.address
+                except AttributeError:
+                    payee_address = None
+            
+            # Employee Details (employee_ prefix)
             row = [
                 employee.ee_id or '',
                 employee.first_name or '',
@@ -944,23 +974,30 @@ class LetterTemplateExportCSVAPI(APIView):
                 employee.client.client_id if employee.client else '',
                 employee.client.legal_name if employee.client else '',
                 
-                # Order Details
+                # Employee Address (employee_address_ prefix)
+                employee_address.address_1 if employee_address else '',
+                employee_address.address_2 if employee_address else '',
+                employee_address.city if employee_address else '',
+                employee_address.state if employee_address else '',
+                str(employee_address.zip_code) if employee_address and employee_address.zip_code else '',
+                str(employee_address.geo_code) if employee_address and employee_address.geo_code else '',
+                employee_address.county if employee_address else '',
+                employee_address.country if employee_address else '',
+                
+                # Order Details (garnishment_order_ prefix)
                 order.case_id or '',
                 str(order.ordered_amount) if order.ordered_amount else '0.00',
-                str(order.withholding_amount) if order.withholding_amount else '0.00',
+                str(order.amount_of_deduction) if order.amount_of_deduction else '0.00',
                 order.garnishment_type.type if order.garnishment_type else '',
                 order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
                 order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
                 order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
                 order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
                 order.deduction_code or '',
-                order.fein or '',
-                order.garnishing_authority or '',
                 order.fips_code or '',
-                order.payee or '',
                 'Yes' if order.is_consumer_debt else 'No',
                 
-                # Payee Details
+                # Payee Details (payee_ prefix)
                 payee_details.payee if payee_details else '',
                 payee_details.payee_type if payee_details else '',
                 payee_details.routing_number if payee_details else '',
@@ -970,7 +1007,15 @@ class LetterTemplateExportCSVAPI(APIView):
                 'Yes' if payee_details and payee_details.fips_required else 'No',
                 payee_details.fips_length if payee_details else '',
                 
-                # GarnishmentResult
+                # Payee Address (payee_address_ prefix)
+                payee_address.address_1 if payee_address else '',
+                payee_address.address_2 if payee_address else '',
+                payee_address.city if payee_address else '',
+                payee_address.state.state if payee_address and payee_address.state else '',
+                payee_address.zip_code if payee_address else '',
+                payee_address.zip_plus_4 if payee_address else '',
+                
+                # GarnishmentResult (result_ prefix)
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
             ]
             writer.writerow(row)
@@ -994,13 +1039,28 @@ class LetterTemplateExportCSVAPI(APIView):
             employee = result.ee
             order = result.case
             
-            # Get payee details (try PayeeDetails first, fallback to order.payee)
+            # Get payee details
             payee_details = PayeeDetails.objects.filter(
                 case_id=order,
                 is_active=True
             ).first()
             
-            # Employee Details
+            # Get employee address (OneToOneField with related_name='employee_addresses')
+            try:
+                employee_address = employee.employee_addresses
+            except (AttributeError, Exception):
+                # RelatedObjectDoesNotExist is raised when OneToOneField doesn't exist
+                employee_address = None
+            
+            # Get payee address
+            payee_address = None
+            if payee_details:
+                try:
+                    payee_address = payee_details.address
+                except AttributeError:
+                    payee_address = None
+            
+            # Employee Details (employee_ prefix)
             row = [
                 employee.ee_id or '',
                 employee.first_name or '',
@@ -1017,23 +1077,30 @@ class LetterTemplateExportCSVAPI(APIView):
                 employee.client.client_id if employee.client else '',
                 employee.client.legal_name if employee.client else '',
                 
-                # Order Details
+                # Employee Address (employee_address_ prefix)
+                employee_address.address_1 if employee_address else '',
+                employee_address.address_2 if employee_address else '',
+                employee_address.city if employee_address else '',
+                employee_address.state if employee_address else '',
+                str(employee_address.zip_code) if employee_address and employee_address.zip_code else '',
+                str(employee_address.geo_code) if employee_address and employee_address.geo_code else '',
+                employee_address.county if employee_address else '',
+                employee_address.country if employee_address else '',
+                
+                # Order Details (garnishment_order_ prefix)
                 order.case_id or '',
                 str(order.ordered_amount) if order.ordered_amount else '0.00',
-                str(order.withholding_amount) if order.withholding_amount else '0.00',
+                str(order.amount_of_deduction) if order.amount_of_deduction else '0.00',
                 order.garnishment_type.type if order.garnishment_type else '',
                 order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
                 order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
                 order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
                 order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
                 order.deduction_code or '',
-                order.fein or '',
-                order.garnishing_authority or '',
                 order.fips_code or '',
-                order.payee or '',
                 'Yes' if order.is_consumer_debt else 'No',
                 
-                # Payee Details
+                # Payee Details (payee_ prefix)
                 payee_details.payee if payee_details else '',
                 payee_details.payee_type if payee_details else '',
                 payee_details.routing_number if payee_details else '',
@@ -1043,7 +1110,15 @@ class LetterTemplateExportCSVAPI(APIView):
                 'Yes' if payee_details and payee_details.fips_required else 'No',
                 str(payee_details.fips_length) if payee_details and payee_details.fips_length else '',
                 
-                # GarnishmentResult
+                # Payee Address (payee_address_ prefix)
+                payee_address.address_1 if payee_address else '',
+                payee_address.address_2 if payee_address else '',
+                payee_address.city if payee_address else '',
+                payee_address.state.state if payee_address and payee_address.state else '',
+                payee_address.zip_code if payee_address else '',
+                payee_address.zip_plus_4 if payee_address else '',
+                
+                # GarnishmentResult (result_ prefix)
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
             ]
             output.write('\t'.join(row))
