@@ -3,57 +3,6 @@
 from django.db import migrations, models
 
 
-def populate_garnishment_type_codes(apps, schema_editor):
-    """Populate unique codes for existing GarnishmentType records."""
-    GarnishmentType = apps.get_model('processor', 'GarnishmentType')
-    
-    # Map existing types to codes (you can adjust these based on your actual data)
-    type_to_code_map = {
-        'child_support': '1',
-        'federal_tax_levy': '2',
-        'state_tax_levy': '3',
-        'creditor_debt': '4',
-        'student_default_loan': '5',
-        'franchise_tax_board': '6',
-        'spousal_and_medical_support': '7',
-        'bankruptcy': '8',
-        'ftb_ewot': '9',
-        'ftb_court': '10',
-        'ftb_vehicle': '11',
-    }
-    
-    # Populate codes based on type name (case-insensitive)
-    for garnishment_type in GarnishmentType.objects.all():
-        type_lower = garnishment_type.type.lower() if garnishment_type.type else ''
-        
-        # Try to find matching code from map
-        code = None
-        for key, value in type_to_code_map.items():
-            if key in type_lower or type_lower in key:
-                code = value
-                break
-        
-        # If no match found, use ID as fallback (ensures uniqueness)
-        if not code:
-            code = str(garnishment_type.id)
-        
-        # Ensure code doesn't conflict with existing codes
-        counter = 1
-        original_code = code
-        while GarnishmentType.objects.filter(code=code).exclude(id=garnishment_type.id).exists():
-            code = f"{original_code}_{counter}"
-            counter += 1
-        
-        garnishment_type.code = code
-        garnishment_type.save()
-
-
-def reverse_populate_codes(apps, schema_editor):
-    """Reverse migration - set codes to None."""
-    GarnishmentType = apps.get_model('processor', 'GarnishmentType')
-    GarnishmentType.objects.all().update(code=None)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -61,31 +10,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Step 1: Add code field without unique constraint (nullable first)
         migrations.AddField(
             model_name='garnishmenttype',
             name='code',
-            field=models.CharField(max_length=10, null=True, blank=True),
+            field=models.CharField(default=1, max_length=10, unique=True),
+            preserve_default=False,
         ),
-        # Step 2: Populate unique codes for all existing records
-        migrations.RunPython(populate_garnishment_type_codes, reverse_populate_codes),
-        # Step 3: Make code field non-nullable and unique
-        migrations.AlterField(
-            model_name='garnishmenttype',
-            name='code',
-            field=models.CharField(max_length=10, unique=True),
-        ),
-        # Add other fields
         migrations.AddField(
             model_name='garnishmenttype',
             name='pay_stub_description',
-            field=models.CharField(default='', max_length=100),
+            field=models.CharField(default=1, max_length=100),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='garnishmenttype',
             name='report_description',
-            field=models.CharField(default='', max_length=100),
+            field=models.CharField(default=1, max_length=100),
             preserve_default=False,
         ),
     ]
