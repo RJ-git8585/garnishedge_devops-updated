@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from user_app.models import Client, GarnishmentOrder,EmployeeDetail
+from user_app.models import Client, GarnishmentOrder,EmployeeDetail, EmplopyeeAddress
 from processor.models import FedFilingStatus,State
 from datetime import datetime
 import re
@@ -87,6 +87,16 @@ class FilingStatusField(serializers.Field):
         except FedFilingStatus.DoesNotExist:
             raise serializers.ValidationError(f"Filing status '{data}' not found")
 
+class EmployeeAddressSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EmployeeAddress nested within EmployeeDetailsSerializer.
+    """
+    
+    class Meta:
+        model = EmplopyeeAddress
+        fields = ['address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'state', 'county', 'country']
+
+
 
 class EmployeeDetailsSerializer(serializers.ModelSerializer):
     # Unified fields (same for GET and POST/PUT)
@@ -103,6 +113,7 @@ class EmployeeDetailsSerializer(serializers.ModelSerializer):
     number_of_student_default_loan = CustomIntegerField()
     number_of_dependent_child = CustomIntegerField()
     number_of_active_garnishment = CustomIntegerField()
+    address= EmployeeAddressSerializer(required=False, allow_null=True)
 
     class Meta:
         model = EmployeeDetail
@@ -117,9 +128,64 @@ class EmployeeDetailsSerializer(serializers.ModelSerializer):
             "number_of_dependent_child", "support_second_family",
             "garnishment_fees_status", "garnishment_fees_suspended_till",
             "number_of_active_garnishment", "is_active",
-            "created_at", "updated_at",
+            "created_at", "updated_at","address"
         ]
         read_only_fields = [
             "id", "created_at", "updated_at",
             "record_import", "record_updated",
         ]
+
+    def create(self, validated_data):
+        """
+        Create EmployeeDetail and associated EmployeeAddress.
+        """
+        address_data = validated_data.pop('address', None)
+        employee = EmployeeDetail.objects.create(**validated_data)
+        
+        if address_data:
+            EmplopyeeAddress.objects.create(ee=employee, **address_data)
+        
+        return employee
+
+    def update(self, instance, validated_data):
+        """
+        Update EmployeeDetail and associated EmployeeAddress.
+        """
+        address_data = validated_data.pop('address', None)
+        
+        # Update EmployeeDetail fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update or create EmployeeAddress
+        if address_data is not None:
+            address_instance, created = EmplopyeeAddress.objects.get_or_create(
+                ee=instance,
+                defaults=address_data
+            )
+            if not created:
+                for attr, value in address_data.items():
+                    setattr(address_instance, attr, value)
+                address_instance.save()
+        
+        return instance
+
+    def to_representation(self, instance):
+        """
+        Custom representation to include nested address data.
+        """
+        representation = super().to_representation(instance)
+        
+        # Include address data if it exists
+        # For OneToOneField with related_name='employee_addresses', access it via that name
+        # OneToOneField raises RelatedObjectDoesNotExist (subclass of AttributeError) when related object doesn't exist
+        try:
+            address = instance.employee_addresses
+            representation['address'] = EmployeeAddressSerializer(address).data
+        except AttributeError:
+            # Related object doesn't exist
+            representation['address'] = None
+        
+        return representation
+
