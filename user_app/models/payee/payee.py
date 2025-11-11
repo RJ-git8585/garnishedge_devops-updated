@@ -5,7 +5,7 @@ class PayeeDetails(models.Model):
     State Disbursement Unit - where child support or garnishment payments are sent.
     """
     
-    case_id = models.ForeignKey(
+    case_id = models.OneToOneField(
         'user_app.GarnishmentOrder', on_delete=models.CASCADE, related_name="sdus"
     )
     payee_id = models.AutoField(primary_key=True)

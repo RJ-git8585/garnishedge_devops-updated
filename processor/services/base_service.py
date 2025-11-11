@@ -193,7 +193,9 @@ class BaseService:
     def get_calculation_method_for_type(self, garnishment_type: str) -> str:
         """
         Get the calculation method name for a specific garnishment type.
+
         """
+        
         rules_mapping = self.get_garnishment_rules_mapping()
         rule = rules_mapping.get(garnishment_type.lower())
         return rule.get("calculate", "") if rule else ""

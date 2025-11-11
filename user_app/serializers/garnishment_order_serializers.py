@@ -129,6 +129,8 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
     override_start_date = CustomDateField(allow_null=True, required=False)
     override_stop_date = CustomDateField(allow_null=True, required=False)
     paid_till_date = CustomDateField(allow_null=True, required=False)
+    pay_date = CustomDateField(allow_null=True, required=False)
+    date_of_ap_payment = CustomDateField(allow_null=True, required=False)
     
     # Handle field name mapping from payload
     ee_id = serializers.CharField(write_only=True, required=False)
@@ -174,7 +176,7 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "issuing_state",
             "garnishment_type",
             "garnishment_fees",
-            "payee",
+            "voucher_for_payroll",
             "override_amount",
             "override_start_date",
             "override_stop_date",
@@ -185,17 +187,34 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "start_date",
             "stop_date",
             "ordered_amount",
-            "garnishing_authority",
-            "withholding_amount",
+            "status",
+            "amount_of_deduction",
             "current_child_support",
             "current_medical_support",
             "child_support_arrear",
             "medical_support_arrear",
             "current_spousal_support",
             "spousal_support_arrear",
+            "override_child_support",
+            "override_medical_support",
+            "override_spousal_support",
+            "override_child_support_arrear",
+            "override_medical_support_arrear",
+            "override_spousal_support_arrear",
+            "override_limit",
+            "override_percent",
             "fips_code",
             "arrear_greater_than_12_weeks",
             "arrear_amount",
+            "pay_date",
+            "pay_period_limit",
+            "total_amount_owed",
+            "monthly_limit",
+            "exempt_amount",
+            "ytd_deductions",
+            "ach_sent",
+            "ap_check",
+            "date_of_ap_payment",
             "created_at",
             "updated_at",
         ]

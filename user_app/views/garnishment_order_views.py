@@ -385,12 +385,11 @@ class GarnishmentOrderImportView(APIView):
                         order.stop_date = order_data.get("stop_date", order.stop_date)
                         order.deduction_code = order_data.get("deduction_code", order.deduction_code)
                         order.ordered_amount = order_data.get("ordered_amount", order.ordered_amount)
-                        order.fein = order_data.get("fein", order.fein)
-                        order.garnishing_authority = order_data.get("garnishing_authority", order.garnishing_authority)
-                        order.withholding_amount = order_data.get("withholding_amount", order.withholding_amount)
                         order.garnishment_fees = order_data.get("garnishment_fees", order.garnishment_fees)
                         order.fips_code = order_data.get("fips_code", order.fips_code)
-                        order.payee = order_data.get("payee", order.payee)
+                        order.voucher_for_payroll = order_data.get("voucher_for_payroll", order.voucher_for_payroll)
+                        order.status = order_data.get("status", order.status)
+                        order.amount_of_deduction = order_data.get("amount_of_deduction", order.amount_of_deduction)
                         order.override_amount = order_data.get("override_amount", order.override_amount)
                         order.override_start_date = order_data.get("override_start_date", order.override_start_date)
                         order.override_stop_date = order_data.get("override_stop_date", order.override_stop_date)
@@ -403,6 +402,24 @@ class GarnishmentOrderImportView(APIView):
                         order.medical_support_arrear = order_data.get("medical_support_arrear", order.medical_support_arrear)
                         order.child_support_arrear = order_data.get("child_support_arrear", order.child_support_arrear)
                         order.spousal_support_arrear = order_data.get("spousal_support_arrear", order.spousal_support_arrear)
+                        # new fields
+                        order.pay_date = order_data.get("pay_date", order.pay_date)
+                        order.pay_period_limit = order_data.get("pay_period_limit", order.pay_period_limit)
+                        order.total_amount_owed = order_data.get("total_amount_owed", order.total_amount_owed)
+                        order.monthly_limit = order_data.get("monthly_limit", order.monthly_limit)
+                        order.exempt_amount = order_data.get("exempt_amount", order.exempt_amount)
+                        order.ytd_deductions = order_data.get("ytd_deductions", order.ytd_deductions)
+                        order.ach_sent = order_data.get("ach_sent", order.ach_sent)
+                        order.ap_check = order_data.get("ap_check", order.ap_check)
+                        order.date_of_ap_payment = order_data.get("date_of_ap_payment", order.date_of_ap_payment)
+                        order.override_child_support = order_data.get("override_child_support", order.override_child_support)
+                        order.override_medical_support = order_data.get("override_medical_support", order.override_medical_support)
+                        order.override_spousal_support = order_data.get("override_spousal_support", order.override_spousal_support)
+                        order.override_child_support_arrear = order_data.get("override_child_support_arrear", order.override_child_support_arrear)
+                        order.override_medical_support_arrear = order_data.get("override_medical_support_arrear", order.override_medical_support_arrear)
+                        order.override_spousal_support_arrear = order_data.get("override_spousal_support_arrear", order.override_spousal_support_arrear)
+                        order.override_limit = order_data.get("override_limit", order.override_limit)
+                        order.override_percent = order_data.get("override_percent", order.override_percent)
                         
                         # Update foreign keys if provided
                         if order_data.get("issuing_state") and order_data.get("issuing_state") in state_mapping:
@@ -417,11 +434,16 @@ class GarnishmentOrderImportView(APIView):
                     GarnishmentOrder.objects.bulk_update(
                         orders_to_update,
                         ['is_consumer_debt', 'issued_date', 'received_date', 'start_date', 'stop_date',
-                         'deduction_code', 'ordered_amount', 'fein', 'garnishing_authority', 'withholding_amount',
-                         'garnishment_fees', 'fips_code', 'payee', 'override_amount', 'override_start_date',
+                         'deduction_code', 'ordered_amount', 'garnishment_fees', 'fips_code', 'voucher_for_payroll',
+                         'status', 'amount_of_deduction', 'override_amount', 'override_start_date',
                          'override_stop_date', 'paid_till_date', 'arrear_greater_than_12_weeks', 'arrear_amount',
                          'current_child_support', 'current_medical_support', 'current_spousal_support',
                          'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                         'pay_date', 'pay_period_limit', 'total_amount_owed', 'monthly_limit', 'exempt_amount',
+                         'ytd_deductions', 'ach_sent', 'ap_check', 'date_of_ap_payment',
+                         'override_child_support', 'override_medical_support', 'override_spousal_support',
+                         'override_child_support_arrear', 'override_medical_support_arrear', 'override_spousal_support_arrear',
+                         'override_limit', 'override_percent',
                          'issuing_state_id', 'garnishment_type_id', 'updated_at']
                     )
                     
@@ -913,12 +935,11 @@ class UpsertGarnishmentOrderView(APIView):
                         order.stop_date = order_data.get("stop_date", order.stop_date)
                         order.deduction_code = order_data.get("deduction_code", order.deduction_code)
                         order.ordered_amount = order_data.get("ordered_amount", order.ordered_amount)
-                        order.fein = order_data.get("fein", order.fein)
-                        order.garnishing_authority = order_data.get("garnishing_authority", order.garnishing_authority)
-                        order.withholding_amount = order_data.get("withholding_amount", order.withholding_amount)
                         order.garnishment_fees = order_data.get("garnishment_fees", order.garnishment_fees)
                         order.fips_code = order_data.get("fips_code", order.fips_code)
-                        order.payee = order_data.get("payee", order.payee)
+                        order.voucher_for_payroll = order_data.get("voucher_for_payroll", order.voucher_for_payroll)
+                        order.status = order_data.get("status", order.status)
+                        order.amount_of_deduction = order_data.get("amount_of_deduction", order.amount_of_deduction)
                         order.override_amount = order_data.get("override_amount", order.override_amount)
                         order.override_start_date = order_data.get("override_start_date", order.override_start_date)
                         order.override_stop_date = order_data.get("override_stop_date", order.override_stop_date)
@@ -931,6 +952,24 @@ class UpsertGarnishmentOrderView(APIView):
                         order.medical_support_arrear = order_data.get("medical_support_arrear", order.medical_support_arrear)
                         order.child_support_arrear = order_data.get("child_support_arrear", order.child_support_arrear)
                         order.spousal_support_arrear = order_data.get("spousal_support_arrear", order.spousal_support_arrear)
+                        # new fields
+                        order.pay_date = order_data.get("pay_date", order.pay_date)
+                        order.pay_period_limit = order_data.get("pay_period_limit", order.pay_period_limit)
+                        order.total_amount_owed = order_data.get("total_amount_owed", order.total_amount_owed)
+                        order.monthly_limit = order_data.get("monthly_limit", order.monthly_limit)
+                        order.exempt_amount = order_data.get("exempt_amount", order.exempt_amount)
+                        order.ytd_deductions = order_data.get("ytd_deductions", order.ytd_deductions)
+                        order.ach_sent = order_data.get("ach_sent", order.ach_sent)
+                        order.ap_check = order_data.get("ap_check", order.ap_check)
+                        order.date_of_ap_payment = order_data.get("date_of_ap_payment", order.date_of_ap_payment)
+                        order.override_child_support = order_data.get("override_child_support", order.override_child_support)
+                        order.override_medical_support = order_data.get("override_medical_support", order.override_medical_support)
+                        order.override_spousal_support = order_data.get("override_spousal_support", order.override_spousal_support)
+                        order.override_child_support_arrear = order_data.get("override_child_support_arrear", order.override_child_support_arrear)
+                        order.override_medical_support_arrear = order_data.get("override_medical_support_arrear", order.override_medical_support_arrear)
+                        order.override_spousal_support_arrear = order_data.get("override_spousal_support_arrear", order.override_spousal_support_arrear)
+                        order.override_limit = order_data.get("override_limit", order.override_limit)
+                        order.override_percent = order_data.get("override_percent", order.override_percent)
                         
                         # Update foreign keys if provided
                         if order_data.get("issuing_state") and order_data.get("issuing_state") in state_mapping:
@@ -945,11 +984,16 @@ class UpsertGarnishmentOrderView(APIView):
                     GarnishmentOrder.objects.bulk_update(
                         orders_to_update,
                         ['is_consumer_debt', 'issued_date', 'received_date', 'start_date', 'stop_date',
-                         'deduction_code', 'ordered_amount', 'fein', 'garnishing_authority', 'withholding_amount',
-                         'garnishment_fees', 'fips_code', 'payee', 'override_amount', 'override_start_date',
+                         'deduction_code', 'ordered_amount', 'garnishment_fees', 'fips_code', 'voucher_for_payroll',
+                         'status', 'amount_of_deduction', 'override_amount', 'override_start_date',
                          'override_stop_date', 'paid_till_date', 'arrear_greater_than_12_weeks', 'arrear_amount',
                          'current_child_support', 'current_medical_support', 'current_spousal_support',
                          'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                         'pay_date', 'pay_period_limit', 'total_amount_owed', 'monthly_limit', 'exempt_amount',
+                         'ytd_deductions', 'ach_sent', 'ap_check', 'date_of_ap_payment',
+                         'override_child_support', 'override_medical_support', 'override_spousal_support',
+                         'override_child_support_arrear', 'override_medical_support_arrear', 'override_spousal_support_arrear',
+                         'override_limit', 'override_percent',
                          'issuing_state_id', 'garnishment_type_id', 'updated_at']
                     )
                     
@@ -991,7 +1035,7 @@ class ExportGarnishmentOrderDataView(APIView):
 
             # Define header fields (use constants where available)
             header_fields = [
-            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state","garnishment_type","garnishment_fees","payee","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","garnishing_authority","withholding_amount","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code","arrear_greater_than_12_weeks",CA.ARREAR_AMOUNT,"created_at","updated_at"]
+            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state","garnishment_type","garnishment_fees","voucher_for_payroll","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","status","amount_of_deduction","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code","arrear_greater_than_12_weeks",CA.ARREAR_AMOUNT,"pay_date","pay_period_limit","total_amount_owed","monthly_limit","exempt_amount","ytd_deductions","ach_sent","ap_check","date_of_ap_payment","created_at","updated_at"]
 
             ws.append(header_fields)
 
@@ -1034,25 +1078,10 @@ class GarnishmentOrderAPI(APIView):
     )
     def get(self, request):
         try:
-            # Optimized queryset to avoid N+1 and reduce columns
+            # Optimized queryset to avoid N+1
             queryset = (
                 GarnishmentOrder.objects
                 .select_related('employee', 'issuing_state', 'garnishment_type')
-                .only(
-                    'id', 'case_id',
-                    'employee__ssn',
-                    'issuing_state__state',
-                    'garnishment_type__type',
-                    'garnishment_fees', 'payee', 'override_amount',
-                    'override_start_date', 'override_stop_date', 'paid_till_date',
-                    'is_consumer_debt', 'issued_date', 'received_date', 'start_date', 'stop_date',
-                    'ordered_amount', 'garnishing_authority', 'withholding_amount',
-                    'current_child_support', 'current_medical_support',
-                    'child_support_arrear', 'medical_support_arrear',
-                    'current_spousal_support', 'spousal_support_arrear',
-                    'fips_code', 'arrear_greater_than_12_weeks', 'arrear_amount',
-                    'created_at', 'updated_at'
-                )
                 .order_by('-created_at')
             )
 
