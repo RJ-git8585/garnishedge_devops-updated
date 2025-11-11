@@ -57,7 +57,7 @@ class LetterTemplateFillSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         allow_blank=True,
-        help_text="Employee ID (ee_id) or primary key. If provided, system will auto-fetch employee, order, and SDU data."
+        help_text="Employee ID (ee_id) or primary key. If provided, system will auto-fetch employee, order, and Payee data."
     )
     order_id = serializers.CharField(
         required=False,
@@ -120,4 +120,16 @@ class LetterTemplateVariableValuesSerializer(serializers.Serializer):
         allow_null=True,
         allow_blank=True,
         help_text="Optional: Order ID (case_id) or primary key. If not provided, uses most recent active order."
+    )
+
+
+class LetterTemplateExportSerializer(serializers.Serializer):
+    """
+    Serializer for exporting employee details, order, payee, and GarnishmentResult data.
+    """
+    format = serializers.ChoiceField(
+        choices=['csv', 'txt'],
+        default='csv',
+        required=False,
+        help_text="Export format: csv or txt (default: csv)"
     )

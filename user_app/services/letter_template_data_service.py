@@ -1,5 +1,5 @@
 """
-Service to fetch and map employee, order, and SDU data for letter templates.
+Service to fetch and map employee, order, and Payee data for letter templates.
 """
 from django.db.models import Q
 from user_app.models import EmployeeDetail, GarnishmentOrder, PayeeDetails, Client
@@ -8,7 +8,7 @@ from datetime import datetime
 
 class LetterTemplateDataService:
     """
-    Service class to fetch and map employee, order, and SDU data
+    Service class to fetch and map employee, order, and Payee data
     to template variables for automatic population.
     """
     
@@ -174,16 +174,16 @@ class LetterTemplateDataService:
         return order_data
     
     @staticmethod
-    def fetch_sdu_data(employee_id, order_id=None):
+    def fetch_payee_data(employee_id, order_id=None):
         """
-        Fetch SDU (State Disbursement Unit) data for an employee's order.
+        Fetch Payee data for an employee's order.
         
         Args:
             employee_id: Employee ID (ee_id) or primary key
             order_id: Optional order ID (case_id) or primary key. If None, uses the most recent active order.
         
         Returns:
-            dict: SDU data mapped to template variable names, or None if no SDU found
+            dict: Payee data mapped to template variable names, or None if no Payee found
         """
         try:
             # Get employee first
@@ -216,38 +216,55 @@ class LetterTemplateDataService:
         else:
             order = orders.first()
         
-        # Fetch SDU data
-        sdu = PayeeDetails.objects.filter(
+        # Fetch Payee data
+        payee = PayeeDetails.objects.filter(
             case_id=order,
             is_active=True
-        ).select_related('state').first()
+        ).select_related('state').prefetch_related('address').first()
         
-        if not sdu:
+        if not payee:
             return None
         
-        # Map SDU data to template variables
-        sdu_data = {
-            'sdu_payee': sdu.payee or '',
-            'sdu_address': sdu.address or '',
-            'sdu_contact': sdu.contact or '',
-            'sdu_fips_code': sdu.fips_code or '',
-            'sdu_state': sdu.state.state_code if sdu.state else '',
-            'sdu_state_name': sdu.state.state if sdu.state else '',
+        # Get address if available
+        payee_address = payee.address if hasattr(payee, 'address') and payee.address else None
+        address_str = ''
+        if payee_address:
+            address_parts = []
+            if payee_address.address_1:
+                address_parts.append(payee_address.address_1)
+            if payee_address.address_2:
+                address_parts.append(payee_address.address_2)
+            if payee_address.city:
+                address_parts.append(payee_address.city)
+            if payee_address.state:
+                address_parts.append(payee_address.state)
+            if payee_address.zip_code:
+                address_parts.append(payee_address.zip_code)
+            address_str = ', '.join(address_parts)
+        
+        # Map Payee data to template variables (keeping sdu_ prefix for backward compatibility)
+        payee_data = {
+            'sdu_payee': payee.payee or '',
+            'sdu_address': address_str,
+            'sdu_contact': '',  # PayeeDetails doesn't have contact field
+            'sdu_fips_code': '',  # PayeeDetails doesn't have fips_code field
+            'sdu_state': payee.state.state_code if payee.state else '',
+            'sdu_state_name': payee.state.state if payee.state else '',
         }
         
-        return sdu_data
+        return payee_data
     
     @staticmethod
     def get_all_template_variables(employee_id, order_id=None):
         """
-        Fetch and combine all data (employee, order, SDU) for template population.
+        Fetch and combine all data (employee, order, Payee) for template population.
         
         Args:
             employee_id: Employee ID (ee_id) or primary key
             order_id: Optional order ID (case_id) or primary key
         
         Returns:
-            dict: Combined data from employee, order, and SDU mapped to template variable names
+            dict: Combined data from employee, order, and Payee mapped to template variable names
         """
         # Fetch employee data
         employee_data = LetterTemplateDataService.fetch_employee_data(employee_id)
@@ -255,8 +272,8 @@ class LetterTemplateDataService:
         # Fetch order data (may be None)
         order_data = LetterTemplateDataService.fetch_order_data(employee_id, order_id)
         
-        # Fetch SDU data (may be None)
-        sdu_data = LetterTemplateDataService.fetch_sdu_data(employee_id, order_id)
+        # Fetch Payee data (may be None)
+        payee_data = LetterTemplateDataService.fetch_payee_data(employee_id, order_id)
         
         # Combine all data
         template_variables = employee_data.copy()
@@ -264,8 +281,8 @@ class LetterTemplateDataService:
         if order_data:
             template_variables.update(order_data)
         
-        if sdu_data:
-            template_variables.update(sdu_data)
+        if payee_data:
+            template_variables.update(payee_data)
         
         return template_variables
     #for getting available variables for drag and drop
@@ -276,7 +293,7 @@ class LetterTemplateDataService:
         This is used for drag-and-drop functionality in template editor.
         
         Returns:
-            dict: Available variables organized by category (employee_details, order_data, sdu_data)
+            dict: Available variables organized by category (employee_details, order_data, payee_data)
         """
         # Employee detail variables
         employee_variables = {
@@ -347,19 +364,19 @@ class LetterTemplateDataService:
             'issuing_state_name': 'Issuing State Name',
         }
         
-        # SDU variables
-        sdu_variables = {
-            'sdu_payee': 'SDU Payee',
-            'sdu_address': 'SDU Address',
-            'sdu_contact': 'SDU Contact',
-            'sdu_fips_code': 'SDU FIPS Code',
-            'sdu_state': 'SDU State Code',
-            'sdu_state_name': 'SDU State Name',
+        # Payee variables (keeping sdu_ prefix for backward compatibility with templates)
+        payee_variables = {
+            'sdu_payee': 'Payee',
+            'sdu_address': 'Payee Address',
+            'sdu_contact': 'Payee Contact',
+            'sdu_fips_code': 'Payee FIPS Code',
+            'sdu_state': 'Payee State Code',
+            'sdu_state_name': 'Payee State Name',
         }
         
         return {
             'employee_details': employee_variables,
             'order_data': order_variables,
-            'sdu_data': sdu_variables,
+            'sdu_data': payee_variables,  # Keep key as 'sdu_data' for backward compatibility
         }
 
