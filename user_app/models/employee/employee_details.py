@@ -21,7 +21,7 @@ class EmployeeDetail(models.Model):
     garnishment_fees_status = models.BooleanField(default=False, null=True, blank=True)
     garnishment_fees_suspended_till = models.DateField(null=True, blank=True) 
     number_of_active_garnishment = models.IntegerField(null=True, blank=True)
-    status= models.CharField(max_length=50, null=False, blank=True)
+    status= models.CharField(max_length=50, null=False, blank=True,default="active")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

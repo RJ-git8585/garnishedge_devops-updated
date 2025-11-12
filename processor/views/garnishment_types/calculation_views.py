@@ -86,14 +86,14 @@ class PostCalculationView(APIView):
             try:
                 # Fetch employee with related garnishment orders
                 employee = EmployeeDetail.objects.filter(
-                    is_active=True
+                    status__iexact="active"
                 ).select_related(
                     'home_state', 'work_state', 'filing_status'
                 ).prefetch_related(
                     Prefetch(
                         'garnishments',
                         queryset=GarnishmentOrder.objects.filter(
-                            is_active=True
+                            status__iexact="active"
                         ).select_related(
                             'issuing_state', 'garnishment_type'
                         )

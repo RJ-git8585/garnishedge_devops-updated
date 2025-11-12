@@ -9,12 +9,12 @@ class GarnishmentOrder(models.Model):
     
     garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE,db_index=True)
     is_consumer_debt = models.BooleanField(default=False)
-    deduction_code = models.CharField(max_length=255)
     issued_date = models.DateField(blank=True, null=True)
     received_date = models.DateField(blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
     stop_date = models.DateField(blank=True, null=True)
-    deduction_code = models.CharField(max_length=255)  
+    deduction_code = models.CharField(max_length=255) 
+    deduction_basis= models.CharField(max_length=255,blank=True, null=True)
     ordered_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     pay_period_limit = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     pay_date = models.DateField(blank=True, null=True)
@@ -79,7 +79,7 @@ class GarnishmentOrder(models.Model):
 
     voucher_for_payroll = models.CharField(max_length=255, blank=True, null=True)
     date_of_ap_payment = models.DateField(blank=True, null=True)
-    status = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=255, blank=True, null=True, default="active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

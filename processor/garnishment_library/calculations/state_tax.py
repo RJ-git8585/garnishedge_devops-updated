@@ -99,7 +99,6 @@ class StateTaxViewHelper:
             lower = float(config_data[EC.LOWER_THRESHOLD_AMOUNT])
             upper = float(config_data[EC.UPPER_THRESHOLD_AMOUNT])
 
-            print("config_data",config_data)
 
             # Prepare condition values
             condition_values = {
@@ -191,7 +190,6 @@ class StateWiseStateTaxLevyFormulas(StateTaxViewHelper):
             return StateWiseCreditorDebtFormulas().cal_arizona(disposable_earning,garn_start_date, config_data)
         except Exception as e:
             import traceback as t
-            print("Exception in cal_arizona: ",t.print_exc())
             return UtilityClass.build_response(0, disposable_earning, "ERROR", str(e))
 
     def cal_minnesota(self, disposable_earning, config_data, percent=GC.DEFAULT_PERCENT):
@@ -378,8 +376,6 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             medical_insurance = payroll_taxes.get(
                 CF.MEDICAL_INSURANCE, 0)
             garn_start_date = record.get(EE.GARN_START_DATE)
-
-            print("config_data",config_data)
 
             # Helper to get exempt amount config for state and pay period
             def get_exempt_amt_config_data(config_data, state, pay_period):
