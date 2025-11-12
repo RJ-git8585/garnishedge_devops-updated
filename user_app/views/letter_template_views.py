@@ -848,66 +848,38 @@ class LetterTemplateExportCSVAPI(APIView):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
             
-            # Define header columns with table name prefixes
+            # Define header columns matching the row list exactly (starting from line 1008)
             header = [
-                # Employee Details (employee_ prefix)
-                'employee_ee_id',
+                # Employee Details (employee_ prefix) - matches row[0-4]
                 'employee_first_name',
                 'employee_middle_name',
                 'employee_last_name',
                 'employee_ssn',
                 'employee_home_state',
-                'employee_work_state',
-                'employee_gender',
-                'employee_marital_status',
-                'employee_number_of_exemptions',
-                'employee_number_of_dependent_children',
-                'employee_filing_status',
-                'employee_client_id',
-                'employee_client_name',
                 
-                # Employee Address (employee_address_ prefix)
+                # Employee Address (employee_address_ prefix) - matches row[5-9]
                 'employee_address_address_1',
                 'employee_address_address_2',
                 'employee_address_city',
                 'employee_address_state',
                 'employee_address_zip_code',
-                'employee_address_geo_code',
-                'employee_address_county',
-                'employee_address_country',
                 
-                # Order Details (garnishment_order_ prefix)
+                # Order Details (garnishment_order_ prefix) - matches row[10-12]
                 'garnishment_order_case_id',
-                'garnishment_order_ordered_amount',
-                'garnishment_order_amount_of_deduction',
-                'garnishment_order_garnishment_type',
-                'garnishment_order_issued_date',
-                'garnishment_order_received_date',
                 'garnishment_order_start_date',
-                'garnishment_order_stop_date',
-                'garnishment_order_deduction_code',
-                'garnishment_order_fips_code',
                 'garnishment_order_is_consumer_debt',
                 
-                # Payee Details (payee_ prefix)
+                # Payee Details (payee_ prefix) - matches row[13]
                 'payee_payee',
-                'payee_payee_type',
-                'payee_routing_number',
-                'payee_bank_account',
-                'payee_case_number_required',
-                'payee_case_number_format',
-                'payee_fips_required',
-                'payee_fips_length',
                 
-                # Payee Address (payee_address_ prefix)
+                # Payee Address (payee_address_ prefix) - matches row[14-18]
                 'payee_address_address_1',
                 'payee_address_address_2',
                 'payee_address_city',
                 'payee_address_state',
                 'payee_address_zip_code',
-                'payee_address_zip_plus_4',
                 
-                # GarnishmentResult (result_ prefix)
+                # GarnishmentResult (result_ prefix) - matches row[19]
                 'result_withholding_amount',
             ]
             
@@ -928,7 +900,7 @@ class LetterTemplateExportCSVAPI(APIView):
         output = StringIO()
         writer = csv.writer(output)
         
-        # Write CSV header
+        # Write CSV header - ONLY the 20 columns defined
         writer.writerow(header)
         
         # Write data rows
@@ -957,72 +929,58 @@ class LetterTemplateExportCSVAPI(APIView):
                 except AttributeError:
                     payee_address = None
             
-            # Employee Details (employee_ prefix)
+            # Build row with EXACTLY 20 fields matching the header
+            # Employee Details (employee_ prefix) - 5 fields
             row = [
-                employee.ee_id or '',
                 employee.first_name or '',
                 employee.middle_name or '',
                 employee.last_name or '',
                 employee.ssn or '',
                 employee.home_state.state if employee.home_state else '',
-                employee.work_state.state if employee.work_state else '',
-                employee.gender or '',
-                employee.marital_status or '',
-                employee.number_of_exemptions or 0,
-                employee.number_of_dependent_child or 0,
-                employee.filing_status.name if employee.filing_status else '',
-                employee.client.client_id if employee.client else '',
-                employee.client.legal_name if employee.client else '',
                 
-                # Employee Address (employee_address_ prefix)
+                # Employee Address (employee_address_ prefix) - 5 fields
                 employee_address.address_1 if employee_address else '',
                 employee_address.address_2 if employee_address else '',
                 employee_address.city if employee_address else '',
                 employee_address.state if employee_address else '',
                 str(employee_address.zip_code) if employee_address and employee_address.zip_code else '',
-                str(employee_address.geo_code) if employee_address and employee_address.geo_code else '',
-                employee_address.county if employee_address else '',
-                employee_address.country if employee_address else '',
                 
-                # Order Details (garnishment_order_ prefix)
+                # Order Details (garnishment_order_ prefix) - 3 fields
                 order.case_id or '',
-                str(order.ordered_amount) if order.ordered_amount else '0.00',
-                str(order.amount_of_deduction) if order.amount_of_deduction else '0.00',
-                order.garnishment_type.type if order.garnishment_type else '',
-                order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
-                order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
                 order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
-                order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
-                order.deduction_code or '',
-                order.fips_code or '',
                 'Yes' if order.is_consumer_debt else 'No',
                 
-                # Payee Details (payee_ prefix)
+                # Payee Details (payee_ prefix) - 1 field
                 payee_details.payee if payee_details else '',
-                payee_details.payee_type if payee_details else '',
-                payee_details.routing_number if payee_details else '',
-                payee_details.bank_account if payee_details else '',
-                'Yes' if payee_details and payee_details.case_number_required else 'No',
-                payee_details.case_number_format if payee_details else '',
-                'Yes' if payee_details and payee_details.fips_required else 'No',
-                payee_details.fips_length if payee_details else '',
                 
-                # Payee Address (payee_address_ prefix)
+                # Payee Address (payee_address_ prefix) - 5 fields
                 payee_address.address_1 if payee_address else '',
                 payee_address.address_2 if payee_address else '',
                 payee_address.city if payee_address else '',
                 payee_address.state.state if payee_address and payee_address.state else '',
                 payee_address.zip_code if payee_address else '',
-                payee_address.zip_plus_4 if payee_address else '',
                 
-                # GarnishmentResult (result_ prefix)
+                # GarnishmentResult (result_ prefix) - 1 field
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
             ]
+            
+            # Ensure row has exactly the same number of fields as header
+            if len(row) != len(header):
+                raise ValueError(f"Row has {len(row)} fields but header has {len(header)} fields")
+            
             writer.writerow(row)
         
         # Prepare HTTP response with CSV
         output.seek(0)
-        response = HttpResponse(output.getvalue(), content_type='text/csv')
+        csv_content = output.getvalue()
+        
+        # Verify the first line (header) has exactly 20 columns
+        first_line = csv_content.split('\n')[0] if csv_content else ''
+        header_count = len(first_line.split(',')) if first_line else 0
+        if header_count != 20:
+            raise ValueError(f"CSV header has {header_count} columns, expected 20. Header: {first_line[:200]}")
+        
+        response = HttpResponse(csv_content, content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="garnishment_export.csv"'
         return response
     
@@ -1060,68 +1018,46 @@ class LetterTemplateExportCSVAPI(APIView):
                 except AttributeError:
                     payee_address = None
             
-            # Employee Details (employee_ prefix)
+            # Build row with EXACTLY 20 fields matching the header
+            # Employee Details (employee_ prefix) - 5 fields
             row = [
-                employee.ee_id or '',
                 employee.first_name or '',
                 employee.middle_name or '',
                 employee.last_name or '',
                 employee.ssn or '',
                 employee.home_state.state if employee.home_state else '',
-                employee.work_state.state if employee.work_state else '',
-                employee.gender or '',
-                employee.marital_status or '',
-                str(employee.number_of_exemptions) if employee.number_of_exemptions else '0',
-                str(employee.number_of_dependent_child) if employee.number_of_dependent_child else '0',
-                employee.filing_status.name if employee.filing_status else '',
-                employee.client.client_id if employee.client else '',
-                employee.client.legal_name if employee.client else '',
                 
-                # Employee Address (employee_address_ prefix)
+                # Employee Address (employee_address_ prefix) - 5 fields
                 employee_address.address_1 if employee_address else '',
                 employee_address.address_2 if employee_address else '',
                 employee_address.city if employee_address else '',
                 employee_address.state if employee_address else '',
                 str(employee_address.zip_code) if employee_address and employee_address.zip_code else '',
-                str(employee_address.geo_code) if employee_address and employee_address.geo_code else '',
-                employee_address.county if employee_address else '',
-                employee_address.country if employee_address else '',
                 
-                # Order Details (garnishment_order_ prefix)
+                # Order Details (garnishment_order_ prefix) - 3 fields
                 order.case_id or '',
-                str(order.ordered_amount) if order.ordered_amount else '0.00',
-                str(order.amount_of_deduction) if order.amount_of_deduction else '0.00',
-                order.garnishment_type.type if order.garnishment_type else '',
-                order.issued_date.strftime('%Y-%m-%d') if order.issued_date else '',
-                order.received_date.strftime('%Y-%m-%d') if order.received_date else '',
                 order.start_date.strftime('%Y-%m-%d') if order.start_date else '',
-                order.stop_date.strftime('%Y-%m-%d') if order.stop_date else '',
-                order.deduction_code or '',
-                order.fips_code or '',
                 'Yes' if order.is_consumer_debt else 'No',
                 
-                # Payee Details (payee_ prefix)
+                # Payee Details (payee_ prefix) - 1 field
                 payee_details.payee if payee_details else '',
-                payee_details.payee_type if payee_details else '',
-                payee_details.routing_number if payee_details else '',
-                payee_details.bank_account if payee_details else '',
-                'Yes' if payee_details and payee_details.case_number_required else 'No',
-                payee_details.case_number_format if payee_details else '',
-                'Yes' if payee_details and payee_details.fips_required else 'No',
-                str(payee_details.fips_length) if payee_details and payee_details.fips_length else '',
                 
-                # Payee Address (payee_address_ prefix)
+                # Payee Address (payee_address_ prefix) - 5 fields
                 payee_address.address_1 if payee_address else '',
                 payee_address.address_2 if payee_address else '',
                 payee_address.city if payee_address else '',
                 payee_address.state.state if payee_address and payee_address.state else '',
                 payee_address.zip_code if payee_address else '',
-                payee_address.zip_plus_4 if payee_address else '',
                 
-                # GarnishmentResult (result_ prefix)
+                # GarnishmentResult (result_ prefix) - 1 field
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
             ]
-            output.write('\t'.join(row))
+            
+            # Ensure row has exactly the same number of fields as header
+            if len(row) != len(header):
+                raise ValueError(f"Row has {len(row)} fields but header has {len(header)} fields")
+            
+            output.write('\t'.join(str(val) for val in row))
             output.write('\n')
         
         # Prepare HTTP response with TXT
