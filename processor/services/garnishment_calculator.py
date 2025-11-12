@@ -68,7 +68,10 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            
+            override_amount = record.get('override_amount', 0)
+            override_arrear = record.get('override_arrear', 0)
+            override_limit = record.get('override_limit', 0)
+
             calculation_result = ChildSupport(work_state).calculate(record)
             # Use parameter value if provided, otherwise get from record
             if garn_fees is None:
@@ -636,8 +639,6 @@ class GarnishmentCalculator:
         try:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
-
-
             
             if not garnishment_data:
                 return None

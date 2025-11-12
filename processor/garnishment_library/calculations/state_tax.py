@@ -507,8 +507,6 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             return CC.NOT_FOUND
 
         except Exception as e:
-            import traceback as t
-            print("Exception in state tax levy calculation: ",t.print_exc())
 
             logger.error(f"Error in state tax levy calculation: {e}")
             return Response(

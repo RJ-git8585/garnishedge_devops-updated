@@ -14,6 +14,7 @@ class GarnishmentOrder(models.Model):
     start_date = models.DateField(blank=True, null=True)
     stop_date = models.DateField(blank=True, null=True)
     deduction_code = models.CharField(max_length=255) 
+    payee_id=models.CharField(max_length=255)
     deduction_basis= models.CharField(max_length=255,blank=True, null=True)
     ordered_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     pay_period_limit = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)

@@ -188,6 +188,7 @@ class GarnishmentOrderSerializer(serializers.ModelSerializer):
             "stop_date",
             "ordered_amount",
             "status",
+            "payee_id",
             "amount_of_deduction",
             "current_child_support",
             "current_medical_support",
