@@ -139,7 +139,8 @@ class DatabaseManager:
             disposable_earnings = calculation_metrics.get(GRF.DISPOSABLE_EARNINGS)
             total_mandatory_deductions = calculation_metrics.get(GRF.TOTAL_MANDATORY_DEDUCTIONS)
             allowable_disposable_earnings = calculation_metrics.get(GRF.ALLOWABLE_DISPOSABLE_EARNINGS)
-
+            withholding_limit = calculation_metrics.get(GRF.WITHHOLDING_LIMIT)
+           
             # Extract garnishment fees (from ER_DEDUCTION, which is shared across all garnishments)
             garnishment_fees_note = er_deductions.get(GRF.GARNISHMENT_FEES, "No Provision")
             
@@ -167,8 +168,7 @@ class DatabaseManager:
                 
                 # Extract withholding basis, cap, and limit rule from this garnishment detail
                 withholding_basis = garnishment_detail.get(GRF.WITHHOLDING_BASIS)
-                withholding_cap = garnishment_detail.get(GRF.WITHHOLDING_CAP)
-                withholding_limit_rule = garnishment_detail.get(GRF.WITHHOLDING_LIMIT_RULE)
+                withholding_cap = garnishment_detail.get(GRF.WITHHOLDING_CAP)   
                 
                 # For multiple garnishments, each item may have its own garnishment_fees
                 # Otherwise use the shared one from er_deductions
@@ -301,7 +301,7 @@ class DatabaseManager:
                             'withholding_amount': amounts.get('withholding_amount'),
                             'withholding_arrear': amounts.get('withholding_arrear'),
                             'garnishment_type': garnishment_type_obj,
-                            'withholding_limit_rule': withholding_limit_rule,
+                            'withholding_limit': withholding_limit,
                             'withholding_basis': withholding_basis,
                             'withholding_cap': withholding_cap,
                             'garnishment_fees_note': str(garnishment_fees_note) if garnishment_fees_note else None,
@@ -355,7 +355,7 @@ class DatabaseManager:
                         'withholding_amount': total_withheld,
                         'withholding_arrear': sum(float(a.get(GRF.AMOUNT, 0)) for a in arrear_amounts if not isinstance(a.get(GRF.AMOUNT), str)),
                         'garnishment_type': garnishment_type_obj,
-                        'withholding_limit_rule': withholding_limit_rule,
+                        'withholding_limit': withholding_limit,
                         'withholding_basis': withholding_basis,
                         'withholding_cap': withholding_cap,
                         'garnishment_fees_note': str(garnishment_fees_note) if garnishment_fees_note else None,

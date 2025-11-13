@@ -269,6 +269,7 @@ class SingleChild(ChildSupportHelper):
                 "arrear_amt": {"arrear amount1": round(arrear, 2) if gross_pay > 0 else 0},
                 "ade": ade,
                 "de": de,
+                "wl": withholding_limit*100,
                 "mde": mandatory_deductions
             }
         except Exception as e:
@@ -353,6 +354,7 @@ class MultipleChild(ChildSupportHelper):
                 "arrear_amt": ar_amounts,
                 "ade": ade,
                 "de": de,
+                "wl": withholding_limit*100,
                 "mde": mandatory_deductions
             }
         except Exception as e:
