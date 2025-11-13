@@ -390,6 +390,11 @@ class LetterTemplateAvailableVariablesAPI(APIView):
                     "last_name": "Last Name",
                     ...
                 },
+                "employee_address": {
+                    "employee_address_address_1": "Employee Address Line 1",
+                    "employee_address_city": "Employee City",
+                    ...
+                },
                 "order_data": {
                     "case_id": "Case ID",
                     "ordered_amount": "Ordered Amount",
@@ -399,6 +404,11 @@ class LetterTemplateAvailableVariablesAPI(APIView):
                 "sdu_data": {
                     "sdu_payee": "SDU Payee",
                     "sdu_address": "SDU Address",
+                    ...
+                },
+                "payee_address": {
+                    "payee_address_address_1": "Payee Address Line 1",
+                    "payee_address_city": "Payee City",
                     ...
                 }
             }
