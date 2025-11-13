@@ -24,7 +24,7 @@ class GarnishmentResult(models.Model):
     withholding_arrear = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE, related_name="garnishment_results")
-    withholding_limit_rule = models.CharField(max_length=100, null=True, blank=True)
+    withholding_limit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     withholding_basis = models.CharField(max_length=100, null=True, blank=True)
     withholding_cap = models.CharField(max_length=100, null=True, blank=True)
 
