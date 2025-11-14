@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.db.models import Q, Sum
 from django.db import transaction
 from datetime import datetime, date
@@ -116,6 +116,10 @@ class ACHFileGenerationView(APIView):
         record += "094"  # Position 35-37: Record Size
         record += "10"  # Position 38-39: Blocking Factor
         record += "1"  # Position 40: Format Code
+        # Convert to uppercase
+        immediate_destination_name = str(immediate_destination_name).upper() if immediate_destination_name else ""
+        immediate_origin_name = str(immediate_origin_name).upper() if immediate_origin_name else ""
+        
         record += self._pad_string(immediate_destination_name, 23, 'left', ' ')  # Position 41-63: Immediate Destination Name
         record += self._pad_string(immediate_origin_name, 23, 'left', ' ')  # Position 64-86: Immediate Origin Name
         record += internal_ref  # Position 87-94: Internal Reference Code (8 digits)
@@ -130,11 +134,14 @@ class ACHFileGenerationView(APIView):
     def _generate_batch_header(self, batch_number, company_name, company_id, 
                               effective_date, company_discretionary_data="",
                               standard_entry_class="CCD", company_entry_description="",
-                              originating_dfi_id=""):
+                              originating_dfi_id="", service_class_code="200"):
         """
         Generate Batch Header Record (Type 5) for CCD+ format per CSV specification.
         Position 1: Record Type Code (5)
-        Position 2-4: Service Class Code (200)
+        Position 2-4: Service Class Code (200, 220, 225, etc.)
+          * 200 = Mixed debits and credits
+          * 220 = Credits only
+          * 225 = Debits only
         Position 5-20: Company Name (16 chars)
         Position 21-40: Blank (20 chars)
         Position 41-50: Company Identification (10 digits)
@@ -146,6 +153,20 @@ class ACHFileGenerationView(APIView):
         Position 79: Originator Status Code (1)
         Position 80-87: Trace Record Part 1 - Originating DFI ID (8 digits)
         Position 88-94: Trace Record Part 2 - Batch Number (7 digits)
+        
+        Args:
+            batch_number: Batch number (7 digits)
+            company_name: Company name (max 16 chars)
+            company_id: Company identification (10 digits)
+            effective_date: Effective entry date (date object)
+            company_discretionary_data: Company discretionary data (optional)
+            standard_entry_class: Standard Entry Class code (default: "CCD")
+            company_entry_description: Company entry description (default: "CHILD SUPP")
+            originating_dfi_id: Originating DFI identification (8 digits)
+            service_class_code: Service Class Code (default: "200")
+        
+        Returns:
+            str: Formatted batch header record (94 characters + newline)
         """
         if effective_date is None:
             effective_date = date.today()
@@ -163,12 +184,20 @@ class ACHFileGenerationView(APIView):
         if not company_entry_description:
             company_entry_description = "CHILD SUPP"
 
+        # Convert to uppercase
+        company_name = str(company_name).upper() if company_name else ""
+        company_entry_description = str(company_entry_description).upper() if company_entry_description else "CHILD SUPP"
+
         # Format company_id to 10 digits (pad or truncate)
         company_id_clean = ''.join(filter(str.isdigit, str(company_id)))[:10]
         company_id_formatted = self._pad_number(company_id_clean, 10, '0')
 
         record = "5"  # Position 1: Record Type Code
-        record += "200"  # Position 2-4: Service Class Code
+        # Position 2-4: Service Class Code (200, 220, 225, etc.)
+        # Format to 3 digits, default to "200" if not provided or invalid
+        service_class_code_str = str(service_class_code).strip()[:3] if service_class_code else "200"
+        service_class_code_formatted = self._pad_number(service_class_code_str, 3, '0')
+        record += service_class_code_formatted
         record += self._pad_string(company_name, 16, 'left', ' ')  # Position 5-20: Company Name
         record += self._pad_string("", 20, 'left', ' ')  # Position 21-40: Blank
         record += company_id_formatted  # Position 41-50: Company Identification (10 digits)
@@ -216,8 +245,8 @@ class ACHFileGenerationView(APIView):
         account_clean = ''.join(filter(str.isalnum, str(account_number)))[:17]
         account_clean = self._pad_string(account_clean, 17, 'left', ' ')
 
-        # Format individual name (up to 22 chars)
-        name_clean = str(individual_name)[:22] if individual_name else ''
+        # Format individual name (up to 22 chars) - convert to uppercase
+        name_clean = str(individual_name).upper()[:22] if individual_name else ''
         name_clean = self._pad_string(name_clean, 22, 'left', ' ')
 
         # Format individual id (up to 15 chars)
@@ -250,77 +279,165 @@ class ACHFileGenerationView(APIView):
                                  employment_termination_indicator, addenda_sequence_number, 
                                  entry_detail_sequence_number):
         """
-        Generate Addenda Record (Type 7) for CCD+ format per CSV specification.
-        Position 1: Record Type Code (7)
-        Position 2-3: Addenda Type Code (05 for CCD+)
-        Position 4-83: Payment Related Information (80 chars) - structured data with delimiters
-        Position 84-87: Addenda Sequence Number (4 digits)
-        Position 88-94: Entry Detail Sequence Number (7 digits)
+        Generate Addenda Record (Type 7) for CCD+ format per NACHA specification.
+        
+        Record Structure (94 characters total, excluding newline):
+        - Position 1: Record Type Code (7) - Always "7"
+        - Position 2-3: Addenda Type Code (05 for CCD+) - Always "05"
+        - Position 4-83: Payment Related Information (80 chars) - structured data with delimiters
+        - Position 84-87: Addenda Sequence Number (4 digits)
+        - Position 88-94: Entry Detail Sequence Number (7 digits)
         
         Payment Related Information structure (positions 4-83, 80 chars total):
-        - Position 4-6: Segment Identifier (DED for child support, TXP for FTB)
+        - Position 4-6: Segment Identifier (3 chars)
+          * "DED" for child support
+          * "TXP" for FTB (Franchise Tax Board)
         - Position 7: Segment Delimiter (*)
-        - Position 8-10: Application Identifier (CS for child support, 52/53/55/56/61/62 for FTB)
-        - Position 11: Segment Delimiter (*)
-        - Position 12-26: Case Identifier (20 chars, left-justified, space-padded)
-        - Position 27: Segment Delimiter (*)
-        - Position 28-33: Pay Date (6 chars, YYMMDD format)
-        - Position 34: Segment Delimiter (*)
-        - Position 35-44: Payment Amount (10 digits, in cents)
-        - Position 45: Segment Delimiter (*)
-        - Position 46-54: Absent Parent SSN (9 digits)
-        - Position 55: Segment Delimiter (*)
-        - Position 56: Medical Support Indicator (Y or N, 1 char)
-        - Position 57: Segment Delimiter (*)
-        - Position 58-77: Absent Parent Name (20 chars, format: Last,First)
-        - Position 78: Segment Delimiter (*)
-        - Position 79-84: FIPS Code (6 chars, left-justified, space-padded)
-        - Position 85: Segment Delimiter (*)
-        - Position 86: Employment Termination Indicator (Y or N, 1 char)
-        - Position 87: Segment Terminator (\)
-        - Position 88-93: Filler (space-padded, 6 chars to make total 80)
-        """
-        # Build structured payment information (80 chars total)
-        payment_info = ""
-        payment_info += self._pad_string(segment_identifier, 3, 'left', ' ')  # Position 4-6: Segment Identifier (3 chars)
-        payment_info += "*"  # Position 7: Segment Delimiter (1 char)
-        payment_info += self._pad_string(application_identifier, 3, 'left', ' ')  # Position 8-10: Application Identifier (3 chars)
-        payment_info += "*"  # Position 11: Segment Delimiter (1 char)
-        payment_info += self._pad_string(case_identifier, 20, 'left', ' ')  # Position 12-26: Case Identifier (20 chars)
-        payment_info += "*"  # Position 27: Segment Delimiter (1 char)
-        payment_info += self._pad_string(pay_date, 6, 'left', ' ')  # Position 28-33: Pay Date (6 chars, YYMMDD)
-        payment_info += "*"  # Position 34: Segment Delimiter (1 char)
-        payment_info += self._format_amount(payment_amount)  # Position 35-44: Payment Amount (10 digits)
-        payment_info += "*"  # Position 45: Segment Delimiter (1 char)
-        payment_info += self._pad_string(absent_parent_ssn, 9, 'left', '0')  # Position 46-54: Absent Parent SSN (9 digits)
-        payment_info += "*"  # Position 55: Segment Delimiter (1 char)
-        payment_info += self._pad_string(medical_support_indicator, 1, 'left', ' ')  # Position 56: Medical Support Indicator (1 char)
-        payment_info += "*"  # Position 57: Segment Delimiter (1 char)
-        payment_info += self._pad_string(absent_parent_name, 20, 'left', ' ')  # Position 58-77: Absent Parent Name (20 chars)
-        payment_info += "*"  # Position 78: Segment Delimiter (1 char)
-        payment_info += self._pad_string(fips_code, 6, 'left', ' ')  # Position 79-84: FIPS Code (6 chars)
-        payment_info += "*"  # Position 85: Segment Delimiter (1 char)
-        payment_info += self._pad_string(employment_termination_indicator, 1, 'left', ' ')  # Position 86: Employment Termination Indicator (1 char)
-        payment_info += "\\"  # Position 87: Segment Terminator (1 char)
-        payment_info += self._pad_string("", 6, 'left', ' ')  # Position 88-93: Filler (6 chars to reach 80 total)
+        - Position 8-9: Application Identifier (2 chars)
+          * "CS" for child support
+          * "52", "53", "55", "56", "61", "62" for FTB (depending on type of order)
+        - Position 10: Segment Delimiter (*)
+        - Position 11-30: Case Identifier (20 chars, left-justified, space-padded)
+          * State-assigned case number
+        - Position 31: Segment Delimiter (*)
+        - Position 32-37: Pay Date (6 chars, YYMMDD format)
+          * Employee's Payroll Date
+        - Position 38: Segment Delimiter (*)
+        - Position 39-48: Payment Amount (10 digits, in cents, zero-padded)
+          * Withholding amount that needs to be sent to the agency
+        - Position 49: Segment Delimiter (*)
+        - Position 50-58: Absent Parent SSN (9 digits, zero-padded)
+          * Employee's Social Security Number
+        - Position 59: Segment Delimiter (*)
+        - Position 60: Medical Support Indicator (1 char, Y or N, uppercase)
+          * "Y" or "N" - indicates if medical support is included
+        - Position 61: Segment Delimiter (*)
+        - Position 62-71: Absent Parent Name (10 chars, format: Last,First, uppercase, space-padded)
+          * Employee's Name, format: Last, First
+        - Position 72: Segment Delimiter (*)
+        - Position 73-79: FIPS Code (7 chars, left-justified, space-padded)
+          * State FIPS code identifying the SDU jurisdiction
+          * Present in the order details
+        - Position 80: Segment Delimiter (*)
+        - Position 81-82: Employment Termination Indicator (2 chars)
+          * Position 81: Indicator (Y or N, uppercase)
+          * Position 82: Space
+          * "Y" or "N" - indicates if employee is terminated or not
+        - Position 83: Segment Terminator (\)
+          * As per document should be backslash, but as per sample files there is a forward slash
+        - Position 84-87: Addenda Sequence Number (4 digits)
+          * Sequence number (always starts at 0001 for first addenda per entry)
+        - Position 88-94: Entry Detail Sequence Number (7 digits)
+          * Last 7 digits of associated Entry Detail's trace number
         
-        # Ensure payment_info is exactly 80 characters
+        Note: Filler is 0 chars (no filler needed as positions align correctly)
+        
+        Args:
+            addenda_type_code: Addenda type code (5 for CCD+, will be formatted as "05")
+            segment_identifier: Segment identifier (DED for child support, TXP for FTB)
+            application_identifier: Application identifier (CS for child support, 52/53/55/56/61/62 for FTB)
+            case_identifier: Case/Order identifier (max 20 chars, state-assigned case number)
+            pay_date: Pay date in YYMMDD format (6 chars, Employee's Payroll Date)
+            payment_amount: Payment amount (Decimal, withholding amount in cents)
+            absent_parent_ssn: Absent parent SSN (9 digits, Employee's Social Security Number)
+            medical_support_indicator: Medical support indicator (Y or N)
+            absent_parent_name: Absent parent name (format: Last,First, max 10 chars, Employee's Name)
+            fips_code: FIPS code (7 chars total including padding, State FIPS code for SDU jurisdiction)
+            employment_termination_indicator: Employment termination indicator (Y or N)
+            addenda_sequence_number: Addenda sequence number (4 digits, starts at 0001)
+            entry_detail_sequence_number: Entry detail sequence number (7 digits, last 7 digits of trace number)
+        
+        Returns:
+            str: Formatted addenda record (94 characters + newline)
+        """
+        # Convert all text fields to uppercase as per NACHA specification
+        segment_identifier = str(segment_identifier).upper() if segment_identifier else ""
+        application_identifier = str(application_identifier).upper() if application_identifier else ""
+        case_identifier = str(case_identifier).upper() if case_identifier else ""
+        absent_parent_name = str(absent_parent_name).upper() if absent_parent_name else ""
+        medical_support_indicator = str(medical_support_indicator).upper() if medical_support_indicator else ""
+        employment_termination_indicator = str(employment_termination_indicator).upper() if employment_termination_indicator else ""
+        
+        # Build structured payment information section (80 characters total, positions 4-83)
+        payment_info = ""
+        
+        # Position 4-6: Segment Identifier (3 chars)
+        # "DED" for child support, "TXP" for FTB
+        payment_info += self._pad_string(segment_identifier, 3, 'left', ' ')
+        payment_info += "*"  # Position 7: Segment Delimiter
+        
+        # Position 8-9: Application Identifier (2 chars)
+        # "CS" for child support, "52"/"53"/"55"/"56"/"61"/"62" for FTB
+        payment_info += self._pad_string(application_identifier, 2, 'left', ' ')
+        payment_info += "*"  # Position 10: Segment Delimiter
+        
+        # Position 11-30: Case Identifier (20 chars, left-justified, space-padded)
+        # State-assigned case number
+        payment_info += self._pad_string(case_identifier, 20, 'left', ' ')
+        payment_info += "*"  # Position 31: Segment Delimiter
+        
+        # Position 32-37: Pay Date (6 chars, YYMMDD format)
+        # Employee's Payroll Date
+        payment_info += self._pad_string(pay_date, 6, 'left', ' ')
+        payment_info += "*"  # Position 38: Segment Delimiter
+        
+        # Position 39-48: Payment Amount (10 digits, in cents, zero-padded)
+        # Withholding amount that needs to be sent to the agency
+        payment_info += self._format_amount(payment_amount)
+        payment_info += "*"  # Position 49: Segment Delimiter
+        
+        # Position 50-58: Absent Parent SSN (9 digits, zero-padded)
+        # Employee's Social Security Number
+        payment_info += self._pad_string(absent_parent_ssn, 9, 'left', '0')
+        payment_info += "*"  # Position 59: Segment Delimiter
+        
+        # Position 60: Medical Support Indicator (1 char, Y or N, uppercase)
+        # "Y" or "N" - indicates if medical support is included
+        payment_info += self._pad_string(medical_support_indicator, 1, 'left', ' ')
+        payment_info += "*"  # Position 61: Segment Delimiter
+        
+        # Position 62-71: Absent Parent Name (10 chars, format: Last,First, uppercase, space-padded)
+        # Employee's Name, format: Last, First
+        payment_info += self._pad_string(absent_parent_name, 10, 'left', ' ')
+        payment_info += "*"  # Position 72: Segment Delimiter
+        
+        # Position 73-79: FIPS Code (7 chars, left-justified, space-padded)
+        # State FIPS code identifying the SDU jurisdiction, present in the order details
+        payment_info += self._pad_string(fips_code, 7, 'left', ' ')
+        payment_info += "*"  # Position 80: Segment Delimiter
+        
+        # Position 81-82: Employment Termination Indicator (2 chars)
+        # Position 81: Indicator (Y or N, uppercase)
+        # Position 82: Space
+        # "Y" or "N" - indicates if employee is terminated or not
+        employment_term = (employment_termination_indicator[:1] if employment_termination_indicator else "N") + " "
+        payment_info += employment_term
+        
+        # Position 83: Segment Terminator (1 char)
+        # As per document should be backslash, but as per sample files there is a forward slash
+        payment_info += "\\"
+        
+        # Ensure payment_info is exactly 80 characters (positions 4-83)
+        # Note: No filler needed (0 chars) as positions align correctly
         payment_info = payment_info[:80]
         payment_info = self._pad_string(payment_info, 80, 'left', ' ')
         
+        # Build complete addenda record (94 characters total)
         record = "7"  # Position 1: Record Type Code
         record += self._pad_number(addenda_type_code, 2)  # Position 2-3: Addenda Type Code (05 for CCD+)
         record += payment_info  # Position 4-83: Payment Related Information (80 chars)
         record += self._pad_number(addenda_sequence_number, 4)  # Position 84-87: Addenda Sequence Number (4 digits)
-        # Entry Detail Sequence Number is last 7 digits of trace number part 2
+        
+        # Entry Detail Sequence Number (position 88-94, 7 digits)
+        # Use last 7 digits of trace number part 2
         entry_seq = str(entry_detail_sequence_number)[-7:] if entry_detail_sequence_number else "0000000"
-        record += self._pad_number(entry_seq, 7)  # Position 88-94: Entry Detail Sequence Number (7 digits)
+        record += self._pad_number(entry_seq, 7)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
             record = record[:94].ljust(94, ' ')
         
-        record += "\n"  # Newline
+        record += "\n"  # Add newline character
         return record
 
     def _calculate_check_digit(self, routing_number):
@@ -335,11 +452,12 @@ class ACHFileGenerationView(APIView):
     def _generate_batch_control(self, batch_number, entry_count, addenda_count, entry_hash, 
                                 total_debit_amount, total_credit_amount, 
                                 company_id, message_auth_code="", 
-                                originating_dfi_id=""):
+                                originating_dfi_id="", service_class_code="200"):
         """
         Generate Batch Control Record (Type 8) per CSV specification.
         Position 1: Record Type Code (8)
-        Position 2-4: Service Class Code (200)
+        Position 2-4: Service Class Code (200, 220, 225, etc.)
+          * Must match the Service Class Code from Batch Header (Type 5)
         Position 5-10: Entry/Addenda Count (6 digits)
         Position 11-20: Entry Hash (10 digits)
         Position 21-32: Total Debit Entry Dollar Amount (12 digits)
@@ -349,6 +467,21 @@ class ACHFileGenerationView(APIView):
         Position 74-79: Reserved (6 chars, blank)
         Position 80-87: Originating DFI Identification (8 digits)
         Position 88-94: Batch Number (7 digits)
+        
+        Args:
+            batch_number: Batch number (7 digits)
+            entry_count: Number of entry detail records
+            addenda_count: Number of addenda records
+            entry_hash: Entry hash (sum of first 8 digits of routing numbers)
+            total_debit_amount: Total debit entry dollar amount (Decimal)
+            total_credit_amount: Total credit entry dollar amount (Decimal)
+            company_id: Company identification (10 digits)
+            message_auth_code: Message authentication code (19 chars, optional)
+            originating_dfi_id: Originating DFI identification (8 digits)
+            service_class_code: Service Class Code (default: "200", must match Batch Header)
+        
+        Returns:
+            str: Formatted batch control record (94 characters + newline)
         """
         # Format company_id to 10 digits (pad or truncate)
         company_id_clean = ''.join(filter(str.isdigit, str(company_id)))[:10]
@@ -359,7 +492,11 @@ class ACHFileGenerationView(APIView):
         originating_dfi_formatted = self._pad_number(originating_dfi_clean, 8, '0')
         
         record = "8"  # Position 1: Record Type Code
-        record += "200"  # Position 2-4: Service Class Code
+        # Position 2-4: Service Class Code (must match Batch Header)
+        # Format to 3 digits, default to "200" if not provided or invalid
+        service_class_code_str = str(service_class_code).strip()[:3] if service_class_code else "200"
+        service_class_code_formatted = self._pad_number(service_class_code_str, 3, '0')
+        record += service_class_code_formatted
         record += self._pad_number(entry_count + addenda_count, 6)  # Position 5-10: Entry/Addenda Count (6 digits)
         record += self._pad_number(entry_hash % 10000000000, 10)  # Position 11-20: Entry Hash (10 digits)
         record += self._format_amount(total_debit_amount, 12)  # Position 21-32: Total Debit Entry Dollar Amount (12 digits)
@@ -473,6 +610,8 @@ class ACHFileGenerationView(APIView):
         
         file_id_modifier = file_params.get('file_id_modifier', 'A')
         batch_number = file_params.get('batch_number', 1)
+        service_class_code = file_params.get('service_class_code', '200')  # Default to "200" if not provided
+        standard_entry_class = file_params.get('standard_entry_class', 'CCD')  # Default to "CCD" if not provided
         
         # File Header
         creation_time = datetime.now().time()
@@ -494,8 +633,9 @@ class ACHFileGenerationView(APIView):
             company_name=company_name,
             company_id=company_id,
             effective_date=effective_date,
-            standard_entry_class="CCD",
-            originating_dfi_id=originating_dfi_id
+            standard_entry_class=standard_entry_class,
+            originating_dfi_id=originating_dfi_id,
+            service_class_code=service_class_code
         )
         ach_content.append(batch_header)
 
@@ -525,22 +665,22 @@ class ACHFileGenerationView(APIView):
                 # Transaction code: 22 = checking credit (per CSV), 27 = checking credit (alternative)
                 transaction_code = order_data.get('transaction_code', 22)
                 
-                # Extract addenda fields from order_data
-                segment_identifier = order_data.get('segment_identifier', 'DED')  # DED for child support, TXP for FTB
-                application_identifier = order_data.get('application_identifier', 'CS')  # CS for child support
-                case_identifier = order_data.get('case_identifier', case_id[:20])
+                # Extract addenda fields from order_data - convert to uppercase
+                segment_identifier = str(order_data.get('segment_identifier', 'DED')).upper()  # DED for child support, TXP for FTB
+                application_identifier = str(order_data.get('application_identifier', 'CS')).upper()  # CS for child support
+                case_identifier = str(order_data.get('case_identifier', case_id[:20])).upper()
                 pay_date_str = self._format_date(effective_date)  # YYMMDD format (6 chars)
                 absent_parent_ssn = order_data.get('absent_parent_ssn', employee_ssn)[:9]
-                medical_support_indicator = order_data.get('medical_support_indicator', 'N')
+                medical_support_indicator = str(order_data.get('medical_support_indicator', 'N')).upper()
                 absent_parent_name = order_data.get('absent_parent_name', individual_name)
-                # Format name as "Last,First" if not already formatted (max 20 chars)
+                # Format name as "Last,First" if not already formatted (max 10 chars)
                 if ',' not in absent_parent_name and ' ' in absent_parent_name:
                     name_parts = absent_parent_name.split()
                     if len(name_parts) >= 2:
                         absent_parent_name = f"{name_parts[-1]},{' '.join(name_parts[:-1])}"
-                absent_parent_name = absent_parent_name[:20]  # Ensure max 20 chars
-                fips_code = order_data.get('fips_code', '')[:6]
-                employment_termination_indicator = order_data.get('employment_termination_indicator', 'N')
+                absent_parent_name = str(absent_parent_name).upper()[:10]  # Convert to uppercase and ensure max 10 chars
+                fips_code = order_data.get('fips_code', '')[:7]  # FIPS code is 7 chars total (including padding)
+                employment_termination_indicator = str(order_data.get('employment_termination_indicator', 'N')).upper()
                 
                 # Generate Entry Detail Record
                 entry_detail = self._generate_entry_detail(
@@ -599,7 +739,8 @@ class ACHFileGenerationView(APIView):
             total_debit_amount=total_debit_amount,
             total_credit_amount=total_credit_amount,
             company_id=company_id,
-            originating_dfi_id=originating_dfi_id
+            originating_dfi_id=originating_dfi_id,
+            service_class_code=service_class_code  # Must match Batch Header
         )
         ach_content.append(batch_control)
 
@@ -638,28 +779,90 @@ class ACHFileGenerationView(APIView):
         """Convert ACH content to PDF format."""
         try:
             from reportlab.lib.pagesizes import letter
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Preformatted
-            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.units import inch
             
             buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=letter)
-            story = []
-            styles = getSampleStyleSheet()
+            c = canvas.Canvas(buffer, pagesize=letter)
+            width, height = letter
+            
+            # Use Courier (monospace) font for fixed-width formatting
+            c.setFont("Courier", 8)
+            
+            # Set margins
+            margin = 0.5 * inch
+            x = margin
+            y = height - margin
+            line_height = 10
+            
+            # Split content into lines
+            lines = ach_content.split('\n')
             
             # Add title
-            story.append(Paragraph("ACH File Content", styles['Title']))
-            story.append(Paragraph("<br/>", styles['Normal']))
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(x, y, "ACH File Content")
+            y -= line_height * 2
+            c.setFont("Courier", 8)
             
-            # Add content as preformatted text
-            story.append(Preformatted(ach_content, styles['Code'], maxLineLength=94))
+            # Draw each line
+            for line in lines:
+                if y < margin + line_height:
+                    # New page
+                    c.showPage()
+                    c.setFont("Courier", 8)
+                    y = height - margin
+                
+                # Handle encoding - ensure line is valid string
+                try:
+                    if isinstance(line, bytes):
+                        line = line.decode('utf-8', errors='replace')
+                    # Remove or replace any problematic characters
+                    line_text = line.encode('ascii', errors='replace').decode('ascii')
+                    # Truncate if too long to fit on page
+                    max_chars = int((width - 2 * margin) / 4.5)  # Approximate chars per line
+                    line_text = line_text[:max_chars] if len(line_text) > max_chars else line_text
+                    c.drawString(x, y, line_text)
+                except Exception as line_error:
+                    logger.warning(f"Error drawing line in PDF: {str(line_error)}")
+                    # Skip problematic lines
+                    continue
+                
+                y -= line_height
             
-            doc.build(story)
+            # Finalize and save the PDF - this is critical
+            # c.save() finalizes the PDF and writes it to the buffer
+            c.save()
+            
+            # Get PDF bytes from buffer - must read after save()
             buffer.seek(0)
-            return buffer.getvalue()
-        except ImportError:
+            pdf_bytes = buffer.getvalue()
+            buffer.close()  # Close the original buffer since we have the bytes
+            
+            # Validate PDF - check if it starts with PDF header
+            if not pdf_bytes or len(pdf_bytes) < 4:
+                logger.error(f"Generated PDF is invalid - empty or too short: {len(pdf_bytes) if pdf_bytes else 0} bytes")
+                raise ValueError("Invalid PDF generated - empty or too short")
+            
+            if pdf_bytes[:4] != b'%PDF':
+                logger.error(f"Generated PDF is invalid - does not start with PDF header. First 20 bytes: {pdf_bytes[:20]}")
+                raise ValueError("Invalid PDF generated - missing PDF header")
+            
+            logger.info(f"PDF generated successfully, size: {len(pdf_bytes)} bytes")
+            
+            # Return bytes - the response handler will create a new BytesIO for FileResponse
+            return pdf_bytes
+            
+        except ImportError as e:
             # If reportlab is not available, return text content as bytes
-            logger.warning("reportlab not available, returning text content for PDF")
+            logger.warning(f"reportlab not available: {str(e)}, returning text content for PDF")
             return ach_content.encode('utf-8')
+        except Exception as e:
+            # Log the error and return text content as fallback
+            logger.error(f"Error generating PDF: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Don't return invalid PDF - raise exception instead
+            raise
 
     def _convert_to_xml(self, ach_content, metadata):
         """Convert ACH content to XML format."""
@@ -718,6 +921,14 @@ class ACHFileGenerationView(APIView):
                         'effective_date': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
                         'file_id_modifier': openapi.Schema(type=openapi.TYPE_STRING),
                         'batch_number': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'service_class_code': openapi.Schema(
+                            type=openapi.TYPE_STRING, 
+                            description='Service Class Code (200 = Mixed, 220 = Credits only, 225 = Debits only). Default: 200'
+                        ),
+                        'standard_entry_class': openapi.Schema(
+                            type=openapi.TYPE_STRING, 
+                            description='Standard Entry Class Code (e.g., CCD, PPD, CTX, etc.). Default: CCD'
+                        ),
                     }
                 ),
                 'export_format': openapi.Schema(type=openapi.TYPE_STRING, enum=['txt', 'pdf', 'xml']),
@@ -736,40 +947,8 @@ class ACHFileGenerationView(APIView):
         """
         Generate ACH file in CCD+ format from provided data.
         
-        Request Body:
-        {
-            "orders_data": [
-                {
-                    "case_id": "CASE001",
-                    "routing_number": "121000248",
-                    "account_number": "1234567890",
-                    "amount": 1500.00,
-                    "individual_name": "John Doe",
-                    "employee_id": "EMP001",
-                    "transaction_code": 27,
-                    "payment_related_info": "Child Support Payment"
-                }
-            ],
-            "file_params": {
-                "immediate_destination": "121000248",
-                "immediate_origin": "4520812977",
-                "immediate_destination_name": "WELLS FARGO",
-                "immediate_origin_name": "GARNISHMENT PROCESSOR",
-                "company_name": "GARNISHMENT CO",
-                "company_id": "GARNISH001",
-                "originating_dfi_id": "45208129",
-                "effective_date": "2025-11-10",
-                "file_id_modifier": "A",
-                "batch_number": 1
-            },
-            "export_format": "txt",
-            "pay_date": "2025-11-10",
-            "agency_payee": "State Disbursement Unit",
-            "store_file": true
-        }
+    
         
-        Note: When store_file is true, only metadata is saved to database. 
-        The file itself is returned in the HTTP response, not stored in blob storage.
         """
         try:
             data = request.data
@@ -814,9 +993,17 @@ class ACHFileGenerationView(APIView):
             
             # Convert to requested format
             if export_format == 'pdf':
-                file_content = self._convert_to_pdf(ach_content)
-                content_type = 'application/pdf'
-                file_extension = 'pdf'
+                try:
+                    file_content = self._convert_to_pdf(ach_content)
+                    content_type = 'application/pdf'
+                    file_extension = 'pdf'
+                except Exception as pdf_error:
+                    logger.error(f"PDF generation failed: {str(pdf_error)}")
+                    return ResponseHelper.error_response(
+                        message="Failed to generate PDF file",
+                        error=str(pdf_error),
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
             elif export_format == 'xml':
                 file_content = self._convert_to_xml(ach_content, {
                     'pay_date': pay_date_str or str(pay_date),
@@ -867,9 +1054,25 @@ class ACHFileGenerationView(APIView):
                     logger.error(f"Failed to save ACH file metadata: {str(e)}")
             
             # Prepare response with file content
-            response = HttpResponse(file_content, content_type=content_type)
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-            response['Content-Length'] = str(file_size)
+            # For PDF, use FileResponse which handles binary content better
+            if export_format == 'pdf':
+                # Ensure file_content is bytes
+                if not isinstance(file_content, bytes):
+                    file_content = file_content.encode('utf-8') if isinstance(file_content, str) else bytes(file_content)
+                
+                # Create a BytesIO object for FileResponse
+                pdf_buffer = BytesIO(file_content)
+                response = FileResponse(
+                    pdf_buffer,
+                    content_type='application/pdf',
+                    as_attachment=True,
+                    filename=file_name
+                )
+                response['Content-Length'] = str(file_size)
+            else:
+                response = HttpResponse(file_content, content_type=content_type)
+                response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+                response['Content-Length'] = str(file_size)
             
             return response
             
