@@ -21,6 +21,19 @@ class GarnishmentTypeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class GarnishmentTypeCodeTypeSerializer(serializers.ModelSerializer):
+    """Serializer for GarnishmentType with only code and type fields."""
+    class Meta:
+        model = GarnishmentType
+        fields = ['code', 'type']
+
+
+class GarnishmentTypeCodeSerializer(serializers.ModelSerializer):
+    """Serializer for GarnishmentType with only code field."""
+    class Meta:
+        model = GarnishmentType
+        fields = ['code']
+
 
 class StateField(serializers.Field):
     """Custom field for handling State as read/write."""

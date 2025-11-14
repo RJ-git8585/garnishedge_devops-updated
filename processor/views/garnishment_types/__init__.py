@@ -4,3 +4,4 @@ from .child_support_views import *
 from .federal_tax_views import *
 from .multiple_garnishment_views import *
 from .state_tax_views import *
+from .garnishment_type_views import GarnishmentTypeAPIView, GarnishmentTypeCodeAPIView
