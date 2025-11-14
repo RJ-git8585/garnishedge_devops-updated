@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 from processor.garnishment_library.utils import AllocationMethodResolver,StateAbbreviations,WLIdentifier
 from user_app.constants import (
-    EmployeeFields, CalculationFields, PayrollTaxesFields,
+    EmployeeFields, CalculationFields , PayrollTaxesFields,
     JSONPath, AllocationMethods
 )
 import traceback as t
@@ -235,13 +235,12 @@ class SingleChild(ChildSupportHelper):
     Handles calculation for a single child support order.
     """
 
-    def calculate(self, record):
+    def calculate(self, record,override_amount,override_arrear,override_limit):
         try:
             # Extract required values from record
-            
-            wages = record.get(CalculationFields.WAGES, 0)
-            commission_and_bonus = record.get(CalculationFields.COMMISSION_AND_BONUS, 0)
-            non_accountable_allowances = record.get(CalculationFields.NON_ACCOUNTABLE_ALLOWANCES, 0)
+            wages = record.get(CF.WAGES, 0)
+            commission_and_bonus = record.get(CF.COMMISSION_AND_BONUS, 0)
+            non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PayrollTaxesFields.PAYROLL_TAXES)
             issuing_state = record.get(EmployeeFields.ISSUING_STATE)
             employee_id = record.get(EmployeeFields.EMPLOYEE_ID)
@@ -249,11 +248,76 @@ class SingleChild(ChildSupportHelper):
             arrears_12ws = record.get(EmployeeFields.ARREARS_GREATER_THAN_12_WEEKS)
             garnishment_data = record.get('garnishment_data', [])
             
+            # Check if override values are provided - if so, skip calculation and return them directly
+            # Check record first, then fall back to parameters
+            override_amount = record.get('override_amount') if 'override_amount' in record else override_amount
+            override_arrear = record.get('override_arrear') if 'override_arrear' in record else override_arrear
+            override_limit = record.get('override_limit') if 'override_limit' in record else override_limit
+
+            if override_limit is not None and float(override_limit) > 0:
+                withholding_limit = float(override_limit)
+            else:
+                withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
+            
+            if override_amount is not None and float(override_amount) > 0:
+                # Return override amounts directly, skipping calculation
+                gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+                mandatory_deductions = self.calculate_md(payroll_taxes) if payroll_taxes else 0
+                de = self.calculate_de(gross_pay, mandatory_deductions)
+                
+                cs_amount = float(override_amount)
+                remaining = max(0, ade - cs_amount)
+                ar_amount = float(override_arrear) if override_arrear is not None and float(override_arrear) > 0 else min(arrear_amt, remaining) if ade > child_amt else 0
+                
+                return {
+                    "result_amt": {"child support amount1": round(cs_amount, 2)},
+                    "arrear_amt": {"arrear amount1": round(ar_amount, 2)},
+                    "ade": 0,  # Not calculated when using override
+                    "de": de,
+                    "mde": mandatory_deductions
+                }
+            
+            if override_arrear is not None and float(override_arrear) > 0:
+                # Return override arrear directly, but still calculate cs_amount
+                gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+                mandatory_deductions = self.calculate_md(payroll_taxes) if payroll_taxes else 0
+                de = self.calculate_de(gross_pay, mandatory_deductions)
+                ade = self.calculate_ade(withholding_limit, de)
+                
+                child_amt = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)[0]
+                withholding = min(ade, child_amt)
+                ar_amount = float(override_arrear)
+                
+                return {
+                    "result_amt": {"child support amount1": round(withholding, 2) if gross_pay > 0 else 0},
+                    "arrear_amt": {"arrear amount1": round(ar_amount, 2)},
+                    "ade": ade,
+                    "de": de,
+                    "mde": mandatory_deductions
+                }
+            if override_amount is not None and float(override_amount) > 0 and override_arrear is not None and float(override_arrear) > 0:
+
+                gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+                mandatory_deductions = self.calculate_md(payroll_taxes) if payroll_taxes else 0
+                de = self.calculate_de(gross_pay, mandatory_deductions)
+                ade = self.calculate_ade(withholding_limit, de)
+                
+                withholding = float(override_amount)
+                ar_amount = float(override_arrear)
+                
+                return {
+                    "result_amt": {"child support amount1": round(withholding, 2) if gross_pay > 0 else 0},
+                    "arrear_amt": {"arrear amount1": round(ar_amount, 2)},
+                    "ade": ade,
+                    "de": de,
+                    "mde": mandatory_deductions
+                }
+            
+            # No override values provided, proceed with normal calculation
             # Calculate intermediate values
             gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = self.calculate_md(payroll_taxes)
             de = self.calculate_de(gross_pay, mandatory_deductions)
-            withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
             ade = self.calculate_ade(withholding_limit, de)
             
             # Get support amounts
@@ -280,7 +344,7 @@ class MultipleChild(ChildSupportHelper):
     Handles calculation for multiple child support orders, including allocation methods.
     """
 
-    def calculate(self, record):
+    def calculate(self, record,override_amount,override_arrear,override_limit):
         try:
             # Extract required values from record
             wages = record.get(CalculationFields.WAGES, 0)
@@ -296,7 +360,9 @@ class MultipleChild(ChildSupportHelper):
             # Calculate intermediate values
             gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = self.calculate_md(payroll_taxes)
+
             de = self.calculate_de(gross_pay, mandatory_deductions)
+
             withholding_limit = self.calculate_wl(employee_id, supports_2nd_family, arrears_12ws, de, garnishment_data,issuing_state)
             ade = self.calculate_ade(withholding_limit, de)
 
@@ -357,7 +423,6 @@ class MultipleChild(ChildSupportHelper):
             }
         except Exception as e:
             raise ValueError(f"Error in MultipleChild calculation: {str(e)}")
-        
 
 class ChildSupport(SingleChild, MultipleChild):
     """
@@ -365,14 +430,14 @@ class ChildSupport(SingleChild, MultipleChild):
     It can handle both single and multiple child support orders.
     """
 
-    def calculate(self, record):
+    def calculate(self, record,override_amount,override_arrear,override_limit):
         try:
             garnishment_data = record.get('garnishment_data', [])
             ordered_amounts = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)
             if len(ordered_amounts) == 1:
-                return SingleChild(self.work_state).calculate(record)
+                return SingleChild(self.work_state).calculate(record,override_amount,override_arrear,override_limit)
             else:
-                return MultipleChild(self.work_state).calculate(record)
+                return MultipleChild(self.work_state).calculate(record,override_amount,override_arrear,override_limit)
         except Exception as e:
            
             raise ValueError(f"Error in ChildSupport calculation: {str(e)}")

@@ -78,8 +78,7 @@ class PostCalculationView(APIView):
             
             if not ee_id:
                 not_found_employees.append({
-                    'not_found': 'N/A',
-                    'message': 'ee_id is missing from case data'
+                    'not_found': 'N/A'
                 })
                 continue
 
@@ -106,10 +105,7 @@ class PostCalculationView(APIView):
 
             except EmployeeDetail.DoesNotExist:
                 # Log missing employee and continue processing
-                not_found_employees.append({
-                    'not_found': ee_id,
-                    'message': f'ee_id {ee_id} is not found in the records'
-                })
+                not_found_employees.append( ee_id)
 
         return enriched_cases, not_found_employees
 
@@ -304,8 +300,8 @@ class PostCalculationView(APIView):
                 # All employees not found
                 if not_found_employees:
                     return ResponseHelper.error_response(
-                        message="No employees found",
-                        error=not_found_employees[0],
+                        message=f"No employees found",
+                        error=not_found_employees,
                         status_code=status.HTTP_400_BAD_REQUEST
                     )
                 else:

@@ -353,7 +353,7 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
     Main calculator for state tax levy, dispatching to state-specific logic.
     """
 
-    def calculate(self, record, config_data):
+    def calculate(self, record, config_data,override_percent):
         try:
             # Extract and validate required fields
             state = StateAbbreviations(record.get(
@@ -364,6 +364,8 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             pay_period = record.get(EE.PAY_PERIOD, "").strip().lower()
             non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PT.PAYROLL_TAXES, {})
+            override_amount=record.get('override_amount')
+            override_percent=record.get('override_percent')
             cs_helper = ChildSupportHelper(state)
             gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = cs_helper.calculate_md(payroll_taxes)
@@ -453,35 +455,40 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
                         f"Error parsing percent for state {state}: {e}")
                     return 0.25
 
+            if override_percent is not None and float(override_percent) > 0:
+                percent=override_percent/100
+            else:
+                percent=percent()
+
             # State-specific formula dispatch
             state_formulas = {
                 StateList.ARIZONA: lambda: self.cal_arizona(disposable_earning,garn_start_date,pay_period,state),
-                StateList.IDAHO: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.GEORGIA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.COLORADO: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.ILLINOIS: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, 
-                        "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
-                StateList.MARYLAND: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()) 
-                            - medical_insurance, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%", "medical_insurance": medical_insurance}),
-                StateList.MASSACHUSETTS: lambda: self.cal_massachusetts(disposable_earning, gross_pay, exempt_amt_config, percent()),
-                StateList.MISSOURI: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()),
-                         disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"}),
-                StateList.NEW_JERSEY: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 
-                            0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
-                StateList.MAINE: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.INDIANA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.MINNESOTA: lambda: self.cal_minnesota(disposable_earning, exempt_amt_config, percent()),
-                StateList.NEW_YORK: lambda: self.cal_newyork(disposable_earning, gross_pay, exempt_amt_config, percent()),
-                StateList.NORTH_CAROLINA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
-                StateList.PENNSYLVANIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of  {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
-                StateList.VERMONT: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.VIRGINIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent()), disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"}),
-                StateList.DELAWARE: lambda: self.cal_delaware(disposable_earning, percent()),
-                StateList.IOWA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent()),
-                StateList.WISCONSIN: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent()), 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay}),
+                StateList.IDAHO: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.GEORGIA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.COLORADO: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.ILLINOIS: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent), 0, 
+                        "NA", f"{percent * 100}% of {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay}),
+                StateList.MARYLAND: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent) 
+                            - medical_insurance, disposable_earning, "NA", f"{percent * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent, "percent_display": f"{percent*100}%", "medical_insurance": medical_insurance}),
+                StateList.MASSACHUSETTS: lambda: self.cal_massachusetts(disposable_earning, gross_pay, exempt_amt_config, percent),
+                StateList.MISSOURI: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent),
+                         disposable_earning, "NA", f"{percent * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent, "percent_display": f"{percent*100}%"}),
+                StateList.NEW_JERSEY: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent), 
+                            0, "NA", f"{percent * 100}% of {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay}),
+                StateList.MAINE: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.INDIANA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.MINNESOTA: lambda: self.cal_minnesota(disposable_earning, exempt_amt_config, percent),
+                StateList.NEW_YORK: lambda: self.cal_newyork(disposable_earning, gross_pay, exempt_amt_config, percent),
+                StateList.NORTH_CAROLINA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent), 0, "NA", f"{percent * 100}% of  {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay}),
+                StateList.PENNSYLVANIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent), 0, "NA", f"{percent * 100}% of  {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay}),
+                StateList.VERMONT: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.VIRGINIA: lambda: UtilityClass.build_response(self.cal_x_disposible_income(disposable_earning, percent), disposable_earning, "NA", f"{percent * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent, "percent_display": f"{percent*100}%"}),
+                StateList.DELAWARE: lambda: self.cal_delaware(disposable_earning, percent),
+                StateList.IOWA: lambda: self.apply_general_debt_logic(disposable_earning, exempt_amt_config, percent),
+                StateList.WISCONSIN: lambda: UtilityClass.build_response(self.cal_x_disposible_income(gross_pay, percent), 0, "NA", f"{percent * 100}% of {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay}),
                 StateList.WEST_VIRGINIA: lambda: self.cal_west_virginia(no_of_exemption_including_self, net_pay, exempt_amt_config),
                 StateList.NEW_MEXICO: lambda: self.cal_new_mexico(
-                    disposable_earning, exempt_amt_config, percent())
+                    disposable_earning, exempt_amt_config, percent),
             }
 
             formula_func = state_formulas.get(state.lower())
@@ -497,11 +504,11 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             ]
             if state in twenty_five_percentage_grp_state:
                 result = self.cal_x_disposible_income(
-                    disposable_earning, percent())
-                return UtilityClass.build_response(result, disposable_earning, "NA", f"{percent() * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent(), "percent_display": f"{percent()*100}%"})
+                    disposable_earning, percent)
+                return UtilityClass.build_response(result, disposable_earning, "NA", f"{percent * 100}% of {CM.DISPOSABLE_EARNING}", {"percent": percent, "percent_display": f"{percent*100}%"})
             elif state in [StateList.ALABAMA, StateList.HAWAII]:
-                result = self.cal_x_disposible_income(gross_pay, percent())
-                return UtilityClass.build_response(result, 0, "NA", f"{percent() * 100}% of {CM.GROSS_PAY}", {"percent": percent(), "percent_display": f"{percent()*100}%", "gross_pay": gross_pay})
+                result = self.cal_x_disposible_income(gross_pay, percent)
+                return UtilityClass.build_response(result, 0, "NA", f"{percent * 100}% of {CM.GROSS_PAY}", {"percent": percent, "percent_display": f"{percent*100}%", "gross_pay": gross_pay})
 
             logger.warning(f"No formula found for state: {state}")
             return CC.NOT_FOUND

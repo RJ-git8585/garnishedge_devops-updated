@@ -76,7 +76,8 @@ urlpatterns = [
     path('dashboard/', include('user_app.urls.utility_urls', namespace='utility')),
     path('exempt_amt/', include('processor.urls.configs.exempt_urls', namespace='exempt_amt')),
     path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule')),
-    path('letter/', include('user_app.urls.letter_template_urls', namespace='letter_template'))
+    path('letter/', include('user_app.urls.letter_template_urls', namespace='letter_template')),
+    path('ach/', include('processor.urls.configs.ach_urls', namespace='ach'))
 ]
 
 # Serve static files in development

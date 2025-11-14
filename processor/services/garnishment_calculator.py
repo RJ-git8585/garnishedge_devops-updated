@@ -9,10 +9,11 @@ from processor.garnishment_library.calculations import (
     CreditorDebtCalculator, Bankruptcy, FTB, WithholdingProcessor,
     MultipleGarnishmentPriorityOrder
 )
+from processor.garnishment_library.utils.response import UtilityClass, CalculationResponse
 from user_app.constants import (
     EmployeeFields as EE,
     GarnishmentTypeFields as GT,
-    CalculationFields as CA,
+    CalculationFields as CF,
     PayrollTaxesFields as PT,
     CalculationResponseFields as CR,
     CalculationMessages as CM,
@@ -35,6 +36,57 @@ class GarnishmentCalculator:
     def __init__(self, fee_calculator):
         self.fee_calculator = FeeCalculator()
         self.logger = logger
+        self.child_support_helper = ChildSupportHelper()
+
+
+    def calculate_de(self,record: Dict) -> float:
+        """
+        Calculate disposable earnings.
+        """
+        try:
+            wages=record.get(CF.WAGES, 0)
+            commission_and_bonus=record.get(CF.COMMISSION_AND_BONUS, 0)
+            non_accountable_allowances=record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
+            return self.child_support_helper.calculate_de(wages, commission_and_bonus, non_accountable_allowances)
+        except Exception as e:
+            logger.error(f"Error calculating disposable earnings: {e}")
+            return 0
+
+    def get_basis_map(self,gross_pay, net_pay, disposable_earning):
+
+        return {
+        # Gross Pay variations
+        "gross_pay": gross_pay,
+        "gross pay": gross_pay,
+        "Gross pay": gross_pay,
+        "Gross Pay": gross_pay,
+        "GROSS PAY": gross_pay,
+        "GROSS_PAY": gross_pay,
+        "grosspay": gross_pay,
+        "GrossPay": gross_pay,
+
+        # Net Pay variations
+        "net_pay": net_pay,
+        "net pay": net_pay,
+        "Net pay": net_pay,
+        "NET PAY": net_pay,
+        "NET_PAY": net_pay,
+        "netpay": net_pay,
+        "NetPay": net_pay,
+
+        # Disposable Earnings variations
+        "disposable_earning": disposable_earning,
+        "disposable earning": disposable_earning,
+        "Disposable earning": disposable_earning,
+        "Disposable Earning": disposable_earning,
+        "DISPOSABLE EARNING": disposable_earning,
+        "DISPOSABLE_EARNING": disposable_earning,
+        "disposableearning": disposable_earning,
+        "DisposableEarning": disposable_earning,
+    }
+
+
+
 
     def _extract_case_id_from_garnishment_data(self, record: Dict, garnishment_type: str) -> str:
         """
@@ -68,9 +120,6 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-            override_amount = record.get('override_amount', 0)
-            override_arrear = record.get('override_arrear', 0)
-            override_limit = record.get('override_limit', 0)
 
             calculation_result = ChildSupport(work_state).calculate(record)
             # Use parameter value if provided, otherwise get from record
@@ -223,7 +272,6 @@ class GarnishmentCalculator:
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
 
-
             calculation_result = FederalTax().calculate(record, config_data[GT.FEDERAL_TAX_LEVY])
             
             # Calculate garnishment fees
@@ -262,6 +310,9 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            override_amount = record.get('override_amount', 0)
+            override_arrear = record.get('override_arrear', 0)
+            override_limit = record.get('override_limit', 0)
 
             result = StudentLoanCalculator().calculate(record)
             total_mandatory_deduction_val = ChildSupport(
@@ -371,9 +422,32 @@ class GarnishmentCalculator:
             case_id = data[0].get("case_id") if data else None
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            override_amount = record.get('override_amount', 0)
+            deduction_basis =record.get("deduction_basis",'NA')
+            override_percent = record.get('override_percent', 0)
+            gross_pay = record.get(EE.GROSS_PAY, 0)
+            net_pay = record.get(EE.NET_PAY, 0)
 
+            disposable_earning = self.calculate_de(record)
+
+            if override_amount is not None and float(override_amount) > 0:
+                calculation_result = UtilityClass.build_response(
+                    override_amount, 0, CM.NA,
+                    CM.NA,
+                    {}
+                )
+            elif override_percent is not None and float(override_percent) > 0 and deduction_basis == 'NA':
+                deduction_value = self.get_basis_map(gross_pay, net_pay, disposable_earning)
+                calculation_result= UtilityClass.build_response(
+                deduction_value * override_percent, disposable_earning,
+                CM.NA, f"{override_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                {"override_percent": override_percent,
+                "override_percent_display": f"{override_percent*100}%"}
+            )
+            else:
+                calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY],override_percent)
             
-            calculation_result = state_tax_view.calculate(record, config_data[GT.STATE_TAX_LEVY])
+
             total_mandatory_deduction_val = ChildSupport(work_state).calculate_md(payroll_taxes)
             
             if calculation_result == CommonConstants.NOT_FOUND:
@@ -434,9 +508,34 @@ class GarnishmentCalculator:
             case_id = data[0].get("case_id") if data else None
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            override_amount = record.get('override_amount', 0)
+            override_percent = record.get('override_percent', 0)
 
-            
-            calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
+            override_amount = record.get('override_amount', 0)
+            deduction_basis =record.get("deduction_basis",'NA')
+            override_percent = record.get('override_percent', 0)
+            gross_pay = record.get(EE.GROSS_PAY, 0)
+            net_pay = record.get(EE.NET_PAY, 0)
+
+            disposable_earning = self.calculate_de(record)
+
+            if override_amount is not None and float(override_amount) > 0:
+                calculation_result = UtilityClass.build_response(
+                    override_amount, 0, CM.NA,
+                    CM.NA,
+                    {}
+                )
+            elif override_percent is not None and float(override_percent) > 0 and deduction_basis is not 'NA':
+                deduction_value = self.get_basis_map(gross_pay, net_pay, disposable_earning)
+                calculation_result= UtilityClass.build_response(
+                deduction_value * override_percent, disposable_earning,
+                CM.NA, f"{override_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                {"override_percent": override_percent,
+                "override_percent_display": f"{override_percent*100}%"}
+            )
+            else:
+                calculation_result = creditor_debt_calculator.calculate(record, config_data[GT.CREDITOR_DEBT])
+
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
                 
@@ -504,10 +603,31 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            override_amount = record.get('override_amount', 0)
+            override_percent = record.get('override_percent', 0)
+            deduction_basis =record.get("deduction_basis",'NA')
+            gross_pay = record.get(EE.GROSS_PAY, 0)
+            net_pay = record.get(EE.NET_PAY, 0)
 
-            
-            calculation_result = bankruptcy_calculator.calculate(record, config_data[CDK.BANKRUPTCY])
-            
+            disposable_earning = self.calculate_de(record)
+
+            if override_amount is not None and float(override_amount) > 0:
+                calculation_result = UtilityClass.build_response(
+                    override_amount, 0, CM.NA,
+                    CM.NA,
+                    {}
+                )
+            elif override_percent is not None and float(override_percent) > 0 and deduction_basis is not 'NA':
+                deduction_value = self.get_basis_map(gross_pay, net_pay, disposable_earning)
+                calculation_result= UtilityClass.build_response(
+                deduction_value * override_percent, disposable_earning,
+                CM.NA, f"{override_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                {"override_percent": override_percent,
+                "override_percent_display": f"{override_percent*100}%"}
+            )
+            else:
+                calculation_result = bankruptcy_calculator.calculate(record, config_data[CDK.BANKRUPTCY])
+
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
                 
@@ -562,6 +682,33 @@ class GarnishmentCalculator:
         try:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
+            garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
+            override_amount = record.get('override_amount', 0)
+            override_percent = record.get('override_percent', 0)
+
+            deduction_basis =record.get("deduction_basis",'NA')
+            gross_pay = record.get(EE.GROSS_PAY, 0)
+            net_pay = record.get(EE.NET_PAY, 0)
+
+            disposable_earning = self.calculate_de(record)
+
+            if override_amount is not None and float(override_amount) > 0:
+                calculation_result = UtilityClass.build_response(
+                    override_amount, 0, CM.NA,
+                    CM.NA,
+                    {}
+                )
+            elif override_percent is not None and float(override_percent) > 0 and deduction_basis is not 'NA':
+                deduction_value = self.get_basis_map(gross_pay, net_pay, disposable_earning)
+                calculation_result= UtilityClass.build_response(
+                deduction_value * override_percent, disposable_earning,
+                CM.NA, f"{override_percent * 100}% of {CM.DISPOSABLE_EARNING}",
+                {"override_percent": override_percent,
+                "override_percent_display": f"{override_percent*100}%"}
+            )
+            else:
+                calculation_result = FTB().calculate(record, config_data[garnishment_type])
+
 
             
             if not garnishment_data:
@@ -576,10 +723,9 @@ class GarnishmentCalculator:
                     garnishment_type, record,
                     error_message=f"{EM.CONFIG_DATA_MISSING} '{garnishment_type}' {EM.CONFIG_DATA_MISSING_END}")
 
-            creditor_debt_calculator = FTB()
             payroll_taxes = record.get(PT.PAYROLL_TAXES)
             work_state = record.get(EE.WORK_STATE)
-            calculation_result = creditor_debt_calculator.calculate(record, config_data[garnishment_type])
+            
             
             if isinstance(calculation_result, tuple):
                 calculation_result = calculation_result[0]
