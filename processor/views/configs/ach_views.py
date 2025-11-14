@@ -18,7 +18,6 @@ from processor.garnishment_library import ResponseHelper
 
 logger = logging.getLogger(__name__)
 
-
 class ACHFileGenerationView(APIView):
     """
     API view for generating ACH files in CCD+ format (NACHA compliant) for Child Support and FTB payments.
@@ -71,21 +70,22 @@ class ACHFileGenerationView(APIView):
 
     def _generate_file_header(self, immediate_destination, immediate_origin, 
                               file_id_modifier='A', creation_date=None, creation_time=None,
-                              immediate_destination_name="", immediate_origin_name=""):
+                              immediate_destination_name="", immediate_origin_name="", batch_number=1):
         """
-        Generate File Header Record (Type 1) with exact field positions.
+        Generate File Header Record (Type 1) with exact field positions per CSV specification.
         Position 1: Record Type Code (1)
         Position 2-3: Priority Code (01)
-        Position 4-13: Immediate Destination (10 chars, right-justified, space-filled)
-        Position 14-23: Immediate Origin (10 chars, left-justified, space-filled)
+        Position 4-13: Immediate Receiving (10 digits, right-justified, space-filled)
+        Position 14-23: Immediate Origin (10 digits, left-justified, space-filled)
         Position 24-29: File Creation Date (YYMMDD)
         Position 30-33: File Creation Time (HHMM)
         Position 34: File ID Modifier (A-Z, 0-9)
         Position 35-37: Record Size (094)
         Position 38-39: Blocking Factor (10)
-        Position 40-42: Format Code (1)
-        Position 43-62: Immediate Destination Name (20 chars, left-justified, space-filled)
-        Position 63-94: Immediate Origin Name / Reference Code (32 chars, left-justified, space-filled)
+        Position 40: Format Code (1)
+        Position 41-63: Immediate Destination Name (23 chars, left-justified, space-filled)
+        Position 64-86: Immediate Origin Name / Reference Code (23 chars, left-justified, space-filled)
+        Position 87-94: Internal Reference Code (8 digits: Date + Batch Number)
         """
         if creation_date is None:
             creation_date = date.today()
@@ -103,18 +103,22 @@ class ACHFileGenerationView(APIView):
         if creation_time is None:
             creation_time = datetime.now().time()
 
+        # Generate Internal Reference Code: Date (YYMMDD) + Batch Number (2 digits)
+        internal_ref = self._format_date(creation_date) + self._pad_number(batch_number, 2)
+
         record = "1"  # Position 1: Record Type Code
         record += "01"  # Position 2-3: Priority Code
-        record += self._pad_string(immediate_destination, 10, 'right', ' ')  # Position 4-13: Immediate Destination
+        record += self._pad_string(immediate_destination, 10, 'right', ' ')  # Position 4-13: Immediate Receiving
         record += self._pad_string(immediate_origin, 10, 'left', ' ')  # Position 14-23: Immediate Origin
         record += self._format_date(creation_date)  # Position 24-29: File Creation Date (YYMMDD)
         record += creation_time.strftime('%H%M')  # Position 30-33: File Creation Time (HHMM)
         record += file_id_modifier  # Position 34: File ID Modifier
         record += "094"  # Position 35-37: Record Size
         record += "10"  # Position 38-39: Blocking Factor
-        record += "1"  # Position 40-42: Format Code
-        record += self._pad_string(immediate_destination_name, 20, 'left', ' ')  # Position 43-62: Immediate Destination Name
-        record += self._pad_string(immediate_origin_name, 32, 'left', ' ')  # Position 63-94: Immediate Origin Name / Reference Code
+        record += "1"  # Position 40: Format Code
+        record += self._pad_string(immediate_destination_name, 23, 'left', ' ')  # Position 41-63: Immediate Destination Name
+        record += self._pad_string(immediate_origin_name, 23, 'left', ' ')  # Position 64-86: Immediate Origin Name
+        record += internal_ref  # Position 87-94: Internal Reference Code (8 digits)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -128,7 +132,20 @@ class ACHFileGenerationView(APIView):
                               standard_entry_class="CCD", company_entry_description="",
                               originating_dfi_id=""):
         """
-        Generate Batch Header Record (Type 5) for CCD+ format.
+        Generate Batch Header Record (Type 5) for CCD+ format per CSV specification.
+        Position 1: Record Type Code (5)
+        Position 2-4: Service Class Code (200)
+        Position 5-20: Company Name (16 chars)
+        Position 21-40: Blank (20 chars)
+        Position 41-50: Company Identification (10 digits)
+        Position 51-53: Standard Entry Class Code (CCD)
+        Position 54-63: Company Entry Description (10 chars)
+        Position 64-69: Company Descriptive Date (6 digits, YYMMDD)
+        Position 70-75: Effective Entry Date (6 digits, YYMMDD)
+        Position 76-78: Blank (3 chars)
+        Position 79: Originator Status Code (1)
+        Position 80-87: Trace Record Part 1 - Originating DFI ID (8 digits)
+        Position 88-94: Trace Record Part 2 - Batch Number (7 digits)
         """
         if effective_date is None:
             effective_date = date.today()
@@ -144,21 +161,25 @@ class ACHFileGenerationView(APIView):
             effective_date = effective_date.date()
         
         if not company_entry_description:
-            company_entry_description = "GARNISHMENT"
+            company_entry_description = "CHILD SUPP"
 
-        record = "5"  # Record Type Code
-        record += "200"  # Service Class Code (200 = Mixed debits and credits)
-        record += self._pad_string(company_name, 16, 'left', ' ')  # Company Name (16 chars)
-        record += self._pad_string(company_discretionary_data, 20, 'left', ' ')  # Company Discretionary Data (20 chars)
-        record += self._pad_string(company_id, 15, 'left', ' ')  # Company Identification (15 chars)
-        record += self._pad_string(standard_entry_class, 3, 'left', ' ')  # Standard Entry Class Code (CCD for CCD+)
-        record += self._pad_string(company_entry_description, 10, 'left', ' ')  # Company Entry Description (10 chars)
-        record += self._pad_string("", 6, 'right', ' ')  # Company Descriptive Date (6 chars)
-        record += self._format_date(effective_date)  # Effective Entry Date (YYMMDD)
-        record += "   "  # Settlement Date (3 chars, blank for now)
-        record += "1"  # Originator Status Code (1 = live)
-        record += self._pad_string(originating_dfi_id[:8], 8, 'left', ' ')  # Originating DFI Identification (8 chars)
-        record += self._pad_number(batch_number, 7)  # Batch Number (7 digits)
+        # Format company_id to 10 digits (pad or truncate)
+        company_id_clean = ''.join(filter(str.isdigit, str(company_id)))[:10]
+        company_id_formatted = self._pad_number(company_id_clean, 10, '0')
+
+        record = "5"  # Position 1: Record Type Code
+        record += "200"  # Position 2-4: Service Class Code
+        record += self._pad_string(company_name, 16, 'left', ' ')  # Position 5-20: Company Name
+        record += self._pad_string("", 20, 'left', ' ')  # Position 21-40: Blank
+        record += company_id_formatted  # Position 41-50: Company Identification (10 digits)
+        record += self._pad_string(standard_entry_class, 3, 'left', ' ')  # Position 51-53: SEC Code
+        record += self._pad_string(company_entry_description, 10, 'left', ' ')  # Position 54-63: Company Entry Description
+        record += self._format_date(effective_date)  # Position 64-69: Company Descriptive Date
+        record += self._format_date(effective_date)  # Position 70-75: Effective Entry Date
+        record += "   "  # Position 76-78: Blank
+        record += "1"  # Position 79: Originator Status Code
+        record += self._pad_number(originating_dfi_id[:8], 8, '0')  # Position 80-87: Trace Record Part 1 (8 digits)
+        record += self._pad_number(batch_number, 7)  # Position 88-94: Trace Record Part 2 (7 digits)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -168,16 +189,28 @@ class ACHFileGenerationView(APIView):
         return record
 
     def _generate_entry_detail(self, transaction_code, routing_number, account_number, 
-                              amount, individual_id, individual_name, trace_number,
+                              amount, individual_id, individual_name, trace_number_part1, trace_number_part2,
                               discretionary_data="", addenda_indicator="1"):
         """
-        Generate Entry Detail Record (Type 6).
-        For CCD+ format, addenda_indicator should be "1" to indicate addenda record follows.
+        Generate Entry Detail Record (Type 6) per CSV specification.
+        Position 1: Record Type Code (6)
+        Position 2-3: Transaction Code (22 = checking credit)
+        Position 4-11: Receiving DFI ID (8 digits)
+        Position 12: Check Digit (1 digit)
+        Position 13-29: DFI Account Number (17 chars)
+        Position 30-39: Amount (10 digits, in cents)
+        Position 40-54: Individual ID Number (15 chars)
+        Position 55-76: Individual Name (22 chars)
+        Position 77-78: Discretionary Data (2 chars)
+        Position 79: Addenda Indicator (1)
+        Position 80-87: Trace Record Part 1 (8 digits)
+        Position 88-94: Trace Record Part 2 (7 digits)
         """
         # Clean and format routing number (9 digits, use first 8 for DFI ID)
         routing_clean = ''.join(filter(str.isdigit, str(routing_number)))[:9]
         routing_8 = self._pad_number(routing_clean[:8], 8, '0')
-        check_digit = self._calculate_check_digit(routing_8) if len(routing_8) == 8 else '0'
+        # Check digit is the 9th digit of routing number
+        check_digit = routing_clean[8] if len(routing_clean) == 9 else self._calculate_check_digit(routing_8)
 
         # Clean and format account number (up to 17 chars)
         account_clean = ''.join(filter(str.isalnum, str(account_number)))[:17]
@@ -191,17 +224,18 @@ class ACHFileGenerationView(APIView):
         id_clean = str(individual_id)[:15] if individual_id else ''
         id_clean = self._pad_string(id_clean, 15, 'left', ' ')
 
-        record = "6"  # Record Type Code
-        record += self._pad_number(transaction_code, 2)  # Transaction Code (27 = checking credit, 37 = savings credit)
-        record += routing_8  # Receiving DFI Identification (8 digits)
-        record += check_digit  # Check Digit (1 digit)
-        record += account_clean  # DFI Account Number (17 chars)
-        record += self._format_amount(amount)  # Amount (10 digits, in cents)
-        record += id_clean  # Individual Identification Number (15 chars)
-        record += name_clean  # Individual Name (22 chars)
-        record += self._pad_string(discretionary_data, 2, 'left', ' ')  # Discretionary Data (2 chars)
-        record += addenda_indicator  # Addenda Record Indicator (1 = addenda follows for CCD+)
-        record += self._pad_number(trace_number, 15)  # Trace Number (15 digits)
+        record = "6"  # Position 1: Record Type Code
+        record += self._pad_number(transaction_code, 2)  # Position 2-3: Transaction Code (22 = checking credit)
+        record += routing_8  # Position 4-11: Receiving DFI ID (8 digits)
+        record += str(check_digit)  # Position 12: Check Digit (1 digit)
+        record += account_clean  # Position 13-29: DFI Account Number (17 chars)
+        record += self._format_amount(amount)  # Position 30-39: Amount (10 digits, in cents)
+        record += id_clean  # Position 40-54: Individual ID Number (15 chars)
+        record += name_clean  # Position 55-76: Individual Name (22 chars)
+        record += self._pad_string(discretionary_data, 2, 'left', ' ')  # Position 77-78: Discretionary Data (2 chars)
+        record += addenda_indicator  # Position 79: Addenda Indicator (1 = addenda follows for CCD+)
+        record += self._pad_number(trace_number_part1, 8)  # Position 80-87: Trace Record Part 1 (8 digits)
+        record += self._pad_number(trace_number_part2, 7)  # Position 88-94: Trace Record Part 2 (7 digits)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -210,21 +244,77 @@ class ACHFileGenerationView(APIView):
         record += "\n"  # Newline
         return record
 
-    def _generate_addenda_record(self, addenda_type_code, payment_related_info, 
-                                 addenda_sequence_number, entry_detail_sequence_number):
+    def _generate_addenda_record(self, addenda_type_code, segment_identifier, application_identifier,
+                                 case_identifier, pay_date, payment_amount, absent_parent_ssn,
+                                 medical_support_indicator, absent_parent_name, fips_code,
+                                 employment_termination_indicator, addenda_sequence_number, 
+                                 entry_detail_sequence_number):
         """
-        Generate Addenda Record (Type 7) for CCD+ format.
+        Generate Addenda Record (Type 7) for CCD+ format per CSV specification.
         Position 1: Record Type Code (7)
         Position 2-3: Addenda Type Code (05 for CCD+)
-        Position 4-83: Payment Related Information (80 chars)
+        Position 4-83: Payment Related Information (80 chars) - structured data with delimiters
         Position 84-87: Addenda Sequence Number (4 digits)
-        Position 88-94: Entry Detail Sequence Number (7 digits, right-justified)
+        Position 88-94: Entry Detail Sequence Number (7 digits)
+        
+        Payment Related Information structure (positions 4-83, 80 chars total):
+        - Position 4-6: Segment Identifier (DED for child support, TXP for FTB)
+        - Position 7: Segment Delimiter (*)
+        - Position 8-10: Application Identifier (CS for child support, 52/53/55/56/61/62 for FTB)
+        - Position 11: Segment Delimiter (*)
+        - Position 12-26: Case Identifier (20 chars, left-justified, space-padded)
+        - Position 27: Segment Delimiter (*)
+        - Position 28-33: Pay Date (6 chars, YYMMDD format)
+        - Position 34: Segment Delimiter (*)
+        - Position 35-44: Payment Amount (10 digits, in cents)
+        - Position 45: Segment Delimiter (*)
+        - Position 46-54: Absent Parent SSN (9 digits)
+        - Position 55: Segment Delimiter (*)
+        - Position 56: Medical Support Indicator (Y or N, 1 char)
+        - Position 57: Segment Delimiter (*)
+        - Position 58-77: Absent Parent Name (20 chars, format: Last,First)
+        - Position 78: Segment Delimiter (*)
+        - Position 79-84: FIPS Code (6 chars, left-justified, space-padded)
+        - Position 85: Segment Delimiter (*)
+        - Position 86: Employment Termination Indicator (Y or N, 1 char)
+        - Position 87: Segment Terminator (\)
+        - Position 88-93: Filler (space-padded, 6 chars to make total 80)
         """
-        record = "7"  # Record Type Code
-        record += self._pad_number(addenda_type_code, 2)  # Addenda Type Code (05 for CCD+)
-        record += self._pad_string(payment_related_info, 80, 'left', ' ')  # Payment Related Information (80 chars)
-        record += self._pad_number(addenda_sequence_number, 4)  # Addenda Sequence Number (4 digits)
-        record += self._pad_number(entry_detail_sequence_number, 7)  # Entry Detail Sequence Number (7 digits)
+        # Build structured payment information (80 chars total)
+        payment_info = ""
+        payment_info += self._pad_string(segment_identifier, 3, 'left', ' ')  # Position 4-6: Segment Identifier (3 chars)
+        payment_info += "*"  # Position 7: Segment Delimiter (1 char)
+        payment_info += self._pad_string(application_identifier, 3, 'left', ' ')  # Position 8-10: Application Identifier (3 chars)
+        payment_info += "*"  # Position 11: Segment Delimiter (1 char)
+        payment_info += self._pad_string(case_identifier, 20, 'left', ' ')  # Position 12-26: Case Identifier (20 chars)
+        payment_info += "*"  # Position 27: Segment Delimiter (1 char)
+        payment_info += self._pad_string(pay_date, 6, 'left', ' ')  # Position 28-33: Pay Date (6 chars, YYMMDD)
+        payment_info += "*"  # Position 34: Segment Delimiter (1 char)
+        payment_info += self._format_amount(payment_amount)  # Position 35-44: Payment Amount (10 digits)
+        payment_info += "*"  # Position 45: Segment Delimiter (1 char)
+        payment_info += self._pad_string(absent_parent_ssn, 9, 'left', '0')  # Position 46-54: Absent Parent SSN (9 digits)
+        payment_info += "*"  # Position 55: Segment Delimiter (1 char)
+        payment_info += self._pad_string(medical_support_indicator, 1, 'left', ' ')  # Position 56: Medical Support Indicator (1 char)
+        payment_info += "*"  # Position 57: Segment Delimiter (1 char)
+        payment_info += self._pad_string(absent_parent_name, 20, 'left', ' ')  # Position 58-77: Absent Parent Name (20 chars)
+        payment_info += "*"  # Position 78: Segment Delimiter (1 char)
+        payment_info += self._pad_string(fips_code, 6, 'left', ' ')  # Position 79-84: FIPS Code (6 chars)
+        payment_info += "*"  # Position 85: Segment Delimiter (1 char)
+        payment_info += self._pad_string(employment_termination_indicator, 1, 'left', ' ')  # Position 86: Employment Termination Indicator (1 char)
+        payment_info += "\\"  # Position 87: Segment Terminator (1 char)
+        payment_info += self._pad_string("", 6, 'left', ' ')  # Position 88-93: Filler (6 chars to reach 80 total)
+        
+        # Ensure payment_info is exactly 80 characters
+        payment_info = payment_info[:80]
+        payment_info = self._pad_string(payment_info, 80, 'left', ' ')
+        
+        record = "7"  # Position 1: Record Type Code
+        record += self._pad_number(addenda_type_code, 2)  # Position 2-3: Addenda Type Code (05 for CCD+)
+        record += payment_info  # Position 4-83: Payment Related Information (80 chars)
+        record += self._pad_number(addenda_sequence_number, 4)  # Position 84-87: Addenda Sequence Number (4 digits)
+        # Entry Detail Sequence Number is last 7 digits of trace number part 2
+        entry_seq = str(entry_detail_sequence_number)[-7:] if entry_detail_sequence_number else "0000000"
+        record += self._pad_number(entry_seq, 7)  # Position 88-94: Entry Detail Sequence Number (7 digits)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -247,20 +337,38 @@ class ACHFileGenerationView(APIView):
                                 company_id, message_auth_code="", 
                                 originating_dfi_id=""):
         """
-        Generate Batch Control Record (Type 8).
-        Entry count includes both entry detail and addenda records.
+        Generate Batch Control Record (Type 8) per CSV specification.
+        Position 1: Record Type Code (8)
+        Position 2-4: Service Class Code (200)
+        Position 5-10: Entry/Addenda Count (6 digits)
+        Position 11-20: Entry Hash (10 digits)
+        Position 21-32: Total Debit Entry Dollar Amount (12 digits)
+        Position 33-44: Total Credit Entry Dollar Amount (12 digits)
+        Position 45-54: Company Identification (10 digits)
+        Position 55-73: Message Authentication Code (19 chars, blank)
+        Position 74-79: Reserved (6 chars, blank)
+        Position 80-87: Originating DFI Identification (8 digits)
+        Position 88-94: Batch Number (7 digits)
         """
-        record = "8"  # Record Type Code
-        record += "200"  # Service Class Code (200 = Mixed)
-        record += self._pad_number(entry_count + addenda_count, 6)  # Entry/Addenda Count (6 digits)
-        record += self._pad_number(entry_hash % 10000000000, 10)  # Entry Hash (10 digits, last 10 of sum)
-        record += self._format_amount(total_debit_amount, 12)  # Total Debit Entry Dollar Amount (12 digits)
-        record += self._format_amount(total_credit_amount, 12)  # Total Credit Entry Dollar Amount (12 digits)
-        record += self._pad_string(company_id, 15, 'left', ' ')  # Company Identification (15 chars)
-        record += self._pad_string(message_auth_code, 19, 'right', ' ')  # Message Authentication Code (19 chars)
-        record += self._pad_string("", 6, 'right', ' ')  # Reserved (6 chars)
-        record += self._pad_string(originating_dfi_id[:8], 8, 'left', ' ')  # Originating DFI Identification (8 chars)
-        record += self._pad_number(batch_number, 7)  # Batch Number (7 digits)
+        # Format company_id to 10 digits (pad or truncate)
+        company_id_clean = ''.join(filter(str.isdigit, str(company_id)))[:10]
+        company_id_formatted = self._pad_number(company_id_clean, 10, '0')
+        
+        # Format originating_dfi_id to 8 digits
+        originating_dfi_clean = ''.join(filter(str.isdigit, str(originating_dfi_id)))[:8]
+        originating_dfi_formatted = self._pad_number(originating_dfi_clean, 8, '0')
+        
+        record = "8"  # Position 1: Record Type Code
+        record += "200"  # Position 2-4: Service Class Code
+        record += self._pad_number(entry_count + addenda_count, 6)  # Position 5-10: Entry/Addenda Count (6 digits)
+        record += self._pad_number(entry_hash % 10000000000, 10)  # Position 11-20: Entry Hash (10 digits)
+        record += self._format_amount(total_debit_amount, 12)  # Position 21-32: Total Debit Entry Dollar Amount (12 digits)
+        record += self._format_amount(total_credit_amount, 12)  # Position 33-44: Total Credit Entry Dollar Amount (12 digits)
+        record += company_id_formatted  # Position 45-54: Company Identification (10 digits)
+        record += self._pad_string(message_auth_code, 19, 'right', ' ')  # Position 55-73: Message Authentication Code (19 chars)
+        record += self._pad_string("", 6, 'right', ' ')  # Position 74-79: Reserved (6 chars)
+        record += originating_dfi_formatted  # Position 80-87: Originating DFI Identification (8 digits)
+        record += self._pad_number(batch_number, 7)  # Position 88-94: Batch Number (7 digits)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -375,7 +483,8 @@ class ACHFileGenerationView(APIView):
             creation_date=effective_date,
             creation_time=creation_time,
             immediate_destination_name=immediate_destination_name,
-            immediate_origin_name=immediate_origin_name
+            immediate_origin_name=immediate_origin_name,
+            batch_number=batch_number
         )
         ach_content.append(file_header)
 
@@ -396,8 +505,10 @@ class ACHFileGenerationView(APIView):
         entry_hash = 0
         total_credit_amount = Decimal('0.00')
         total_debit_amount = Decimal('0.00')
-        trace_number_base = int(originating_dfi_id[:8]) * 100000 if originating_dfi_id else 1000000
-        trace_number = trace_number_base
+        
+        # Trace number: Part 1 is originating DFI ID (8 digits), Part 2 is sequential entry number (7 digits)
+        trace_part1 = int(originating_dfi_id[:8]) if originating_dfi_id and len(originating_dfi_id) >= 8 else 98708076
+        trace_part2 = 1  # Start from 1 for first entry
         addenda_sequence = 1
 
         for order_data in orders_data:
@@ -408,9 +519,28 @@ class ACHFileGenerationView(APIView):
                 individual_id = str(order_data.get('case_id', ''))[:15]
                 individual_name = order_data.get('individual_name', '')
                 case_id = order_data.get('case_id', '')
+                employee_id = order_data.get('employee_id', '')
+                employee_ssn = order_data.get('employee_ssn', '')
                 
-                # Transaction code: 27 = checking credit, 37 = savings credit
-                transaction_code = order_data.get('transaction_code', 27)
+                # Transaction code: 22 = checking credit (per CSV), 27 = checking credit (alternative)
+                transaction_code = order_data.get('transaction_code', 22)
+                
+                # Extract addenda fields from order_data
+                segment_identifier = order_data.get('segment_identifier', 'DED')  # DED for child support, TXP for FTB
+                application_identifier = order_data.get('application_identifier', 'CS')  # CS for child support
+                case_identifier = order_data.get('case_identifier', case_id[:20])
+                pay_date_str = self._format_date(effective_date)  # YYMMDD format (6 chars)
+                absent_parent_ssn = order_data.get('absent_parent_ssn', employee_ssn)[:9]
+                medical_support_indicator = order_data.get('medical_support_indicator', 'N')
+                absent_parent_name = order_data.get('absent_parent_name', individual_name)
+                # Format name as "Last,First" if not already formatted (max 20 chars)
+                if ',' not in absent_parent_name and ' ' in absent_parent_name:
+                    name_parts = absent_parent_name.split()
+                    if len(name_parts) >= 2:
+                        absent_parent_name = f"{name_parts[-1]},{' '.join(name_parts[:-1])}"
+                absent_parent_name = absent_parent_name[:20]  # Ensure max 20 chars
+                fips_code = order_data.get('fips_code', '')[:6]
+                employment_termination_indicator = order_data.get('employment_termination_indicator', 'N')
                 
                 # Generate Entry Detail Record
                 entry_detail = self._generate_entry_detail(
@@ -420,26 +550,35 @@ class ACHFileGenerationView(APIView):
                     amount=amount,
                     individual_id=individual_id,
                     individual_name=individual_name,
-                    trace_number=trace_number,
+                    trace_number_part1=trace_part1,
+                    trace_number_part2=trace_part2,
                     addenda_indicator="1"  # CCD+ requires addenda
                 )
                 ach_content.append(entry_detail)
                 entry_count += 1
                 
                 # Generate Addenda Record (Type 7) for CCD+
-                payment_info = order_data.get('payment_related_info', f'Case ID: {case_id}')
                 addenda_record = self._generate_addenda_record(
                     addenda_type_code=5,  # 05 for CCD+
-                    payment_related_info=payment_info[:80],
+                    segment_identifier=segment_identifier,
+                    application_identifier=application_identifier,
+                    case_identifier=case_identifier,
+                    pay_date=pay_date_str,
+                    payment_amount=amount,
+                    absent_parent_ssn=absent_parent_ssn,
+                    medical_support_indicator=medical_support_indicator,
+                    absent_parent_name=absent_parent_name,
+                    fips_code=fips_code,
+                    employment_termination_indicator=employment_termination_indicator,
                     addenda_sequence_number=addenda_sequence,
-                    entry_detail_sequence_number=trace_number
+                    entry_detail_sequence_number=trace_part2
                 )
                 ach_content.append(addenda_record)
                 addenda_count += 1
                 addenda_sequence += 1
                 
                 # Update counters
-                trace_number += 1
+                trace_part2 += 1  # Increment trace part 2 for next entry
                 total_credit_amount += amount
                 
                 # Add routing number to hash (first 8 digits)
@@ -553,8 +692,16 @@ class ACHFileGenerationView(APIView):
                             'amount': openapi.Schema(type=openapi.TYPE_NUMBER),
                             'individual_name': openapi.Schema(type=openapi.TYPE_STRING),
                             'employee_id': openapi.Schema(type=openapi.TYPE_STRING),
-                            'transaction_code': openapi.Schema(type=openapi.TYPE_INTEGER),
-                            'payment_related_info': openapi.Schema(type=openapi.TYPE_STRING),
+                            'transaction_code': openapi.Schema(type=openapi.TYPE_INTEGER, description='Transaction code (22 = checking credit, 27 = alternative)'),
+                            'employee_ssn': openapi.Schema(type=openapi.TYPE_STRING, description='Employee SSN (9 digits)'),
+                            'segment_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Segment Identifier (DED for child support, TXP for FTB)'),
+                            'application_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Application Identifier (CS for child support, 52/53/55/56/61/62 for FTB)'),
+                            'case_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Case Identifier (20 chars)'),
+                            'absent_parent_ssn': openapi.Schema(type=openapi.TYPE_STRING, description='Absent Parent SSN (9 digits)'),
+                            'medical_support_indicator': openapi.Schema(type=openapi.TYPE_STRING, description='Medical Support Indicator (Y or N)'),
+                            'absent_parent_name': openapi.Schema(type=openapi.TYPE_STRING, description='Absent Parent Name (format: Last,First, max 20 chars)'),
+                            'fips_code': openapi.Schema(type=openapi.TYPE_STRING, description='FIPS Code (6 chars)'),
+                            'employment_termination_indicator': openapi.Schema(type=openapi.TYPE_STRING, description='Employment Termination Indicator (Y or N)'),
                         }
                     )
                 ),
