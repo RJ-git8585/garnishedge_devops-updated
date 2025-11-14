@@ -16,6 +16,9 @@ class StateSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class GarnishmentTypeSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(max_length=10, required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+    
     class Meta:
         model = GarnishmentType
         fields = '__all__'
