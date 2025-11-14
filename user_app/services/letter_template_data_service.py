@@ -120,8 +120,7 @@ class LetterTemplateDataService:
         
         # Fetch order(s)
         orders = GarnishmentOrder.objects.filter(
-            employee=employee,
-            is_active=True
+            employee=employee
         ).select_related(
             'issuing_state', 'garnishment_type'
         ).order_by('-created_at')
@@ -241,8 +240,7 @@ class LetterTemplateDataService:
         
         # Get the order
         orders = GarnishmentOrder.objects.filter(
-            employee=employee,
-            is_active=True
+            employee=employee
         ).order_by('-created_at')
         
         if not orders.exists():
@@ -265,7 +263,7 @@ class LetterTemplateDataService:
         payee = PayeeDetails.objects.filter(
             case_id=order,
             is_active=True
-        ).select_related('state').prefetch_related('address').first()
+        ).select_related('address__state').first()
         
         if not payee:
             return None
