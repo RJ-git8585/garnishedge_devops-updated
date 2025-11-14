@@ -128,7 +128,7 @@ class GarnishmentCalculator:
             
             child_support_data = calculation_result[CRK.RESULT_AMT]
             arrear_amount_data = calculation_result[CRK.ARREAR_AMT]
-            ade, de, mde = calculation_result[CRK.ADE], calculation_result[CRK.DE], calculation_result[CRK.MDE]
+            ade, de, mde,wl = calculation_result[CRK.ADE], calculation_result[CRK.DE], calculation_result[CRK.MDE],calculation_result['wl']
             
             total_withhold_amt = sum(child_support_data.values()) + sum(arrear_amount_data.values())
             
@@ -182,6 +182,7 @@ class GarnishmentCalculator:
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(de, 2)
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(ade, 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(mde, 2)
+                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_LIMIT] = round(wl, 2)
             else:
                 # Calculate garnishment fees
                 garnishment_fees = self.fee_calculator.get_rounded_garnishment_fee(work_state, garnishment_type, pay_period, total_withhold_amt,garn_fees)
@@ -243,6 +244,7 @@ class GarnishmentCalculator:
                 
                 result[GRF.GARNISHMENT_DETAILS][0][GRF.WITHHOLDING_AMOUNTS] = withholding_amounts
                 result[GRF.GARNISHMENT_DETAILS][0][GRF.ARREAR_AMOUNTS] = arrear_amounts
+
                 
                 result[GRF.GARNISHMENT_DETAILS][0][GRF.TOTAL_WITHHELD] = round(total_withhold_amt, 2)
                 result[GRF.GARNISHMENT_DETAILS][0][GRF.NET_WITHHOLDING] = round(total_withhold_amt )
@@ -250,6 +252,7 @@ class GarnishmentCalculator:
                 result[GRF.CALCULATION_METRICS][GRF.DISPOSABLE_EARNINGS] = round(de, 2)
                 result[GRF.CALCULATION_METRICS][GRF.ALLOWABLE_DISPOSABLE_EARNINGS] = round(ade, 2)
                 result[GRF.CALCULATION_METRICS][GRF.TOTAL_MANDATORY_DEDUCTIONS] = round(mde, 2)
+                result[GRF.CALCULATION_METRICS][GRF.WITHHOLDING_LIMIT] = round(wl, 2)
                 
                 result[CR.ER_DEDUCTION][GRF.GARNISHMENT_FEES] = garnishment_fees_amount
             return result

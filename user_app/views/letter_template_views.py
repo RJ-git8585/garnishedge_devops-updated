@@ -390,6 +390,11 @@ class LetterTemplateAvailableVariablesAPI(APIView):
                     "last_name": "Last Name",
                     ...
                 },
+                "employee_address": {
+                    "employee_address_address_1": "Employee Address Line 1",
+                    "employee_address_city": "Employee City",
+                    ...
+                },
                 "order_data": {
                     "case_id": "Case ID",
                     "ordered_amount": "Ordered Amount",
@@ -399,6 +404,11 @@ class LetterTemplateAvailableVariablesAPI(APIView):
                 "sdu_data": {
                     "sdu_payee": "SDU Payee",
                     "sdu_address": "SDU Address",
+                    ...
+                },
+                "payee_address": {
+                    "payee_address_address_1": "Payee Address Line 1",
+                    "payee_address_city": "Payee City",
                     ...
                 }
             }
@@ -802,7 +812,7 @@ class LetterTemplateExportCSVAPI(APIView):
     )
     def post(self, request):
         """
-        Export employee details, order, payee, and GarnishmentResult withholding_amount to CSV or TXT.
+        Export employee details, order, payee, and GarnishmentResult withholding_amount and withholding_limit to CSV or TXT.
         Only exports data for employees present in GarnishmentResult.
         
         Request Body (JSON):
@@ -815,7 +825,7 @@ class LetterTemplateExportCSVAPI(APIView):
         - Employee Details: ee_id, first_name, last_name, ssn, home_state, work_state, etc.
         - Order Details: case_id, ordered_amount, withholding_amount (from order), issued_date, etc.
         - Payee Details: payee, payee_type, routing_number, bank_account, etc.
-        - GarnishmentResult: withholding_amount (from GarnishmentResult)
+        - GarnishmentResult: withholding_amount and withholding_limit (from GarnishmentResult)
         """
         try:
             # Validate request data
@@ -879,8 +889,10 @@ class LetterTemplateExportCSVAPI(APIView):
                 'payee_address_state',
                 'payee_address_zip_code',
                 
-                # GarnishmentResult (result_ prefix) - matches row[19]
-                'result_withholding_amount',
+                # GarnishmentResult (result_ prefix) - matches row[19-20]
+                'withholding_amount',
+                'withholding_limit'
+
             ]
             
             if export_format == 'csv':
@@ -900,7 +912,7 @@ class LetterTemplateExportCSVAPI(APIView):
         output = StringIO()
         writer = csv.writer(output)
         
-        # Write CSV header - ONLY the 20 columns defined
+        # Write CSV header - ONLY the 21 columns defined
         writer.writerow(header)
         
         # Write data rows
@@ -960,8 +972,9 @@ class LetterTemplateExportCSVAPI(APIView):
                 payee_address.state.state if payee_address and payee_address.state else '',
                 payee_address.zip_code if payee_address else '',
                 
-                # GarnishmentResult (result_ prefix) - 1 field
+                # GarnishmentResult (result_ prefix) - 2 fields
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
+                str(result.withholding_limit) if result.withholding_limit else '0.00',
             ]
             
             # Ensure row has exactly the same number of fields as header
@@ -974,11 +987,11 @@ class LetterTemplateExportCSVAPI(APIView):
         output.seek(0)
         csv_content = output.getvalue()
         
-        # Verify the first line (header) has exactly 20 columns
+        # Verify the first line (header) has exactly 21 columns
         first_line = csv_content.split('\n')[0] if csv_content else ''
         header_count = len(first_line.split(',')) if first_line else 0
-        if header_count != 20:
-            raise ValueError(f"CSV header has {header_count} columns, expected 20. Header: {first_line[:200]}")
+        if header_count != 21:
+            raise ValueError(f"CSV header has {header_count} columns, expected 21. Header: {first_line[:200]}")
         
         response = HttpResponse(csv_content, content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="garnishment_export.csv"'
@@ -1018,7 +1031,7 @@ class LetterTemplateExportCSVAPI(APIView):
                 except AttributeError:
                     payee_address = None
             
-            # Build row with EXACTLY 20 fields matching the header
+            # Build row with EXACTLY 21 fields matching the header
             # Employee Details (employee_ prefix) - 5 fields
             row = [
                 employee.first_name or '',
@@ -1049,8 +1062,9 @@ class LetterTemplateExportCSVAPI(APIView):
                 payee_address.state.state if payee_address and payee_address.state else '',
                 payee_address.zip_code if payee_address else '',
                 
-                # GarnishmentResult (result_ prefix) - 1 field
+                # GarnishmentResult (result_ prefix) - 2 fields
                 str(result.withholding_amount) if result.withholding_amount else '0.00',
+                str(result.withholding_limit) if result.withholding_limit else '0.00',
             ]
             
             # Ensure row has exactly the same number of fields as header

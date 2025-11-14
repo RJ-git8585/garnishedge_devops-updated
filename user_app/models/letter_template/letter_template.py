@@ -7,6 +7,9 @@ class LetterTemplate(models.Model):
     """
     name = models.CharField(max_length=255, unique=True, help_text="Unique name for the letter template")
     description = models.TextField(blank=True, null=True, help_text="Description of the letter template")
+    type = models.CharField(max_length=255, blank=False,null=False)
+    event_type = models.CharField(max_length=255, blank=False,null=False)
+    category = models.CharField(max_length=255, blank=False,null=False)
     html_content = models.TextField(help_text="HTML content of the letter template with variable placeholders like {{variable_name}}")
     is_active = models.BooleanField(default=True, help_text="Whether the template is active")
     created_at = models.DateTimeField(auto_now_add=True)

@@ -36,7 +36,13 @@ class LetterTemplateDataService:
         except EmployeeDetail.DoesNotExist:
             raise ValueError(f"Employee with id '{employee_id}' not found")
         
-        # Map employee data to template variables
+        # Get employee address if available
+        try:
+            employee_address = employee.employee_addresses
+        except (AttributeError, Exception):
+            employee_address = None
+        
+        # Map employee data to template variables - all fields from EmployeeDetail model
         employee_data = {
             # Basic employee info
             'employee_id': employee.ee_id,
@@ -67,6 +73,22 @@ class LetterTemplateDataService:
             'client_id': employee.client.client_id if employee.client else '',
             'client_name': employee.client.legal_name if employee.client else '',
             'client_dba': employee.client.dba if employee.client and employee.client.dba else '',
+            
+            # Additional employee fields
+            'garnishment_fees_status': 'Yes' if employee.garnishment_fees_status else 'No',
+            'garnishment_fees_suspended_till': employee.garnishment_fees_suspended_till.strftime('%Y-%m-%d') if employee.garnishment_fees_suspended_till else '',
+            'status': employee.status or '',
+            'is_active': 'Yes' if employee.is_active else 'No',
+            
+            # Employee address fields
+            'employee_address_address_1': employee_address.address_1 if employee_address else '',
+            'employee_address_address_2': employee_address.address_2 if employee_address else '',
+            'employee_address_city': employee_address.city if employee_address else '',
+            'employee_address_state': employee_address.state if employee_address else '',
+            'employee_address_zip_code': str(employee_address.zip_code) if employee_address and employee_address.zip_code else '',
+            'employee_address_geo_code': str(employee_address.geo_code) if employee_address and employee_address.geo_code else '',
+            'employee_address_county': employee_address.county if employee_address else '',
+            'employee_address_country': employee_address.country if employee_address else '',
             
             # Dates
             'current_date': datetime.now().strftime('%Y-%m-%d'),
@@ -121,7 +143,7 @@ class LetterTemplateDataService:
         else:
             order = orders.first()
         
-        # Map order data to template variables
+        # Map order data to template variables - all fields from GarnishmentOrder model
         order_data = {
             # Order identification
             'case_id': order.case_id or '',
@@ -144,12 +166,17 @@ class LetterTemplateDataService:
             'override_stop_date_formatted': order.override_stop_date.strftime('%B %d, %Y') if order.override_stop_date else '',
             'paid_till_date': order.paid_till_date.strftime('%Y-%m-%d') if order.paid_till_date else '',
             'paid_till_date_formatted': order.paid_till_date.strftime('%B %d, %Y') if order.paid_till_date else '',
+            'pay_date': order.pay_date.strftime('%Y-%m-%d') if order.pay_date else '',
+            'date_of_ap_payment': order.date_of_ap_payment.strftime('%Y-%m-%d') if order.date_of_ap_payment else '',
             
             # Amounts
             'ordered_amount': f"{order.ordered_amount:.2f}" if order.ordered_amount else '0.00',
-            'withholding_amount': f"{order.withholding_amount:.2f}" if order.withholding_amount else '0.00',
+            'withholding_amount': f"{order.amount_of_deduction:.2f}" if order.amount_of_deduction else '0.00',
             'garnishment_fees': f"{order.garnishment_fees:.2f}" if order.garnishment_fees else '0.00',
             'override_amount': f"{order.override_amount:.2f}" if order.override_amount else '0.00',
+            'override_limit': f"{order.override_limit:.2f}" if order.override_limit else '0.00',
+            'override_arrear': f"{order.override_arrear:.2f}" if order.override_arrear else '0.00',
+            'override_percent': f"{order.override_percent:.2f}" if order.override_percent else '0.00',
             'arrear_amount': f"{order.arrear_amount:.2f}" if order.arrear_amount else '0.00',
             'current_child_support': f"{order.current_child_support:.2f}" if order.current_child_support else '0.00',
             'current_medical_support': f"{order.current_medical_support:.2f}" if order.current_medical_support else '0.00',
@@ -157,14 +184,32 @@ class LetterTemplateDataService:
             'child_support_arrear': f"{order.child_support_arrear:.2f}" if order.child_support_arrear else '0.00',
             'medical_support_arrear': f"{order.medical_support_arrear:.2f}" if order.medical_support_arrear else '0.00',
             'spousal_support_arrear': f"{order.spousal_support_arrear:.2f}" if order.spousal_support_arrear else '0.00',
+            'override_child_support': f"{order.override_child_support:.2f}" if order.override_child_support else '0.00',
+            'override_medical_support': f"{order.override_medical_support:.2f}" if order.override_medical_support else '0.00',
+            'override_spousal_support': f"{order.override_spousal_support:.2f}" if order.override_spousal_support else '0.00',
+            'override_child_support_arrear': f"{order.override_child_support_arrear:.2f}" if order.override_child_support_arrear else '0.00',
+            'override_medical_support_arrear': f"{order.override_medical_support_arrear:.2f}" if order.override_medical_support_arrear else '0.00',
+            'override_spousal_support_arrear': f"{order.override_spousal_support_arrear:.2f}" if order.override_spousal_support_arrear else '0.00',
+            'amount_of_deduction': f"{order.amount_of_deduction:.2f}" if order.amount_of_deduction else '0.00',
+            'pay_period_limit': f"{order.pay_period_limit:.2f}" if order.pay_period_limit else '0.00',
+            'total_amount_owed': f"{order.total_amount_owed:.2f}" if order.total_amount_owed else '0.00',
+            'monthly_limit': f"{order.monthly_limit:.2f}" if order.monthly_limit else '0.00',
+            'exempt_amount': f"{order.exempt_amount:.2f}" if order.exempt_amount else '0.00',
+            'ytd_deductions': f"{order.ytd_deductions:.2f}" if order.ytd_deductions else '0.00',
             
             # Other order fields
             'deduction_code': order.deduction_code or '',
-            'fein': order.fein or '',
-            'garnishing_authority': order.garnishing_authority or '',
+            'deduction_basis': order.deduction_basis or '',
+            'payee_id': order.payee_id or '',
+            'fein': getattr(order, 'fein', '') or '',
+            'garnishing_authority': getattr(order, 'garnishing_authority', '') or '',
             'fips_code': order.fips_code or '',
-            'payee': order.payee or '',
+            'payee': getattr(order, 'payee', '') or '',
+            'voucher_for_payroll': order.voucher_for_payroll or '',
             'arrear_greater_than_12_weeks': 'Yes' if order.arrear_greater_than_12_weeks else 'No',
+            'ach_sent': 'Yes' if order.ach_sent else 'No',
+            'ap_check': 'Yes' if order.ap_check else 'No',
+            'status': order.status or '',
             
             # State information
             'issuing_state': order.issuing_state.state_code if order.issuing_state else '',
@@ -226,7 +271,12 @@ class LetterTemplateDataService:
             return None
         
         # Get address if available
-        payee_address = payee.address if hasattr(payee, 'address') and payee.address else None
+        payee_address = None
+        try:
+            payee_address = payee.address
+        except (AttributeError, Exception):
+            payee_address = None
+        
         address_str = ''
         if payee_address:
             address_parts = []
@@ -237,19 +287,36 @@ class LetterTemplateDataService:
             if payee_address.city:
                 address_parts.append(payee_address.city)
             if payee_address.state:
-                address_parts.append(payee_address.state)
+                address_parts.append(payee_address.state.state if hasattr(payee_address.state, 'state') else str(payee_address.state))
             if payee_address.zip_code:
                 address_parts.append(payee_address.zip_code)
             address_str = ', '.join(address_parts)
         
-        # Map Payee data to template variables (keeping sdu_ prefix for backward compatibility)
+        # Map Payee data to template variables - all fields from PayeeDetails model (keeping sdu_ prefix for backward compatibility)
         payee_data = {
-            'sdu_payee': payee.payee or '',
-            'sdu_address': address_str,
-            'sdu_contact': '',  # PayeeDetails doesn't have contact field
-            'sdu_fips_code': '',  # PayeeDetails doesn't have fips_code field
-            'sdu_state': payee.state.state_code if payee.state else '',
-            'sdu_state_name': payee.state.state if payee.state else '',
+            # PayeeDetails fields
+            'payee': payee.payee or '',
+            'payee_type': payee.payee_type or '',
+            'routing_number': payee.routing_number or '',
+            'bank_account': payee.bank_account or '',
+            'case_number_required': 'Yes' if payee.case_number_required else 'No',
+            'case_number_format': payee.case_number_format or '',
+            'fips_required': 'Yes' if payee.fips_required else 'No',
+            'fips_length': payee.fips_length or '',
+            'last_used': payee.last_used.strftime('%Y-%m-%d') if payee.last_used else '',
+            'is_active': 'Yes' if payee.is_active else 'No',
+            'address': address_str,
+            'state': payee.state.state_code if payee.state else '',
+            'state_name': payee.state.state if payee.state else '',
+            
+            # PayeeAddress fields
+            'payee_address_address_1': payee_address.address_1 if payee_address else '',
+            'payee_address_address_2': payee_address.address_2 if payee_address else '',
+            'payee_address_city': payee_address.city if payee_address else '',
+            'payee_address_state': payee_address.state.state_code if payee_address and payee_address.state else '',
+            'payee_address_state_name': payee_address.state.state if payee_address and payee_address.state else '',
+            'payee_address_zip_code': payee_address.zip_code if payee_address else '',
+            'payee_address_zip_plus_4': payee_address.zip_plus_4 if payee_address else '',
         }
         
         return payee_data
@@ -291,18 +358,17 @@ class LetterTemplateDataService:
         """
         Get list of available template variable names organized by category.
         This is used for drag-and-drop functionality in template editor.
+        Returns only variables from the 5 tables: EmployeeDetail, EmployeeAddress, GarnishmentOrder, PayeeDetails, PayeeAddress.
         
         Returns:
-            dict: Available variables organized by category (employee_details, order_data, payee_data)
+            dict: Available variables organized by category (employee_details, employee_address, order_data, payee_data, payee_address)
         """
-        # Employee detail variables
+        # Employee detail variables - ALL fields from EmployeeDetail model only
         employee_variables = {
-            'employee_id': 'Employee ID (ee_id)',
-            'ee_id': 'Employee ID',
+            'ee_id': 'Employee ID (ee_id)',
             'first_name': 'First Name',
             'middle_name': 'Middle Name',
             'last_name': 'Last Name',
-            'full_name': 'Full Name',
             'ssn': 'Social Security Number',
             'gender': 'Gender',
             'marital_status': 'Marital Status',
@@ -310,73 +376,101 @@ class LetterTemplateDataService:
             'number_of_dependent_child': 'Number of Dependent Children',
             'number_of_student_default_loan': 'Number of Student Default Loans',
             'support_second_family': 'Support Second Family',
+            'garnishment_fees_status': 'Garnishment Fees Status',
+            'garnishment_fees_suspended_till': 'Garnishment Fees Suspended Till',
             'number_of_active_garnishment': 'Number of Active Garnishments',
-            'home_state': 'Home State Code',
-            'home_state_name': 'Home State Name',
-            'work_state': 'Work State Code',
-            'work_state_name': 'Work State Name',
-            'filing_status': 'Filing Status',
-            'client_id': 'Client ID',
-            'client_name': 'Client Legal Name',
-            'client_dba': 'Client DBA',
-            'current_date': 'Current Date (YYYY-MM-DD)',
-            'current_date_formatted': 'Current Date (Formatted)',
+            'status': 'Employee Status',
         }
         
-        # Order variables
+        # Employee address variables - ALL fields from EmployeeAddress model
+        employee_address_variables = {
+            'employee_address_address_1': 'Employee Address Line 1',
+            'employee_address_address_2': 'Employee Address Line 2',
+            'employee_address_city': 'Employee City',
+            'employee_address_state': 'Employee Address State',
+            'employee_address_zip_code': 'Employee Zip Code',
+            'employee_address_geo_code': 'Employee Geo Code',
+            'employee_address_county': 'Employee County',
+            'employee_address_country': 'Employee Country',
+        }
+        
+        # Order variables - ALL fields from GarnishmentOrder model only
         order_variables = {
             'case_id': 'Case ID',
-            'order_id': 'Order ID',
-            'garnishment_type': 'Garnishment Type',
+            'payee_id': 'Payee ID',
+            'deduction_code': 'Deduction Code',
+            'deduction_basis': 'Deduction Basis',
             'is_consumer_debt': 'Is Consumer Debt',
-            'issued_date': 'Issued Date (YYYY-MM-DD)',
-            'issued_date_formatted': 'Issued Date (Formatted)',
-            'received_date': 'Received Date (YYYY-MM-DD)',
-            'received_date_formatted': 'Received Date (Formatted)',
-            'start_date': 'Start Date (YYYY-MM-DD)',
-            'start_date_formatted': 'Start Date (Formatted)',
-            'stop_date': 'Stop Date (YYYY-MM-DD)',
-            'stop_date_formatted': 'Stop Date (Formatted)',
-            'override_start_date': 'Override Start Date (YYYY-MM-DD)',
-            'override_start_date_formatted': 'Override Start Date (Formatted)',
-            'override_stop_date': 'Override Stop Date (YYYY-MM-DD)',
-            'override_stop_date_formatted': 'Override Stop Date (Formatted)',
-            'paid_till_date': 'Paid Till Date (YYYY-MM-DD)',
-            'paid_till_date_formatted': 'Paid Till Date (Formatted)',
+            'issued_date': 'Issued Date',
+            'received_date': 'Received Date',
+            'start_date': 'Start Date',
+            'stop_date': 'Stop Date',
+            'pay_date': 'Pay Date',
             'ordered_amount': 'Ordered Amount',
-            'withholding_amount': 'Withholding Amount',
-            'garnishment_fees': 'Garnishment Fees',
-            'override_amount': 'Override Amount',
-            'arrear_amount': 'Arrear Amount',
+            'pay_period_limit': 'Pay Period Limit',
             'current_child_support': 'Current Child Support',
             'current_medical_support': 'Current Medical Support',
             'current_spousal_support': 'Current Spousal Support',
             'child_support_arrear': 'Child Support Arrear',
             'medical_support_arrear': 'Medical Support Arrear',
             'spousal_support_arrear': 'Spousal Support Arrear',
-            'deduction_code': 'Deduction Code',
-            'fein': 'FEIN',
-            'garnishing_authority': 'Garnishing Authority',
+            'override_child_support': 'Override Child Support',
+            'override_medical_support': 'Override Medical Support',
+            'override_spousal_support': 'Override Spousal Support',
+            'override_child_support_arrear': 'Override Child Support Arrear',
+            'override_medical_support_arrear': 'Override Medical Support Arrear',
+            'override_spousal_support_arrear': 'Override Spousal Support Arrear',
+            'amount_of_deduction': 'Amount of Deduction',
+            'garnishment_fees': 'Garnishment Fees',
             'fips_code': 'FIPS Code',
-            'payee': 'Payee',
+            'override_amount': 'Override Amount',
+            'override_limit': 'Override Limit',
+            'override_arrear': 'Override Arrear',
+            'override_percent': 'Override Percent',
+            'override_start_date': 'Override Start Date',
+            'override_stop_date': 'Override Stop Date',
+            'paid_till_date': 'Paid Till Date',
             'arrear_greater_than_12_weeks': 'Arrear Greater Than 12 Weeks',
-            'issuing_state': 'Issuing State Code',
-            'issuing_state_name': 'Issuing State Name',
+            'arrear_amount': 'Arrear Amount',
+            'total_amount_owed': 'Total Amount Owed',
+            'monthly_limit': 'Monthly Limit',
+            'exempt_amount': 'Exempt Amount',
+            'ytd_deductions': 'YTD Deductions',
+            'ach_sent': 'ACH Sent',
+            'ap_check': 'AP Check',
+            'voucher_for_payroll': 'Voucher for Payroll',
+            'date_of_ap_payment': 'Date of AP Payment',
+            'status': 'Order Status',
         }
         
-        # Payee variables (keeping sdu_ prefix for backward compatibility with templates)
+        # Payee variables - ALL fields from PayeeDetails model (keeping sdu_ prefix for backward compatibility)
         payee_variables = {
-            'sdu_payee': 'Payee',
-            'sdu_address': 'Payee Address',
-            'sdu_contact': 'Payee Contact',
-            'sdu_fips_code': 'Payee FIPS Code',
-            'sdu_state': 'Payee State Code',
-            'sdu_state_name': 'Payee State Name',
+            'payee_id': 'Payee ID',
+            'payee_type': 'Payee Type',
+            'payee': 'Payee',
+            'payee_routing_number': 'Routing Number',
+            'payee_bank_account': 'Bank Account',
+            'payee_case_number_required': 'Case Number Required',
+            'payee_case_number_format': 'Case Number Format',
+            'payee_fips_required': 'FIPS Required',
+            'payee_fips_length': 'FIPS Length',
+        }
+        
+        # Payee address variables - ALL fields from PayeeAddress model
+        payee_address_variables = {
+            'payee_address_address_1': 'Payee Address Line 1',
+            'payee_address_address_2': 'Payee Address Line 2',
+            'payee_address_city': 'Payee City',
+            'payee_address_state': 'Payee Address State',
+            'payee_address_zip_code': 'Payee Zip Code',
+            'payee_address_zip_plus_4': 'Payee Zip Plus 4',
         }
         
         return {
             'employee_details': employee_variables,
+            'employee_address': employee_address_variables,
             'order_data': order_variables,
-            'sdu_data': payee_variables,  # Keep key as 'sdu_data' for backward compatibility
+            'payee_data': payee_variables,  
+            'payee_address': payee_address_variables,
         }
 

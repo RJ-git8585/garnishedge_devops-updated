@@ -391,6 +391,7 @@ class GarnishmentResultFields:
     IS_MULTIPLE_GARNISHMENT_TYPE = "is_multiple_garnishment_type"
     DEDUCTION_TYPE = "deduction_type"
     EMPLOYEE_ID = "employee_id"
+    WITHHOLDING_LIMIT="withholding_limit"
     WORK_STATE = "work_state"
     CALCULATION_STATUS = "calculation_status"
     CALCULATION_TIMESTAMP = "calculation_timestamp"
