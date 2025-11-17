@@ -226,7 +226,7 @@ class CreditorDebtHelper():
                 config_data[EC.LOWER_THRESHOLD_AMOUNT])
             lower_threshold_percent = float(
                 config_data[EC.LOWER_THRESHOLD_PERCENT1])/100
-            
+
 
             # Prepare condition values
             condition_values = {
@@ -234,8 +234,6 @@ class CreditorDebtHelper():
                 "lower_threshold_percent": lower_threshold_percent,
                 "lower_threshold_percent_display": f"{lower_threshold_percent*100}%"
             }
-
-            
 
             if disposable_earning <= lower_threshold_amount:
                 return UtilityClass.build_response(
