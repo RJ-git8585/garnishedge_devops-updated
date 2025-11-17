@@ -189,7 +189,7 @@ class GarnishmentTypeAPIView(APIView):
 
 class GarnishmentTypeCodeAPIView(APIView):
     """
-    API view for fetching only the code field from GarnishmentType table.
+    API view for fetching code and type fields from GarnishmentType table.
     """
 
     @swagger_auto_schema(
@@ -200,8 +200,8 @@ class GarnishmentTypeCodeAPIView(APIView):
     )
     def get(self, request):
         """
-        Retrieve all GarnishmentType codes.
-        GET /garnishment_type/codes/ - Get all codes
+        Retrieve all GarnishmentType codes and types.
+        GET /garnishment_type/codes/ - Get all codes and types
         """
         try:
             garnishment_types = GarnishmentType.objects.all().order_by('code')

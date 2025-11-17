@@ -32,10 +32,10 @@ class GarnishmentTypeCodeTypeSerializer(serializers.ModelSerializer):
 
 
 class GarnishmentTypeCodeSerializer(serializers.ModelSerializer):
-    """Serializer for GarnishmentType with only code field."""
+    """Serializer for GarnishmentType with code and type fields."""
     class Meta:
         model = GarnishmentType
-        fields = ['code']
+        fields = ['code', 'type']
 
 
 class StateField(serializers.Field):
