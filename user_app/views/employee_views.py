@@ -306,7 +306,16 @@ class EmployeeImportView(APIView):
                 "number_of_dependent_child": row.get("number_of_dependent_child"),
                 EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
                 EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
-                EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT)
+                EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT),
+                # Address fields
+                "address_1": row.get("address_1"),
+                "address_2": row.get("address_2"),
+                "zip_code": row.get("zip_code"),
+                "geo_code": row.get("geo_code"),
+                "city": row.get("city"),
+                "address_state": row.get("address_state"),  # Using address_state to avoid conflict with home_state/work_state
+                "county": row.get("county"),
+                "country": row.get("country")
             }
             
             # Parse date fields using the utility function
@@ -339,11 +348,12 @@ class EmployeeImportView(APIView):
         created_ee_ids = []
         try:
             from django.db import transaction
-            from user_app.models import Client
+            from user_app.models import Client, EmplopyeeAddress
             
             with transaction.atomic():
                 # Prepare bulk insert data
                 bulk_employees = []
+                address_data_map = {}  # Store address data keyed by ee_id
                 for ee_id, emp_data in employees_data:
                     try:
                         # Resolve foreign keys
@@ -390,12 +400,56 @@ class EmployeeImportView(APIView):
                             is_active=True
                         ))
                         created_ee_ids.append(ee_id)  # Track ee_id for successful creation
+                        
+                        # Store address data if any address fields are present
+                        address_fields = ['address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'address_state', 'county', 'country']
+                        if any(emp_data.get(field) for field in address_fields):
+                            address_data_map[ee_id] = {
+                                'address_1': emp_data.get('address_1', ''),
+                                'address_2': emp_data.get('address_2'),
+                                'zip_code': DataProcessingUtils.parse_integer_field(emp_data.get('zip_code')) or 0,
+                                'geo_code': DataProcessingUtils.parse_integer_field(emp_data.get('geo_code')) or 0,
+                                'city': emp_data.get('city', ''),
+                                'state': emp_data.get('address_state', ''),  # Map address_state to state
+                                'county': emp_data.get('county'),
+                                'country': emp_data.get('country', 'USA')  # Default to USA if not provided
+                            }
                     except Exception as e:
                         continue  # Skip problematic records
                 
-                # Bulk create
+                # Bulk create employees
                 if bulk_employees:
                     EmployeeDetail.objects.bulk_create(bulk_employees, ignore_conflicts=True)
+                    
+                    # Create addresses for employees that have address data
+                    if address_data_map:
+                        # Fetch created employees by ee_id
+                        created_employees = {
+                            emp.ee_id: emp for emp in EmployeeDetail.objects.filter(ee_id__in=list(address_data_map.keys()))
+                        }
+                        
+                        # Create address records
+                        addresses_to_create = []
+                        for ee_id, addr_data in address_data_map.items():
+                            if ee_id in created_employees:
+                                # Check if address already exists (shouldn't for new employees, but safety check)
+                                try:
+                                    addresses_to_create.append(EmplopyeeAddress(
+                                        ee=created_employees[ee_id],
+                                        address_1=addr_data['address_1'],
+                                        address_2=addr_data.get('address_2'),
+                                        zip_code=addr_data['zip_code'],
+                                        geo_code=addr_data['geo_code'],
+                                        city=addr_data['city'],
+                                        state=addr_data['state'],
+                                        county=addr_data.get('county'),
+                                        country=addr_data['country']
+                                    ))
+                                except Exception:
+                                    continue  # Skip if address creation fails
+                        
+                        if addresses_to_create:
+                            EmplopyeeAddress.objects.bulk_create(addresses_to_create, ignore_conflicts=True)
                     
                 return created_ee_ids
                     
@@ -409,7 +463,7 @@ class EmployeeImportView(APIView):
             
         try:
             from django.db import transaction
-            from user_app.models import Client
+            from user_app.models import Client, EmplopyeeAddress
             from processor.models import State, FedFilingStatus
             
             with transaction.atomic():
@@ -420,6 +474,7 @@ class EmployeeImportView(APIView):
                 }
                 
                 employees_to_update = []
+                address_updates = []  # Store address updates
                 for ee_id, emp_data in employees_data:
                     if ee_id in existing_employees:
                         emp = existing_employees[ee_id]
@@ -453,8 +508,13 @@ class EmployeeImportView(APIView):
                             emp.filing_status_id = filing_status_mapping[filing_key]
                         
                         employees_to_update.append(emp)
+                        
+                        # Handle address updates
+                        address_fields = ['address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'address_state', 'county', 'country']
+                        if any(emp_data.get(field) for field in address_fields):
+                            address_updates.append((emp, emp_data))
                 
-                # Bulk update
+                # Bulk update employees
                 if employees_to_update:
                     EmployeeDetail.objects.bulk_update(
                         employees_to_update,
@@ -464,6 +524,55 @@ class EmployeeImportView(APIView):
                          'garnishment_fees_suspended_till', 'number_of_active_garnishment', 'client_id',
                          'home_state_id', 'work_state_id', 'filing_status_id', 'updated_at']
                     )
+                
+                # Update or create addresses
+                if address_updates:
+                    addresses_to_update = []
+                    addresses_to_create = []
+                    for emp, emp_data in address_updates:
+                        try:
+                            # Try to get existing address
+                            address = EmplopyeeAddress.objects.filter(ee=emp).first()
+                            
+                            if address:
+                                # Update existing address
+                                address.address_1 = emp_data.get('address_1', address.address_1) if emp_data.get('address_1') else address.address_1
+                                address.address_2 = emp_data.get('address_2', address.address_2) if emp_data.get('address_2') is not None else address.address_2
+                                zip_code = DataProcessingUtils.parse_integer_field(emp_data.get('zip_code'))
+                                if zip_code is not None:
+                                    address.zip_code = zip_code
+                                geo_code = DataProcessingUtils.parse_integer_field(emp_data.get('geo_code'))
+                                if geo_code is not None:
+                                    address.geo_code = geo_code
+                                address.city = emp_data.get('city', address.city) if emp_data.get('city') else address.city
+                                address.state = emp_data.get('address_state', address.state) if emp_data.get('address_state') else address.state
+                                address.county = emp_data.get('county', address.county) if emp_data.get('county') is not None else address.county
+                                address.country = emp_data.get('country', address.country) if emp_data.get('country') else address.country
+                                addresses_to_update.append(address)
+                            else:
+                                # Create new address
+                                addresses_to_create.append(EmplopyeeAddress(
+                                    ee=emp,
+                                    address_1=emp_data.get('address_1', ''),
+                                    address_2=emp_data.get('address_2'),
+                                    zip_code=DataProcessingUtils.parse_integer_field(emp_data.get('zip_code')) or 0,
+                                    geo_code=DataProcessingUtils.parse_integer_field(emp_data.get('geo_code')) or 0,
+                                    city=emp_data.get('city', ''),
+                                    state=emp_data.get('address_state', ''),
+                                    county=emp_data.get('county'),
+                                    country=emp_data.get('country', 'USA')
+                                ))
+                        except Exception:
+                            continue  # Skip if address update/create fails
+                    
+                    if addresses_to_update:
+                        EmplopyeeAddress.objects.bulk_update(
+                            addresses_to_update,
+                            ['address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'state', 'county', 'country']
+                        )
+                    if addresses_to_create:
+                        EmplopyeeAddress.objects.bulk_create(addresses_to_create, ignore_conflicts=True)
+                        
             return [emp.ee_id for emp in employees_to_update]
 
         except Exception as e:
@@ -517,7 +626,7 @@ class EmployeeDetailsAPIViews(APIView):
                         'marital_status', 'number_of_student_default_loan',
                         'number_of_dependent_child', 'support_second_family',
                         'garnishment_fees_status', 'garnishment_fees_suspended_till',
-                        'number_of_active_garnishment', 'is_active',
+                        'number_of_active_garnishment', 'status',
                         'created_at', 'updated_at'
                     )
                     .order_by('id')
@@ -673,479 +782,6 @@ class EmployeeDetailsAPIViews(APIView):
             )
 
 
-class UpsertEmployeeDataView(APIView):
-    """
-    API view to handle the import/upsert of employee details from a file.
-    Optimized for bulk processing with minimal database queries.
-    """
-    parser_classes = [MultiPartParser, FormParser]
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter(
-                name='file',
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                required=True,
-                description="Excel or CSV file to upload"
-            ),
-            openapi.Parameter(
-                name='title',
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                required=False,
-                description="Optional title"
-            )
-        ],
-        responses={
-            201: 'File processed successfully',
-            400: 'No file provided or unsupported file format',
-            500: 'Internal server error'
-        }
-    )
-    def post(self, request):
-        try:
-            if 'file' not in request.FILES:
-                return ResponseHelper.error_response(
-                    message="No file provided",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-
-            file = request.FILES['file']
-            file_name = file.name
-
-            # Read file based on extension
-            if file_name.endswith('.csv'):
-                df = pd.read_csv(file)
-            elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
-                df = pd.read_excel(file)
-            else:
-                return ResponseHelper.error_response(
-                    message="Unsupported file format. Please upload a CSV or Excel file.",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Normalize all column names to expected keys
-            try:
-                df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
-            except Exception:
-                pass
-            
-            # Convert name fields to strings to preserve values like "child2"
-            # This ensures that even if Excel/pandas reads them as numbers, they're converted back to strings
-            name_fields = ['first_name', 'middle_name', 'last_name']
-            for field in name_fields:
-                if field in df.columns:
-                    # Convert to string, preserving the original value representation
-                    df[field] = df[field].apply(
-                        lambda x: str(x).strip() if pd.notna(x) and str(x).strip().lower() not in ['nan', 'none', ''] else None
-                    )
-
-            # Process data in batches for better performance
-            batch_size = 100
-            added_employees = []
-            updated_employees = []
-            validation_errors = []
-            
-            # Pre-fetch existing employees and clients to avoid repeated queries
-            existing_employee_ids = set(EmployeeDetail.objects.values_list('ee_id', flat=True))
-            existing_clients = set(EmployeeDetail.objects.values_list('client_id', flat=True))
-            
-            # Get default values once
-            default_filing_status = DataProcessingUtils.get_default_filing_status()
-            default_marital_status = DataProcessingUtils.get_default_marital_status()
-            
-            # Build mappings for states/filings in lowercase for robustness
-            from processor.models import State, FedFilingStatus
-            state_mapping = {str(s.state).strip().lower(): s.id for s in State.objects.all()}
-            filing_status_mapping = {str(f.name).strip().lower(): f.id for f in FedFilingStatus.objects.all()}
-            
-            # Process data in batches
-            for batch_start in range(0, len(df), batch_size):
-                batch_end = min(batch_start + batch_size, len(df))
-                batch_df = df.iloc[batch_start:batch_end]
-                
-                batch_employees_to_create = []
-                batch_employees_to_update = []
-                
-                for _, row in batch_df.iterrows():
-                    try:
-                        # Process row data efficiently
-                        employee_data = self._process_employee_row(row, default_filing_status, default_marital_status)
-                        
-                        if not employee_data:
-                            continue
-                            
-                        ee_id = employee_data.get(EE.EMPLOYEE_ID)
-                        if not ee_id:
-                            continue
-                        
-                        # normalize states/filing for mapping
-                        if EE.HOME_STATE in employee_data and employee_data.get(EE.HOME_STATE) is not None:
-                            employee_data[EE.HOME_STATE] = str(employee_data.get(EE.HOME_STATE)).strip().lower()
-                        if EE.WORK_STATE in employee_data and employee_data.get(EE.WORK_STATE) is not None:
-                            employee_data[EE.WORK_STATE] = str(employee_data.get(EE.WORK_STATE)).strip().lower()
-                        if EE.FILING_STATUS in employee_data and employee_data.get(EE.FILING_STATUS) is not None:
-                            employee_data[EE.FILING_STATUS] = str(employee_data.get(EE.FILING_STATUS)).strip().lower()
-
-                        # Check if employee exists
-                        if ee_id in existing_employee_ids:
-                            # Prepare for update
-                            employee_data['id'] = None  # Will be set during bulk update
-                            batch_employees_to_update.append((ee_id, employee_data))
-                            updated_employees.append(ee_id)
-                        else:
-                            # Prepare for creation
-                            # Validate mappings for creation
-                            client_id_val = employee_data.get(EE.CLIENT_ID)
-                            home_state_val = employee_data.get(EE.HOME_STATE)
-                            work_state_val = employee_data.get(EE.WORK_STATE)
-                            missing_fields = []
-                            if not client_id_val:
-                                missing_fields.append('client_id')
-                            if not home_state_val:
-                                missing_fields.append('home_state')
-                            if not work_state_val:
-                                missing_fields.append('work_state')
-                            if missing_fields:
-                                validation_errors.append(
-                                    f"Row {batch_start + _ + 1} (ee_id={ee_id}): missing required field(s): {', '.join(missing_fields)}"
-                                )
-                                continue
-                            mapping_missing = []
-                            if home_state_val not in state_mapping:
-                                mapping_missing.append(f"home_state '{home_state_val}' not found")
-                            if work_state_val not in state_mapping:
-                                mapping_missing.append(f"work_state '{work_state_val}' not found")
-                            filing_key = employee_data.get(EE.FILING_STATUS)
-                            if filing_key and filing_key not in filing_status_mapping:
-                                mapping_missing.append(f"filing_status '{filing_key}' not found")
-                            if mapping_missing:
-                                validation_errors.append(
-                                    f"Row {batch_start + _ + 1} (ee_id={ee_id}): {', '.join(mapping_missing)}"
-                                )
-                                continue
-                            batch_employees_to_create.append(employee_data)
-                            added_employees.append(ee_id)
-                            
-                    except Exception as row_e:
-                        validation_errors.append(f"Row {batch_start + _ + 1}: {str(row_e)}")
-                        continue
-                
-                # Bulk create new employees
-                if batch_employees_to_create:
-                    self._bulk_create_employees(batch_employees_to_create)
-                
-                # Bulk update existing employees
-                if batch_employees_to_update:
-                    self._bulk_update_employees(batch_employees_to_update)
-            
-            # Build response data
-            response_data = {
-                "added_count": len(added_employees),
-                "updated_count": len(updated_employees),
-                "validation_errors_count": len(validation_errors)
-            }
-            
-            include_all_ids = False
-            try:
-                include_all_ids = str(request.data.get('include_all_ids', request.query_params.get('include_all_ids', ''))).strip().lower() in ['1', 'true', 'yes']
-            except Exception:
-                include_all_ids = False
-            
-            if added_employees:
-                if include_all_ids:
-                    response_data["added_employees"] = added_employees
-                else:
-                    response_data["added_employees"] = added_employees[:50]
-                    if len(added_employees) > 50:
-                        response_data["added_employees_truncated"] = True
-            
-            if updated_employees:
-                if include_all_ids:
-                    response_data["updated_employees"] = updated_employees
-                else:
-                    response_data["updated_employees"] = updated_employees[:50]
-                    if len(updated_employees) > 50:
-                        response_data["updated_employees_truncated"] = True
-            
-            if validation_errors:
-                response_data["validation_errors"] = validation_errors[:20]  # Limit error details
-                if len(validation_errors) > 20:
-                    response_data["validation_errors_truncated"] = True
-            
-            if not added_employees and not updated_employees:
-                return ResponseHelper.error_response(
-                    message="No valid data to process",
-                    error=response_data,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-
-            return ResponseHelper.success_response(
-                message="File processed successfully",
-                data=response_data,
-                status_code=status.HTTP_201_CREATED
-            )
-
-        except Exception as e:
-            return ResponseHelper.error_response(
-                message="Failed to import employee data",
-                error=str(e),
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    def _process_employee_row(self, row, default_filing_status, default_marital_status):
-        """Process a single employee row efficiently."""
-        try:
-                    # Define date fields that need parsing
-            date_fields = ["garnishment_fees_suspended_till"]
-                    
-            employee_data = {
-                EE.EMPLOYEE_ID: row.get(EE.EMPLOYEE_ID),
-                EE.CLIENT_ID: row.get(EE.CLIENT_ID),
-                EE.FIRST_NAME: row.get(EE.FIRST_NAME),
-                EE.MIDDLE_NAME: row.get(EE.MIDDLE_NAME),
-                EE.LAST_NAME: row.get(EE.LAST_NAME),
-                EE.SSN: row.get(EE.SSN),
-                EE.HOME_STATE: row.get(EE.HOME_STATE),
-                EE.WORK_STATE: row.get(EE.WORK_STATE),
-                EE.GENDER: row.get(EE.GENDER),
-                "number_of_exemptions": row.get("number_of_exemptions"),
-                EE.FILING_STATUS: row.get(EE.FILING_STATUS),
-                EE.MARITAL_STATUS: row.get(EE.MARITAL_STATUS),
-                "number_of_student_default_loan": row.get("number_of_student_default_loan"),
-                "number_of_dependent_child": row.get("number_of_dependent_child"),
-                EE.SUPPORT_SECOND_FAMILY: row.get(EE.SUPPORT_SECOND_FAMILY),
-                EE.GARNISHMENT_FEES_STATUS: row.get(EE.GARNISHMENT_FEES_STATUS),
-                EE.NUMBER_OF_ACTIVE_GARNISHMENT: row.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT)
-            }
-            
-            # Parse date fields using the utility function
-            for date_field in date_fields:
-                employee_data[date_field] = DataProcessingUtils.parse_date_field(row.get(date_field))
-            
-            # Clean and normalize row data using utility functions
-            employee_data = DataProcessingUtils.clean_data_row(employee_data)
-            
-            # Apply basic data cleaning without strict validation
-            employee_data = DataProcessingUtils.validate_and_clean_employee_data(employee_data)
-            
-            # Provide default values for required fields if missing
-            if not employee_data.get(EE.FILING_STATUS):
-                employee_data[EE.FILING_STATUS] = default_filing_status
-                
-            if not employee_data.get(EE.MARITAL_STATUS):
-                employee_data[EE.MARITAL_STATUS] = default_marital_status
-            
-            return employee_data
-            
-        except Exception as e:
-            raise Exception(f"Error processing row: {str(e)}")
-    
-    def _bulk_create_employees(self, employees_data):
-        """Bulk create employees using raw SQL for better performance."""
-        if not employees_data:
-            return
-            
-        try:
-            from django.db import transaction
-            from user_app.models import Client
-            from processor.models import State, FedFilingStatus
-            
-            # Get all required foreign key mappings
-            client_mapping = {c.client_id: c.id for c in Client.objects.all()}
-            state_mapping = {s.state: s.id for s in State.objects.all()}
-            filing_status_mapping = {f.name: f.id for f in FedFilingStatus.objects.all()}
-            
-            with transaction.atomic():
-                # Prepare bulk insert data
-                bulk_employees = []
-                for emp_data in employees_data:
-                    try:
-                        # Resolve foreign keys
-                        client_id = emp_data.get(EE.CLIENT_ID)
-                        home_state = emp_data.get(EE.HOME_STATE)
-                        work_state = emp_data.get(EE.WORK_STATE)
-                        filing_status = emp_data.get(EE.FILING_STATUS)
-                        
-                        # Create missing client if needed
-                        if client_id and client_id not in client_mapping:
-                            try:
-                                client = Client.objects.create(
-                                    client_id=client_id,
-                                    legal_name=f'Client {client_id}',
-                                    is_active=True
-                                )
-                                client_mapping[client_id] = client.id
-                            except:
-                                continue  # Skip this employee if client creation fails
-                        
-                        bulk_employees.append(EmployeeDetail(
-                            ee_id=emp_data.get(EE.EMPLOYEE_ID),
-                            first_name=emp_data.get(EE.FIRST_NAME, ''),
-                            middle_name=emp_data.get(EE.MIDDLE_NAME),
-                            last_name=emp_data.get(EE.LAST_NAME),
-                            client_id=client_mapping.get(client_id),
-                            ssn=emp_data.get(EE.SSN, ''),
-                            home_state_id=state_mapping.get(home_state),
-                            work_state_id=state_mapping.get(work_state),
-                            gender=emp_data.get(EE.GENDER),
-                            number_of_exemptions=emp_data.get("number_of_exemptions", 0),
-                            filing_status_id=filing_status_mapping.get(filing_status),
-                            marital_status=emp_data.get(EE.MARITAL_STATUS, ''),
-                            number_of_student_default_loan=emp_data.get("number_of_student_default_loan", 0),
-                            number_of_dependent_child=emp_data.get("number_of_dependent_child", 0),
-                            support_second_family=emp_data.get(EE.SUPPORT_SECOND_FAMILY, False),
-                            garnishment_fees_status=emp_data.get(EE.GARNISHMENT_FEES_STATUS, False),
-                            garnishment_fees_suspended_till=emp_data.get("garnishment_fees_suspended_till"),
-                            number_of_active_garnishment=emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, 0),
-                            is_active=True
-                        ))
-                    except Exception as e:
-                        continue  # Skip problematic records
-                
-                # Bulk create
-                if bulk_employees:
-                    EmployeeDetail.objects.bulk_create(bulk_employees, ignore_conflicts=True)
-
-        except Exception as e:
-            raise Exception(f"Bulk create failed: {str(e)}")
-    
-    def _bulk_update_employees(self, employees_data):
-        """Bulk update employees efficiently."""
-        if not employees_data:
-            return
-            
-        try:
-            from django.db import transaction
-            from user_app.models import Client
-            from processor.models import State, FedFilingStatus
-            
-            # Get all required foreign key mappings
-            client_mapping = {c.client_id: c.id for c in Client.objects.all()}
-            state_mapping = {s.state: s.id for s in State.objects.all()}
-            filing_status_mapping = {f.name: f.id for f in FedFilingStatus.objects.all()}
-            
-            with transaction.atomic():
-                # Get existing employees
-                ee_ids = [emp[0] for emp in employees_data]
-                existing_employees = {
-                    emp.ee_id: emp for emp in EmployeeDetail.objects.filter(ee_id__in=ee_ids)
-                }
-                
-                employees_to_update = []
-                for ee_id, emp_data in employees_data:
-                    if ee_id in existing_employees:
-                        emp = existing_employees[ee_id]
-                        
-                        # Update fields
-                        emp.first_name = emp_data.get(EE.FIRST_NAME, emp.first_name)
-                        emp.middle_name = emp_data.get(EE.MIDDLE_NAME, emp.middle_name)
-                        emp.last_name = emp_data.get(EE.LAST_NAME, emp.last_name)
-                        emp.ssn = emp_data.get(EE.SSN, emp.ssn)
-                        emp.gender = emp_data.get(EE.GENDER, emp.gender)
-                        emp.number_of_exemptions = emp_data.get("number_of_exemptions", emp.number_of_exemptions)
-                        emp.marital_status = emp_data.get(EE.MARITAL_STATUS, emp.marital_status)
-                        emp.number_of_student_default_loan = emp_data.get("number_of_student_default_loan", emp.number_of_student_default_loan)
-                        emp.number_of_dependent_child = emp_data.get("number_of_dependent_child", emp.number_of_dependent_child)
-                        emp.support_second_family = emp_data.get(EE.SUPPORT_SECOND_FAMILY, emp.support_second_family)
-                        emp.garnishment_fees_status = emp_data.get(EE.GARNISHMENT_FEES_STATUS, emp.garnishment_fees_status)
-                        emp.garnishment_fees_suspended_till = emp_data.get("garnishment_fees_suspended_till", emp.garnishment_fees_suspended_till)
-                        emp.number_of_active_garnishment = emp_data.get(EE.NUMBER_OF_ACTIVE_GARNISHMENT, emp.number_of_active_garnishment)
-                        
-                        # Update foreign keys if provided
-                        if emp_data.get(EE.CLIENT_ID) and emp_data.get(EE.CLIENT_ID) in client_mapping:
-                            emp.client_id = client_mapping[emp_data.get(EE.CLIENT_ID)]
-                        if emp_data.get(EE.HOME_STATE) and emp_data.get(EE.HOME_STATE) in state_mapping:
-                            emp.home_state_id = state_mapping[emp_data.get(EE.HOME_STATE)]
-                        if emp_data.get(EE.WORK_STATE) and emp_data.get(EE.WORK_STATE) in state_mapping:
-                            emp.work_state_id = state_mapping[emp_data.get(EE.WORK_STATE)]
-                        if emp_data.get(EE.FILING_STATUS) and emp_data.get(EE.FILING_STATUS) in filing_status_mapping:
-                            emp.filing_status_id = filing_status_mapping[emp_data.get(EE.FILING_STATUS)]
-                        
-                        employees_to_update.append(emp)
-                
-                # Bulk update
-                if employees_to_update:
-                    EmployeeDetail.objects.bulk_update(
-                        employees_to_update,
-                        ['first_name', 'middle_name', 'last_name', 'ssn', 'gender', 
-                         'number_of_exemptions', 'marital_status', 'number_of_student_default_loan',
-                         'number_of_dependent_child', 'support_second_family', 'garnishment_fees_status',
-                         'garnishment_fees_suspended_till', 'number_of_active_garnishment', 'client_id',
-                         'home_state_id', 'work_state_id', 'filing_status_id', 'updated_at']
-                    )
-                    
-        except Exception as e:
-            raise Exception(f"Bulk update failed: {str(e)}")
-
-
-# Export employee details using the Excel file
-class ExportEmployeeDataView(APIView):
-    """
-    Exports employee details as an Excel file.
-    Provides robust exception handling and clear response messages.
-    """
-    @swagger_auto_schema(
-        responses={
-            200: 'Employee data exported successfully as Excel file',
-            404: 'No employees found',
-            500: 'Internal server error'
-        }
-    )
-    def get(self, request):
-        try:
-            employees = EmployeeDetail.objects.all()
-            if not employees.exists():
-                return ResponseHelper.error_response(
-                    message="No employees found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
-
-            serializer = EmployeeDetailsSerializer(employees, many=True)
-
-            # Define Excel workbook and worksheet
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Employee Data"
-
-
-            # Define headers using constants where available
-            header_fields = [
-                EE.EMPLOYEE_ID, EE.SSN,EE.CLIENT_ID, EE.FIRST_NAME, EE.MIDDLE_NAME, EE.LAST_NAME, EE.GENDER, EE.HOME_STATE, EE.WORK_STATE,
-                EE.MARITAL_STATUS, EE.FILING_STATUS,'number_of_exemptions',
-                EE.SUPPORT_SECOND_FAMILY,'number_of_dependent_child',  
-                'number_of_student_default_loan', EE.GARNISHMENT_FEES_STATUS, EE.GARNISHMENT_FEES_SUSPENDED_TILL, EE.NUMBER_OF_ACTIVE_GARNISHMENT, CF.IS_ACTIVE, CF.CREATED_AT, CF.UPDATED_AT
-            ]
-            ws.append(header_fields)
-
-            # Append employee data
-            for employee in serializer.data:
-                row = [employee.get(field, '') for field in header_fields]
-                ws.append(row)
-
-            # Save workbook to in-memory buffer
-            buffer = BytesIO()
-            wb.save(buffer)
-            buffer.seek(0)
-
-            # Prepare HTTP response with Excel content
-            filename = f'employee_details_{datetime.today().strftime("%m-%d-%y")}.xlsx'
-            response = HttpResponse(
-                buffer,
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            return response
-
-        except Exception as e:
-            return ResponseHelper.error_response(
-                message="Failed to export employee data",
-                error=str(e),
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
 class EmployeeGarnishmentOrderCombineData(APIView):
     """
     API endpoint to combine employee, garnishment order, and garnishment fee data.
@@ -1244,7 +880,7 @@ class EmployeeDetailsAPI(APIView):
                     'marital_status', 'number_of_student_default_loan',
                     'number_of_dependent_child', 'support_second_family',
                     'garnishment_fees_status', 'garnishment_fees_suspended_till',
-                    'number_of_active_garnishment', 'is_active',
+                    'number_of_active_garnishment', 'status',
                     'created_at', 'updated_at'
                 )
                 .order_by('-created_at')
@@ -1439,6 +1075,89 @@ class EmployeeDetailsByIdAPI(APIView):
         except Exception as e:
             return ResponseHelper.error_response(
                 message="Failed to delete employee",
+                error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ExportEmployeeDataView(APIView):
+    """
+    Exports employee details as an Excel file.
+    Includes address fields in the export.
+    """
+    @swagger_auto_schema(
+        responses={
+            200: 'Employee data exported successfully as Excel file',
+            404: 'No employees found',
+            500: 'Internal server error'
+        }
+    )
+    def get(self, request):
+        try:
+            employees = EmployeeDetail.objects.select_related('client', 'home_state', 'work_state', 'filing_status').prefetch_related('employee_addresses').all()
+            if not employees.exists():
+                return ResponseHelper.error_response(
+                    message="No employees found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+            serializer = EmployeeDetailsSerializer(employees, many=True)        
+
+            # Define Excel workbook and worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Employee Data"
+
+            # Define headers including address fields
+            header_fields = [
+                EE.EMPLOYEE_ID, EE.SSN, EE.CLIENT_ID, EE.FIRST_NAME, EE.MIDDLE_NAME, EE.LAST_NAME, 
+                EE.GENDER, EE.HOME_STATE, EE.WORK_STATE, EE.MARITAL_STATUS, EE.FILING_STATUS,
+                'number_of_exemptions', EE.SUPPORT_SECOND_FAMILY, 'number_of_dependent_child',
+                'number_of_student_default_loan', EE.GARNISHMENT_FEES_STATUS, 
+                EE.GARNISHMENT_FEES_SUSPENDED_TILL, EE.NUMBER_OF_ACTIVE_GARNISHMENT, 
+                CF.IS_ACTIVE, CF.CREATED_AT, CF.UPDATED_AT,
+                # Address fields
+                'address_1', 'address_2', 'zip_code', 'geo_code', 'city', 'address_state', 'county', 'country'
+            ]
+            ws.append(header_fields)
+
+            # Append employee data
+            for employee in serializer.data:
+                row = []
+                # Employee fields
+                for field in header_fields[:20]:  # First 20 fields are employee fields
+                    row.append(employee.get(field, ''))
+                
+                # Address fields
+                address = employee.get('address', {}) if employee.get('address') else {}
+                row.append(address.get('address_1', ''))
+                row.append(address.get('address_2', ''))
+                row.append(address.get('zip_code', ''))
+                row.append(address.get('geo_code', ''))
+                row.append(address.get('city', ''))
+                row.append(address.get('state', ''))
+                row.append(address.get('county', ''))
+                row.append(address.get('country', ''))
+                
+                ws.append(row)
+
+            # Save workbook to in-memory buffer
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+
+            # Prepare HTTP response with Excel content
+            filename = f'employee_details_{datetime.today().strftime("%m-%d-%y")}.xlsx'
+            response = HttpResponse(
+                buffer,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except Exception as e:
+            return ResponseHelper.error_response(
+                message="Failed to export employee data",
                 error=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

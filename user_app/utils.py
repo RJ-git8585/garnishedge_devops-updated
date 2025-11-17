@@ -328,6 +328,28 @@ class DataProcessingUtils:
             'numberofactivegarnishment': 'number_of_active_garnishment',
             # Handle the complex concatenated field name
             'number of acgarnishment fees suspended tisupport secondgarnishment fe': 'garnishment_fees_suspended_till',
+            # Address field mappings
+            'address 1': 'address_1',
+            'address1': 'address_1',
+            'address line 1': 'address_1',
+            'addressline1': 'address_1',
+            'address 2': 'address_2',
+            'address2': 'address_2',
+            'address line 2': 'address_2',
+            'addressline2': 'address_2',
+            'zip code': 'zip_code',
+            'zipcode': 'zip_code',
+            'postal code': 'zip_code',
+            'postalcode': 'zip_code',
+            'zip': 'zip_code',
+            'geo code': 'geo_code',
+            'geocode': 'geo_code',
+            'city': 'city',
+            'address state': 'address_state',
+            'addressstate': 'address_state',
+            'state address': 'address_state',
+            'county': 'county',
+            'country': 'country',
         }
 
         # Return mapped value if known, otherwise the normalized key
@@ -364,6 +386,14 @@ class DataProcessingUtils:
             
             if normalized_key == "ssn" and value is None:
                 cleaned_row[normalized_key] = ""
+                continue
+            
+            # Handle address fields
+            if normalized_key in ['address_1', 'address_2', 'city', 'address_state', 'county', 'country']:
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_string_field(value)
+                continue
+            elif normalized_key in ['zip_code', 'geo_code']:
+                cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
                 continue
             
             # Handle special complex field that contains both date and boolean

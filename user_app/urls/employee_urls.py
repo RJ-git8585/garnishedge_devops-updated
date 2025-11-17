@@ -2,7 +2,7 @@
 from django.urls import path
 from user_app.views import (EmployeeDetailsAPI,EmployeeDetailsByIdAPI
     , EmployeeImportView,
-     UpsertEmployeeDataView, ExportEmployeeDataView,EmployeeGarnishmentOrderCombineData)
+      ExportEmployeeDataView,EmployeeGarnishmentOrderCombineData)
 from user_app.views.employee_garnishment_views import (
     EmployeeGarnishmentDetailAPI,
     EmployeeGarnishmentUpdateAPI,
@@ -20,8 +20,6 @@ urlpatterns = [
     #Import employee using excel
     path('import/', EmployeeImportView.as_view(), name='import'),   
 
-    #Insert+Update Employee details using excel
-    path('upsert/', UpsertEmployeeDataView.as_view(), name='upsert'),
 
     #Export employee data in excel
     path('export/', ExportEmployeeDataView.as_view(), name='export_employees'),

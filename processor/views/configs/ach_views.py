@@ -947,8 +947,6 @@ class ACHFileGenerationView(APIView):
         """
         Generate ACH file in CCD+ format from provided data.
         
-    
-        
         """
         try:
             data = request.data

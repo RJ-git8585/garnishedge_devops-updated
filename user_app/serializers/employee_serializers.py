@@ -127,7 +127,7 @@ class EmployeeDetailsSerializer(serializers.ModelSerializer):
             "marital_status", "number_of_student_default_loan",
             "number_of_dependent_child", "support_second_family",
             "garnishment_fees_status", "garnishment_fees_suspended_till",
-            "number_of_active_garnishment", "is_active",
+            "number_of_active_garnishment", "status",
             "created_at", "updated_at","address"
         ]
         read_only_fields = [
