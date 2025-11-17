@@ -78,7 +78,8 @@ urlpatterns = [
     path('exempt/', include('processor.urls.configs.exempt_rule_urls', namespace='exempt_rule')),
     path('letter/', include('user_app.urls.letter_template_urls', namespace='letter_template')),
     path('ach/', include('processor.urls.configs.ach_urls', namespace='ach')),
-    path('garnishment_type/', include('processor.urls.garnishment_types.garnishment_type_urls', namespace='garnishment_type'))
+    path('garnishment_type/', include('processor.urls.garnishment_types.garnishment_type_urls', namespace='garnishment_type')),
+    path('payment-history/', include('processor.urls.garnishment_types.payment_history_urls', namespace='payment_history')),
 ]
 
 # Serve static files in development
