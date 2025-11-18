@@ -44,33 +44,48 @@ class PaymentHistoryListAPI(APIView):
         
         # Calculate summary statistics
         # Paid to Date: Sum of all amount_due
-        paid_to_date = payments.aggregate(
-            total=Coalesce(Sum('amount_due', output_field=DecimalField()), 0)
-        )['total'] or 0
+        paid_to_date_result = payments.aggregate(
+            total=Coalesce(
+                Sum('amount_due', output_field=DecimalField(max_digits=12, decimal_places=2)), 
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
+        )
+        paid_to_date = paid_to_date_result['total'] or 0
         
         # Total Garnishment: Sum of total_amount_owed from all unique cases
         # Get unique cases and sum their total_amount_owed
         unique_cases = payments.values_list('case', flat=True).distinct()
-        total_garnishment = GarnishmentOrder.objects.filter(
-            id__in=unique_cases
-        ).aggregate(
-            total=Coalesce(Sum('total_amount_owed', output_field=DecimalField()), 0)
-        )['total'] or 0
+        if unique_cases:
+            total_garnishment_result = GarnishmentOrder.objects.filter(
+                id__in=unique_cases
+            ).aggregate(
+                total=Coalesce(
+                    Sum('total_amount_owed', output_field=DecimalField(max_digits=12, decimal_places=2)), 
+                    Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                    output_field=DecimalField(max_digits=12, decimal_places=2)
+                )
+            )
+            total_garnishment = total_garnishment_result['total'] or 0
+        else:
+            total_garnishment = 0
         
         # Total EFT: Sum of check_amount or eft_check (prefer check_amount)
-        total_eft = payments.aggregate(
+        total_eft_result = payments.aggregate(
             total=Coalesce(
                 Sum(
                     Case(
                         When(check_amount__isnull=False, then='check_amount'),
                         default='eft_check',
-                        output_field=DecimalField()
-                    )
+                        output_field=DecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    output_field=DecimalField(max_digits=12, decimal_places=2)
                 ),
-                Value(0),
-                output_field=DecimalField()
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
             )
-        )['total'] or 0
+        )
+        total_eft = total_eft_result['total'] or 0
         
         # Serialize the data
         summary_data = {
@@ -119,7 +134,7 @@ class PaymentHistoryCreateAPI(APIView):
         if not serializer.is_valid():
             return ResponseHelper.error_response(
                 message="Validation error",
-                errors=serializer.errors,
+                error=serializer.errors,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
@@ -133,6 +148,7 @@ class PaymentHistoryCreateAPI(APIView):
         except EmployeeDetail.DoesNotExist:
             return ResponseHelper.error_response(
                 message=f"Employee with ee_id '{ee_id}' not found",
+                error=None,
                 status_code=status.HTTP_404_NOT_FOUND
             )
         
@@ -142,6 +158,7 @@ class PaymentHistoryCreateAPI(APIView):
         except GarnishmentOrder.DoesNotExist:
             return ResponseHelper.error_response(
                 message=f"Garnishment order with case_id '{case_id}' not found",
+                error=None,
                 status_code=status.HTTP_404_NOT_FOUND
             )
         
