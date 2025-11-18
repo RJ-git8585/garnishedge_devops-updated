@@ -195,7 +195,8 @@ class BaseService:
         Get the calculation method name for a specific garnishment type.
 
         """
-        
+        if garnishment_type.lower() == GT.STATE_TAX_LEVY_FTB_EWOT:
+            return 
         rules_mapping = self.get_garnishment_rules_mapping()
         rule = rules_mapping.get(garnishment_type.lower())
         return rule.get("calculate", "") if rule else ""

@@ -233,12 +233,10 @@ class GarnishmentOrderImportView(APIView):
                 "issuing_state": normalized_row.get("issuing_state"),
                 "garnishment_type": normalized_row.get("garnishment_type"),
                 "garnishment_fees": normalized_row.get("garnishment_fees"),
-                "payee": normalized_row.get("payee"),
+                "payee_id": normalized_row.get("payee_id"),
                 "override_amount": normalized_row.get("override_amount"),
                 "is_consumer_debt": normalized_row.get("is_consumer_debt"),
                 "ordered_amount": normalized_row.get("ordered_amount"),
-                "garnishing_authority": normalized_row.get("garnishing_authority"),
-                "withholding_amount": normalized_row.get("withholding_amount"),
                 "current_child_support": normalized_row.get("current_child_support"),
                 "current_medical_support": normalized_row.get("current_medical_support"),
                 "child_support_arrear": normalized_row.get("child_support_arrear"),
@@ -248,6 +246,21 @@ class GarnishmentOrderImportView(APIView):
                 "fips_code": normalized_row.get("fips_code"),
                 "arrear_greater_than_12_weeks": normalized_row.get("arrear_greater_than_12_weeks"),
                 "arrear_amount": normalized_row.get("arrear_amount"),
+                # Exempt threshold/table fields
+                "ower_threshold_amount": normalized_row.get("ower_threshold_amount"),
+                "lower_threshold_percent1": normalized_row.get("lower_threshold_percent1"),
+                "lower_threshold_percent2": normalized_row.get("lower_threshold_percent2"),
+                "mid_threshold_amount": normalized_row.get("mid_threshold_amount"),
+                "mid_threshold_percent": normalized_row.get("mid_threshold_percent"),
+                "upper_threshold_amount": normalized_row.get("upper_threshold_amount"),
+                "upper_threshold_percent": normalized_row.get("upper_threshold_percent"),
+                "de_range_lower_to_upper_threshold_percent": normalized_row.get("de_range_lower_to_upper_threshold_percent"),
+                "de_range_lower_to_mid_threshold_percent": normalized_row.get("de_range_lower_to_mid_threshold_percent"),
+                "de_range_mid_to_upper_threshold_percent": normalized_row.get("de_range_mid_to_upper_threshold_percent"),
+                "gp_lower_threshold_amount": normalized_row.get("gp_lower_threshold_amount"),
+                "gp_lower_threshold_percent1": normalized_row.get("gp_lower_threshold_percent1"),
+                "exempt_amt": normalized_row.get("exempt_amt"),
+                "filing_status_percent": normalized_row.get("filing_status_percent"),
             }
             # Parse date fields using the utility function
             for date_field in date_fields:
@@ -324,12 +337,9 @@ class GarnishmentOrderImportView(APIView):
                             stop_date=order_data.get("stop_date"),
                             deduction_code=order_data.get("deduction_code", ""),
                             ordered_amount=order_data.get("ordered_amount", 0.00),
-                            fein=order_data.get("fein", ""),
-                            garnishing_authority=order_data.get("garnishing_authority"),
-                            withholding_amount=order_data.get("withholding_amount", 0.00),
                             garnishment_fees=order_data.get("garnishment_fees", 0.00),
                             fips_code=order_data.get("fips_code"),
-                            payee=order_data.get("payee"),
+                            payee_id=order_data.get("payee_id"),
                             override_amount=order_data.get("override_amount"),
                             override_start_date=order_data.get("override_start_date"),
                             override_stop_date=order_data.get("override_stop_date"),
@@ -342,6 +352,21 @@ class GarnishmentOrderImportView(APIView):
                             medical_support_arrear=order_data.get("medical_support_arrear"),
                             child_support_arrear=order_data.get("child_support_arrear"),
                             spousal_support_arrear=order_data.get("spousal_support_arrear"),
+                            # Exempt threshold/table fields
+                            ower_threshold_amount=order_data.get("ower_threshold_amount"),
+                            lower_threshold_percent1=order_data.get("lower_threshold_percent1"),
+                            lower_threshold_percent2=order_data.get("lower_threshold_percent2"),
+                            mid_threshold_amount=order_data.get("mid_threshold_amount"),
+                            mid_threshold_percent=order_data.get("mid_threshold_percent"),
+                            upper_threshold_amount=order_data.get("upper_threshold_amount"),
+                            upper_threshold_percent=order_data.get("upper_threshold_percent"),
+                            de_range_lower_to_upper_threshold_percent=order_data.get("de_range_lower_to_upper_threshold_percent"),
+                            de_range_lower_to_mid_threshold_percent=order_data.get("de_range_lower_to_mid_threshold_percent"),
+                            de_range_mid_to_upper_threshold_percent=order_data.get("de_range_mid_to_upper_threshold_percent"),
+                            gp_lower_threshold_amount=order_data.get("gp_lower_threshold_amount"),
+                            gp_lower_threshold_percent1=order_data.get("gp_lower_threshold_percent1"),
+                            exempt_amt=order_data.get("exempt_amt"),
+                            filing_status_percent=order_data.get("filing_status_percent"),
                         ))
                         created_case_ids.append(case_id)
                     except Exception as e:
@@ -402,6 +427,36 @@ class GarnishmentOrderImportView(APIView):
                         order.medical_support_arrear = order_data.get("medical_support_arrear", order.medical_support_arrear)
                         order.child_support_arrear = order_data.get("child_support_arrear", order.child_support_arrear)
                         order.spousal_support_arrear = order_data.get("spousal_support_arrear", order.spousal_support_arrear)
+                        # Exempt threshold/table fields
+                        order.ower_threshold_amount = order_data.get("ower_threshold_amount", order.ower_threshold_amount)
+                        order.lower_threshold_percent1 = order_data.get("lower_threshold_percent1", order.lower_threshold_percent1)
+                        order.lower_threshold_percent2 = order_data.get("lower_threshold_percent2", order.lower_threshold_percent2)
+                        order.mid_threshold_amount = order_data.get("mid_threshold_amount", order.mid_threshold_amount)
+                        order.mid_threshold_percent = order_data.get("mid_threshold_percent", order.mid_threshold_percent)
+                        order.upper_threshold_amount = order_data.get("upper_threshold_amount", order.upper_threshold_amount)
+                        order.upper_threshold_percent = order_data.get("upper_threshold_percent", order.upper_threshold_percent)
+                        order.de_range_lower_to_upper_threshold_percent = order_data.get("de_range_lower_to_upper_threshold_percent", order.de_range_lower_to_upper_threshold_percent)
+                        order.de_range_lower_to_mid_threshold_percent = order_data.get("de_range_lower_to_mid_threshold_percent", order.de_range_lower_to_mid_threshold_percent)
+                        order.de_range_mid_to_upper_threshold_percent = order_data.get("de_range_mid_to_upper_threshold_percent", order.de_range_mid_to_upper_threshold_percent)
+                        order.gp_lower_threshold_amount = order_data.get("gp_lower_threshold_amount", order.gp_lower_threshold_amount)
+                        order.gp_lower_threshold_percent1 = order_data.get("gp_lower_threshold_percent1", order.gp_lower_threshold_percent1)
+                        order.exempt_amt = order_data.get("exempt_amt", order.exempt_amt)
+                        order.filing_status_percent = order_data.get("filing_status_percent", order.filing_status_percent)
+                        # Exempt threshold/table fields
+                        order.ower_threshold_amount = order_data.get("ower_threshold_amount", order.ower_threshold_amount)
+                        order.lower_threshold_percent1 = order_data.get("lower_threshold_percent1", order.lower_threshold_percent1)
+                        order.lower_threshold_percent2 = order_data.get("lower_threshold_percent2", order.lower_threshold_percent2)
+                        order.mid_threshold_amount = order_data.get("mid_threshold_amount", order.mid_threshold_amount)
+                        order.mid_threshold_percent = order_data.get("mid_threshold_percent", order.mid_threshold_percent)
+                        order.upper_threshold_amount = order_data.get("upper_threshold_amount", order.upper_threshold_amount)
+                        order.upper_threshold_percent = order_data.get("upper_threshold_percent", order.upper_threshold_percent)
+                        order.de_range_lower_to_upper_threshold_percent = order_data.get("de_range_lower_to_upper_threshold_percent", order.de_range_lower_to_upper_threshold_percent)
+                        order.de_range_lower_to_mid_threshold_percent = order_data.get("de_range_lower_to_mid_threshold_percent", order.de_range_lower_to_mid_threshold_percent)
+                        order.de_range_mid_to_upper_threshold_percent = order_data.get("de_range_mid_to_upper_threshold_percent", order.de_range_mid_to_upper_threshold_percent)
+                        order.gp_lower_threshold_amount = order_data.get("gp_lower_threshold_amount", order.gp_lower_threshold_amount)
+                        order.gp_lower_threshold_percent1 = order_data.get("gp_lower_threshold_percent1", order.gp_lower_threshold_percent1)
+                        order.exempt_amt = order_data.get("exempt_amt", order.exempt_amt)
+                        order.filing_status_percent = order_data.get("filing_status_percent", order.filing_status_percent)
                         # new fields
                         order.pay_date = order_data.get("pay_date", order.pay_date)
                         order.pay_period_limit = order_data.get("pay_period_limit", order.pay_period_limit)
@@ -438,7 +493,14 @@ class GarnishmentOrderImportView(APIView):
                          'status', 'amount_of_deduction', 'override_amount', 'override_start_date',
                          'override_stop_date', 'paid_till_date', 'arrear_greater_than_12_weeks', 'arrear_amount',
                          'current_child_support', 'current_medical_support', 'current_spousal_support',
-                         'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                             'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                             # Exempt threshold/table fields
+                             'ower_threshold_amount', 'lower_threshold_percent1', 'lower_threshold_percent2',
+                             'mid_threshold_amount', 'mid_threshold_percent', 'upper_threshold_amount',
+                             'upper_threshold_percent', 'de_range_lower_to_upper_threshold_percent',
+                             'de_range_lower_to_mid_threshold_percent', 'de_range_mid_to_upper_threshold_percent',
+                             'gp_lower_threshold_amount', 'gp_lower_threshold_percent1', 'exempt_amt',
+                             'filing_status_percent',
                          'pay_date', 'pay_period_limit', 'total_amount_owed', 'monthly_limit', 'exempt_amount',
                          'ytd_deductions', 'ach_sent', 'ap_check', 'date_of_ap_payment',
                          'override_child_support', 'override_medical_support', 'override_spousal_support',
@@ -875,12 +937,9 @@ class UpsertGarnishmentOrderView(APIView):
                             stop_date=order_data.get("stop_date"),
                             deduction_code=order_data.get("deduction_code", ""),
                             ordered_amount=order_data.get("ordered_amount", 0.00),
-                            fein=order_data.get("fein", ""),
-                            garnishing_authority=order_data.get("garnishing_authority"),
-                            withholding_amount=order_data.get("withholding_amount", 0.00),
                             garnishment_fees=order_data.get("garnishment_fees", 0.00),
                             fips_code=order_data.get("fips_code"),
-                            payee=order_data.get("payee"),
+                            payee_id=order_data.get("payee_id"),
                             override_amount=order_data.get("override_amount"),
                             override_start_date=order_data.get("override_start_date"),
                             override_stop_date=order_data.get("override_stop_date"),
@@ -893,6 +952,21 @@ class UpsertGarnishmentOrderView(APIView):
                             medical_support_arrear=order_data.get("medical_support_arrear"),
                             child_support_arrear=order_data.get("child_support_arrear"),
                             spousal_support_arrear=order_data.get("spousal_support_arrear"),
+                            # Exempt threshold/table fields
+                            ower_threshold_amount=order_data.get("ower_threshold_amount"),
+                            lower_threshold_percent1=order_data.get("lower_threshold_percent1"),
+                            lower_threshold_percent2=order_data.get("lower_threshold_percent2"),
+                            mid_threshold_amount=order_data.get("mid_threshold_amount"),
+                            mid_threshold_percent=order_data.get("mid_threshold_percent"),
+                            upper_threshold_amount=order_data.get("upper_threshold_amount"),
+                            upper_threshold_percent=order_data.get("upper_threshold_percent"),
+                            de_range_lower_to_upper_threshold_percent=order_data.get("de_range_lower_to_upper_threshold_percent"),
+                            de_range_lower_to_mid_threshold_percent=order_data.get("de_range_lower_to_mid_threshold_percent"),
+                            de_range_mid_to_upper_threshold_percent=order_data.get("de_range_mid_to_upper_threshold_percent"),
+                            gp_lower_threshold_amount=order_data.get("gp_lower_threshold_amount"),
+                            gp_lower_threshold_percent1=order_data.get("gp_lower_threshold_percent1"),
+                            exempt_amt=order_data.get("exempt_amt"),
+                            filing_status_percent=order_data.get("filing_status_percent"),
                         ))
                         created_case_ids.append(case_id)
                     except Exception as e:
@@ -988,7 +1062,14 @@ class UpsertGarnishmentOrderView(APIView):
                          'status', 'amount_of_deduction', 'override_amount', 'override_start_date',
                          'override_stop_date', 'paid_till_date', 'arrear_greater_than_12_weeks', 'arrear_amount',
                          'current_child_support', 'current_medical_support', 'current_spousal_support',
-                         'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                             'medical_support_arrear', 'child_support_arrear', 'spousal_support_arrear',
+                             # Exempt threshold/table fields
+                             'ower_threshold_amount', 'lower_threshold_percent1', 'lower_threshold_percent2',
+                             'mid_threshold_amount', 'mid_threshold_percent', 'upper_threshold_amount',
+                             'upper_threshold_percent', 'de_range_lower_to_upper_threshold_percent',
+                             'de_range_lower_to_mid_threshold_percent', 'de_range_mid_to_upper_threshold_percent',
+                             'gp_lower_threshold_amount', 'gp_lower_threshold_percent1', 'exempt_amt',
+                             'filing_status_percent',
                          'pay_date', 'pay_period_limit', 'total_amount_owed', 'monthly_limit', 'exempt_amount',
                          'ytd_deductions', 'ach_sent', 'ap_check', 'date_of_ap_payment',
                          'override_child_support', 'override_medical_support', 'override_spousal_support',
@@ -1035,7 +1116,62 @@ class ExportGarnishmentOrderDataView(APIView):
 
             # Define header fields (use constants where available)
             header_fields = [
-            "id",EE.CASE_ID,EE.SSN,EE.EMPLOYEE_ID,"issuing_state","garnishment_type","garnishment_fees","voucher_for_payroll","override_amount","override_start_date","override_stop_date","paid_till_date","is_consumer_debt","issued_date","received_date","start_date","stop_date","ordered_amount","status","amount_of_deduction","current_child_support","current_medical_support","child_support_arrear","medical_support_arrear","current_spousal_support","spousal_support_arrear","fips_code","arrear_greater_than_12_weeks",CA.ARREAR_AMOUNT,"pay_date","pay_period_limit","total_amount_owed","monthly_limit","exempt_amount","ytd_deductions","ach_sent","ap_check","date_of_ap_payment","created_at","updated_at"]
+            "id",
+            EE.CASE_ID,
+            EE.SSN,
+            EE.EMPLOYEE_ID,
+            "issuing_state",
+            "garnishment_type",
+            "garnishment_fees",
+            "voucher_for_payroll",
+            "override_amount",
+            "override_start_date",
+            "override_stop_date",
+            "paid_till_date",
+            "is_consumer_debt",
+            "issued_date",
+            "received_date",
+            "start_date",
+            "stop_date",
+            "ordered_amount",
+            "status",
+            "amount_of_deduction",
+            "current_child_support",
+            "current_medical_support",
+            "child_support_arrear",
+            "medical_support_arrear",
+            "current_spousal_support",
+            "spousal_support_arrear",
+            "fips_code",
+            "arrear_greater_than_12_weeks",
+            CA.ARREAR_AMOUNT,
+            "pay_date",
+            "pay_period_limit",
+            "total_amount_owed",
+            "monthly_limit",
+            "exempt_amount",
+            # Exempt threshold/table fields
+            "ower_threshold_amount",
+            "lower_threshold_percent1",
+            "lower_threshold_percent2",
+            "mid_threshold_amount",
+            "mid_threshold_percent",
+            "upper_threshold_amount",
+            "upper_threshold_percent",
+            "de_range_lower_to_upper_threshold_percent",
+            "de_range_lower_to_mid_threshold_percent",
+            "de_range_mid_to_upper_threshold_percent",
+            "gp_lower_threshold_amount",
+            "gp_lower_threshold_percent1",
+            "exempt_amt",
+            "filing_status_percent",
+            "ytd_deductions",
+            "ach_sent",
+            "ap_check",
+            "date_of_ap_payment",
+            "created_at",
+            "updated_at",
+            ]
 
             ws.append(header_fields)
 

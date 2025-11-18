@@ -4,9 +4,11 @@ This service orchestrates the various specialized services for garnishment calcu
 """
 
 import logging
+import re
 from typing import Dict, Set, List, Any
 from processor.services.config_loader import ConfigLoader
 from processor.services.fee_calculator import FeeCalculator
+from user_app.models.payee.payee import PayeeDetails
 from processor.services.garnishment_calculator import GarnishmentCalculator
 from processor.services.database_manager import DatabaseManager
 from processor.services.base_service import BaseService
@@ -65,14 +67,75 @@ class CalculationDataView:
         """
         return self.base_service.validate_fields(record, required_fields)
 
+    def resolve_payee_type(self, case_id: str, garnishment_type: str) -> dict:
+        try:
+            payee = PayeeDetails.objects.get(case_id__iexact=case_id)
+
+            name = (payee.name or "").strip()
+            normalized_upper = name.upper()
+            normalized_lower = name.lower()
+
+            # Exact matches
+            if normalized_upper == "VEHICLE REGISTRATION":
+                return {"payee_type": GT.FTB_VEHICLE}
+
+            if normalized_upper == "CA FTB EFT":
+                return {"payee_type": GT.FTB_EWOT}
+
+            if normalized_upper == "COURT DEBT COLLECTIONS":
+                return {"payee_type": GT.FTB_COURT}
+
+            # Contains "creditors"
+            if "creditors" in normalized_lower:
+                return {"payee_type": GT.CREDITOR_DEBT}
+
+            # Match STATE TAX variations: state tax, state_tax, state-tax, statetax, etc.
+            if re.search(r"state[^a-zA-Z]*tax", normalized_lower):
+                return {"payee_type": GT.STATE_TAX_LEVY}
+
+            # Default fallback
+            return {"payee_type": GT.STATE_TAX_LEVY_FTB_EWOT}
+
+        except Exception as e:
+            return {
+                "error": f"Error resolving payee type for case '{case_id}': {str(e)}"
+            }
+
+
+
+    
     def calculate_garnishment(self, garnishment_type: str, record: Dict, 
-                             config_data: Dict, garn_fees: float = None) -> Dict:
+                             config_data: Dict, garn_fees: float = None,code:str = None) -> Dict:
         """
         Handles garnishment calculations based on type.
         Uses the modular garnishment calculator.
         """
         garnishment_type_lower = garnishment_type.lower()
-        
+        garnishment_type_lower = (garnishment_type or "").lower()
+
+        special_types = {
+            GT.STATE_TAX_LEVY_FTB_EWOT,
+            GT.CREDITOR_FTB_COURT_VEHICLE
+        }
+
+        # CASE 1: If garnishment type falls under special types OR matches specific codes
+        if garnishment_type_lower in special_types or code in ("G506", "G507"):
+            
+            # Call the payee resolver safely
+            resolved = self.resolve_payee_type(
+                record.get(EE.CASE_ID),
+                garnishment_type
+            )
+
+            # Handle resolver error
+            if resolved.get("error"):
+                return resolved
+
+            # Overwrite the garnishment_type_lower with the resolved type
+            garnishment_type_lower = resolved.get("payee_type")
+        else:
+            garnishment_type_lower = garnishment_type_lower
+
         # Validate prerequisites
         validation_result = self.base_service.validate_calculation_prerequisites(
             record, garnishment_type_lower

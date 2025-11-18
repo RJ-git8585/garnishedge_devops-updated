@@ -47,6 +47,7 @@ class GarnishmentOrder(models.Model):
     override_start_date = models.DateField(blank=True, null=True)
     override_stop_date = models.DateField(blank=True, null=True)
     paid_till_date = models.DateField(blank=True, null=True)
+
     
     arrear_greater_than_12_weeks = models.BooleanField(
         default=False, blank=False)
@@ -83,6 +84,37 @@ class GarnishmentOrder(models.Model):
     status = models.CharField(max_length=255, blank=True, null=True, default="active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+    #Exempt amount fields
+    ower_threshold_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    lower_threshold_percent1 = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    lower_threshold_percent2 = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    mid_threshold_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    mid_threshold_percent = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    upper_threshold_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    upper_threshold_percent = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    de_range_lower_to_upper_threshold_percent = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    de_range_lower_to_mid_threshold_percent = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    de_range_mid_to_upper_threshold_percent =models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    gp_lower_threshold_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    gp_lower_threshold_percent1 = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    exempt_amt = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    filing_status_percent =models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         indexes = [

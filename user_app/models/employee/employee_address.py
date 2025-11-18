@@ -2,7 +2,7 @@ from django.db import models
 
 class EmplopyeeAddress(models.Model):
     ee= models.OneToOneField('user_app.EmployeeDetail', on_delete=models.CASCADE, related_name="employee_addresses")
-    address_1=models.TextField(max_length=255,null=False)
+    address_1=models.TextField(max_length=255,blank=True, null=True)
     address_2=models.TextField(max_length=255,blank=True, null=True)
     zip_code=models.IntegerField(null=False)
     geo_code=models.IntegerField(null=False)

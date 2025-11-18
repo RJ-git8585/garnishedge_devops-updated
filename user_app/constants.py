@@ -18,6 +18,8 @@ class CalculationFields:
 
 class GarnishmentTypeFields:
     CHILD_SUPPORT = 'child_support'
+    STATE_TAX_LEVY_FTB_EWOT="state_tax_levy/ftb_ewot"
+    CREDITOR_FTB_COURT_VEHICLE="Creditor/FTB_Court_&_Vehicle"
     FEDERAL_TAX_LEVY = 'federal_tax_levy'
     STUDENT_DEFAULT_LOAN = 'student_default_loan'
     STATE_TAX_LEVY = 'state_tax_levy'
