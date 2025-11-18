@@ -6,6 +6,10 @@ class GarnishmentOrder(models.Model):
         'user_app.EmployeeDetail', on_delete=models.CASCADE, related_name="garnishments")
     issuing_state = models.ForeignKey(
         'processor.State', on_delete=models.CASCADE, related_name="garnishments")
+        
+    payee = models.ForeignKey(
+        'user_app.PayeeDetails', on_delete=models.CASCADE, related_name="garnishment_orders"
+    )
     
     garnishment_type = models.ForeignKey('processor.GarnishmentType', on_delete=models.CASCADE,db_index=True)
     is_consumer_debt = models.BooleanField(default=False)
@@ -13,8 +17,8 @@ class GarnishmentOrder(models.Model):
     received_date = models.DateField(blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
     stop_date = models.DateField(blank=True, null=True)
+
     deduction_code = models.CharField(max_length=255) 
-    payee_id=models.CharField(max_length=255)
     deduction_basis= models.CharField(max_length=255,blank=True, null=True)
     ordered_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     pay_period_limit = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)

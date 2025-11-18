@@ -10,7 +10,9 @@ from decimal import Decimal
 import logging
 import json
 from io import BytesIO
-
+from user_app.serializers import AchGarnishmentConfigSerializer
+from user_app.models import AchGarnishmentConfig
+from django.shortcuts import get_object_or_404
 from user_app.models import GarnishmentOrder, PayeeDetails
 from user_app.models.ach import ACHFile
 from processor.models.garnishment_result.result import GarnishmentResult
@@ -132,7 +134,7 @@ class ACHFileGenerationView(APIView):
         return record
 
     def _generate_batch_header(self, batch_number, company_name, company_id, 
-                              effective_date, company_discretionary_data="",
+                              pay_date, company_discretionary_data="",
                               standard_entry_class="CCD", company_entry_description="",
                               originating_dfi_id="", service_class_code="200"):
         """
@@ -168,18 +170,18 @@ class ACHFileGenerationView(APIView):
         Returns:
             str: Formatted batch header record (94 characters + newline)
         """
-        if effective_date is None:
-            effective_date = date.today()
+        if  pay_date is None:
+            pay_date = date.today()
         # Ensure effective_date is a date object, not a string
-        elif isinstance(effective_date, str):
+        elif isinstance(pay_date, str):
             try:
-                effective_date = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
             except ValueError:
-                effective_date = date.today()
-        elif not isinstance(effective_date, (date, datetime)):
-            effective_date = date.today()
-        elif isinstance(effective_date, datetime):
-            effective_date = effective_date.date()
+                pay_date = date.today()
+        elif not isinstance(pay_date, (date, datetime)):
+            pay_date = date.today()
+        elif isinstance(pay_date, datetime):
+            pay_date = pay_date.date()
         
         if not company_entry_description:
             company_entry_description = "CHILD SUPP"
@@ -203,8 +205,8 @@ class ACHFileGenerationView(APIView):
         record += company_id_formatted  # Position 41-50: Company Identification (10 digits)
         record += self._pad_string(standard_entry_class, 3, 'left', ' ')  # Position 51-53: SEC Code
         record += self._pad_string(company_entry_description, 10, 'left', ' ')  # Position 54-63: Company Entry Description
-        record += self._format_date(effective_date)  # Position 64-69: Company Descriptive Date
-        record += self._format_date(effective_date)  # Position 70-75: Effective Entry Date
+        record += self._format_date(pay_date)  # Position 64-69: Company Descriptive Date
+        record += self._format_date(pay_date)  # Position 70-75: Effective Entry Date
         record += "   "  # Position 76-78: Blank
         record += "1"  # Position 79: Originator Status Code
         record += self._pad_number(originating_dfi_id[:8], 8, '0')  # Position 80-87: Trace Record Part 1 (8 digits)
@@ -611,7 +613,8 @@ class ACHFileGenerationView(APIView):
         file_id_modifier = file_params.get('file_id_modifier', 'A')
         batch_number = file_params.get('batch_number', 1)
         service_class_code = file_params.get('service_class_code', '200')  # Default to "200" if not provided
-        standard_entry_class = file_params.get('standard_entry_class', 'CCD')  # Default to "CCD" if not provided
+        standard_entry_class = file_params.get('standard_entry_class', 'CCD') 
+        pay_date=file_params.get('pay_date') 
         
         # File Header
         creation_time = datetime.now().time()
@@ -632,7 +635,7 @@ class ACHFileGenerationView(APIView):
             batch_number=batch_number,
             company_name=company_name,
             company_id=company_id,
-            effective_date=effective_date,
+            pay_date=pay_date,
             standard_entry_class=standard_entry_class,
             originating_dfi_id=originating_dfi_id,
             service_class_code=service_class_code
@@ -669,7 +672,7 @@ class ACHFileGenerationView(APIView):
                 segment_identifier = str(order_data.get('segment_identifier', 'DED')).upper()  # DED for child support, TXP for FTB
                 application_identifier = str(order_data.get('application_identifier', 'CS')).upper()  # CS for child support
                 case_identifier = str(order_data.get('case_identifier', case_id[:20])).upper()
-                pay_date_str = self._format_date(effective_date)  # YYMMDD format (6 chars)
+                pay_date_str = self._format_date(pay_date)  # YYMMDD format (6 chars)
                 absent_parent_ssn = order_data.get('absent_parent_ssn', employee_ssn)[:9]
                 medical_support_indicator = str(order_data.get('medical_support_indicator', 'N')).upper()
                 absent_parent_name = order_data.get('absent_parent_name', individual_name)
@@ -959,7 +962,7 @@ class ACHFileGenerationView(APIView):
             
             if not orders_data:
                 return ResponseHelper.error_response(
-                    message="orders_data is required",
+                    "orders_data is required",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -967,7 +970,7 @@ class ACHFileGenerationView(APIView):
             is_valid, error_messages, failed_records = self._validate_ach_data(orders_data)
             if not is_valid:
                 return ResponseHelper.error_response(
-                    message="Validation failed",
+                    "Validation failed",
                     error={
                         'errors': error_messages,
                         'failed_records': failed_records
@@ -982,7 +985,7 @@ class ACHFileGenerationView(APIView):
                 except ValueError:
                     pay_date = date.today()
             else:
-                pay_date = file_params.get('effective_date', date.today())
+                pay_date = file_params.get('pay_date', date.today())
                 if isinstance(pay_date, str):
                     pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
             
@@ -998,7 +1001,7 @@ class ACHFileGenerationView(APIView):
                 except Exception as pdf_error:
                     logger.error(f"PDF generation failed: {str(pdf_error)}")
                     return ResponseHelper.error_response(
-                        message="Failed to generate PDF file",
+                        "Failed to generate PDF file",
                         error=str(pdf_error),
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
@@ -1077,7 +1080,7 @@ class ACHFileGenerationView(APIView):
         except Exception as e:
             logger.exception("Error generating ACH file")
             return ResponseHelper.error_response(
-                message="Failed to generate ACH file",
+                "Failed to generate ACH file",
                 error=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
@@ -1133,7 +1136,7 @@ class ACHFileListView(APIView):
                 })
             
             return ResponseHelper.success_response(
-                message="ACH files retrieved successfully",
+                "ACH files retrieved successfully",
                 data=files_data,
                 status_code=status.HTTP_200_OK
             )
@@ -1141,7 +1144,151 @@ class ACHFileListView(APIView):
         except Exception as e:
             logger.exception("Error retrieving ACH files")
             return ResponseHelper.error_response(
-                message="Failed to retrieve ACH files",
+                "Failed to retrieve ACH files",
                 error=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+logger = logging.getLogger(__name__)
+
+
+class AchGarnishmentConfigListCreateAPIView(APIView):
+
+    def get(self, request):
+        try:
+            configs = AchGarnishmentConfig.objects.all().order_by("-created_at")
+            serializer = AchGarnishmentConfigSerializer(configs, many=True)
+
+            return ResponseHelper.success_response(
+                message="Fetched successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception("Error fetching ACH configs")
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def post(self, request):
+        try:
+            serializer = AchGarnishmentConfigSerializer(data=request.data)
+
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Created successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_201_CREATED
+                )
+
+            return ResponseHelper.error_response(
+                message="Validation Failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            logger.exception("Error creating ACH config")
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+from django.shortcuts import get_object_or_404
+
+
+class AchGarnishmentConfigDetailAPIView(APIView):
+
+    def get_object(self, pk):
+        return get_object_or_404(AchGarnishmentConfig, pk=pk)
+
+    def get(self, request, pk):
+        try:
+            config = self.get_object(pk)
+            serializer = AchGarnishmentConfigSerializer(config)
+
+            return ResponseHelper.success_response(
+                message="Fetched successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception("Error fetching ACH config details")
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def put(self, request, pk):
+        try:
+            config = self.get_object(pk)
+            serializer = AchGarnishmentConfigSerializer(config, data=request.data)
+
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Updated successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+
+            return ResponseHelper.error_response(
+                message="Validation Failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            logger.exception("Error updating ACH config")
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def patch(self, request, pk):
+        try:
+            config = self.get_object(pk)
+            serializer = AchGarnishmentConfigSerializer(config, data=request.data, partial=True)
+
+            if serializer.is_valid():
+                serializer.save()
+                return ResponseHelper.success_response(
+                    message="Updated successfully",
+                    data=serializer.data,
+                    status_code=status.HTTP_200_OK
+                )
+
+            return ResponseHelper.error_response(
+                message="Validation Failed",
+                error=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            logger.exception("Error partially updating ACH config")
+            return ResponseHelper.error_response(
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, pk):
+        try:
+            config = self.get_object(pk)
+            config.delete()
+
+            return ResponseHelper.success_response(
+                message="Deleted successfully",
+                status_code=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception("Error deleting ACH config")
+            return ResponseHelper.error_response(
+                message=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

@@ -17,3 +17,7 @@ class PayeeAddress(models.Model):
 
     def __str__(self):
         return f"{self.address_1}, {self.city}, {self.state}"
+
+
+
+        ["address_1","address_2","city","state","zip_code","zip_plus_4"]
