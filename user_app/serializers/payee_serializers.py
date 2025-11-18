@@ -36,36 +36,52 @@ class StateNameField(serializers.PrimaryKeyRelatedField):
 
 class PayeeAddressSerializer(serializers.ModelSerializer):
     """
-    Serializer for PayeeAddress nested within PayeeSerializer.
+    Serializer for `PayeeAddress` nested within `PayeeSerializer`.
     """
-    # Accept state name or code and convert to State instance
+    # Accept state name or code and convert to `State` instance
     state = StateNameField(queryset=State.objects.all())
-    
+
     class Meta:
         model = PayeeAddress
         fields = ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']
 
 
 class PayeeSerializer(serializers.ModelSerializer):
-    # Map id to payee_id for API consistency
-    id = serializers.IntegerField(source='payee_id', read_only=True)
-    # Accept GarnishmentOrder by its case_id string
-    case_id = serializers.SlugRelatedField(
-        slug_field='case_id',
-        queryset=GarnishmentOrder.objects.all()
-    )
+    """
+    Serializer for `PayeeDetails`, including nested address and state.
+    """
+
+    # Expose the auto-generated primary key `id`
+    id = serializers.IntegerField(read_only=True)
+
+    # Accept state name or code and convert to `State` instance on the payee itself
+    state = StateNameField(queryset=State.objects.all())
+
     # Nested address serializer
     address = PayeeAddressSerializer(required=False, allow_null=True)
 
     class Meta:
         model = PayeeDetails
         fields = [
-            'id', 'payee_id', 'payee_type', 'payee', 'case_id',
-            'routing_number', 'bank_account', 'case_number_required',
-            'case_number_format', 'fips_required', 'fips_length',
-            'last_used', 'is_active', 'created_at', 'updated_at', 'address'
+            'id',
+            'payee_id',
+            'payee_type',
+            'payee',
+            'routing_number',
+            'bank_account',
+            'case_number_required',
+            'case_number_format',
+            'fips_required',
+            'fips_length',
+            'last_used',
+            'status',
+            'state',
+            'created_at',
+            'updated_at',
+            'address',
         ]
-        read_only_fields = ['id', 'payee_id', 'created_at', 'updated_at']
+        # `payee_id` is a writable CharField used in all CRUD and import/export APIs
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         """

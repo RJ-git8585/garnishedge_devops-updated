@@ -4,23 +4,23 @@ from processor.garnishment_library.utils.response import ResponseHelper
 import logging
 from django.core.exceptions import ValidationError
 from user_app.serializers import PayeeSerializer
+from user_app.models import GarnishmentOrder
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.http import JsonResponse, HttpResponse
+from django.http import HttpResponse
 from openpyxl import Workbook
 from io import BytesIO
-from rest_framework.permissions import AllowAny
 from datetime import datetime
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 import pandas as pd
-import csv
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
-# CRUD operations on SDU using id
+# CRUD operations on Payee (SDU) using id
 class PayeeByIDAPIView(APIView):
     """
     API view for CRUD operations on SDU using id.
@@ -28,161 +28,165 @@ class PayeeByIDAPIView(APIView):
 
     @swagger_auto_schema(
         responses={
-            200: openapi.Response('SDU fetched successfully', PayeeSerializer),
-            404: 'SDU not found',
+            200: openapi.Response('Payee fetched successfully', PayeeSerializer),
+            404: 'Payee not found',
             400: 'Invalid input',
             500: 'Internal server error'
         }
     )
     def get(self, request, id=None):
         """
-        Retrieve SDU data by id or all payee if not provided.
+        Retrieve payee data by id or all payees if not provided.
         """
         try:
             if id:
                 try:
-                    sdu = PayeeDetails.objects.get(payee_id=id)
-                    serializer = PayeeSerializer(sdu)
+                    # Lookup by primary key `id`; response includes `payee_id` field
+                    payee = PayeeDetails.objects.get(id=id)
+                    serializer = PayeeSerializer(payee)
                     return ResponseHelper.success_response(
-                        f'SDU with id "{id}" fetched successfully', serializer.data
+                        f'Payee with id "{id}" fetched successfully', serializer.data
                     )
                 except PayeeDetails.DoesNotExist:
                     return ResponseHelper.error_response(
-                        f'SDU with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND
+                        f'Payee with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND
                     )
             else:
-                payee = PayeeDetails.objects.all()
-                serializer = PayeeSerializer(payee, many=True)
-                return ResponseHelper.success_response('All payee fetched successfully', serializer.data)
+                payees = PayeeDetails.objects.all()
+                serializer = PayeeSerializer(payees, many=True)
+                return ResponseHelper.success_response('All payees fetched successfully', serializer.data)
         except Exception as e:
-            logger.exception("Unexpected error in GET method of SDUByIDAPIView")
+            logger.exception("Unexpected error in GET method of PayeeByIDAPIView")
             return ResponseHelper.error_response(
-                'Failed to fetch SDU data', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                'Failed to fetch payee data', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def post(self, request, id=None):
         """
-        Create a new SDU.
+        Create a new payee.
         """
         try:
             serializer = PayeeSerializer(data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return ResponseHelper.success_response(
-                    'SDU created successfully', serializer.data, status_code=status.HTTP_201_CREATED
+                    'Payee created successfully', serializer.data, status_code=status.HTTP_201_CREATED
                 )
             else:
                 return ResponseHelper.error_response(
                     'Invalid data', serializer.errors, status_code=status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
-            logger.exception("Unexpected error in POST method of SDUByIDAPIView")
+            logger.exception("Unexpected error in POST method of PayeeByIDAPIView")
             return ResponseHelper.error_response(
-                'Internal server error while creating SDU', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                'Internal server error while creating payee', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @swagger_auto_schema(
         request_body=PayeeSerializer,
         responses={
-            200: openapi.Response('SDU updated successfully', PayeeSerializer),
+            200: openapi.Response('Payee updated successfully', PayeeSerializer),
             400: 'id is required in URL or invalid data',
-            404: 'SDU not found',
+            404: 'Payee not found',
             500: 'Internal server error'
         }
     )
     def put(self, request, id=None):
         """
-        Update SDU data for a specific id.
+        Update payee data for a specific id.
         """
         if not id:
-            return ResponseHelper.error_response('id is required in URL to update SDU', status_code=status.HTTP_400_BAD_REQUEST)
+            return ResponseHelper.error_response('id is required in URL to update payee', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            sdu = PayeeDetails.objects.get(payee_id=id)
+            # Lookup by primary key `id`; request/response body can include `payee_id`
+            payee = PayeeDetails.objects.get(id=id)
         except PayeeDetails.DoesNotExist:
-            return ResponseHelper.error_response(f'SDU with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND)
+            return ResponseHelper.error_response(f'Payee with id \"{id}\" not found', status_code=status.HTTP_404_NOT_FOUND)
         try:
-            serializer = PayeeSerializer(sdu, data=request.data, partial=True)
+            serializer = PayeeSerializer(payee, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
-                return ResponseHelper.success_response('SDU updated successfully', serializer.data)
+                return ResponseHelper.success_response('Payee updated successfully', serializer.data)
             else:
                 return ResponseHelper.error_response('Invalid data', serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.exception("Error updating SDU")
+            logger.exception("Error updating payee")
             return ResponseHelper.error_response(
-                'Internal server error while updating SDU', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                'Internal server error while updating payee', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @swagger_auto_schema(
         responses={
-            200: 'SDU deleted successfully',
-            400: 'id is required in URL to delete SDU',
-            404: 'SDU not found',
+            200: 'Payee deleted successfully',
+            400: 'id is required in URL to delete payee',
+            404: 'Payee not found',
             500: 'Internal server error'
         }
     )
     def delete(self, request, id=None):
         """
-        Delete SDU data for a specific id.
+        Delete payee data for a specific id.
         """
         if not id:
-            return ResponseHelper.error_response('id is required in URL to delete SDU', status_code=status.HTTP_400_BAD_REQUEST)
+            return ResponseHelper.error_response('id is required in URL to delete payee', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            sdu = PayeeDetails.objects.get(payee_id=id)
-            sdu.delete()
-            return ResponseHelper.success_response(f'SDU with id "{id}" deleted successfully')
+            # Lookup by primary key `id`; `payee_id` remains as data field
+            payee = PayeeDetails.objects.get(id=id)
+            payee.delete()
+            return ResponseHelper.success_response(f'Payee with id "{id}" deleted successfully')
         except PayeeDetails.DoesNotExist:
-            return ResponseHelper.error_response(f'SDU with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND)
+            return ResponseHelper.error_response(f'Payee with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.exception("Unexpected error in DELETE method of SDUByIDAPIView")
+            logger.exception("Unexpected error in DELETE method of PayeeByIDAPIView")
             return ResponseHelper.error_response(
-                'Internal server error while deleting SDU', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                'Internal server error while deleting payee', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
 # Get payee by state name or abbreviation
 class PayeeByStateAPIView(APIView):
     """
-    API view to get SDU(s) by state name or abbreviation using only the SDU table.
+    API view to get payee(s) by state name or abbreviation using the `PayeeDetails.state` relation.
     """
     @swagger_auto_schema(
         responses={
-            200: openapi.Response('payee for state fetched successfully', PayeeSerializer(many=True)),
-            404: 'No payee found for state',
+            200: openapi.Response('Payees for state fetched successfully', PayeeSerializer(many=True)),
+            404: 'No payees found for state',
             400: 'Invalid input',
             500: 'Internal server error'
         }
     )
     def get(self, request, state=None):
         """
-        Retrieve SDU(s) for a specific state name or abbreviation using PayeeAddress table.
+        Retrieve payee(s) for a specific state name or abbreviation.
         """
         if not state:
-            return ResponseHelper.error_response('State is required in URL to fetch payee', status_code=status.HTTP_400_BAD_REQUEST)
+            return ResponseHelper.error_response('State is required in URL to fetch payees', status_code=status.HTTP_400_BAD_REQUEST)
         try:
-            # Filter payee by related State's name or abbreviation in PayeeAddress (case-insensitive)
-            payee = PayeeDetails.objects.filter(
-                address__state__state__iexact=state.strip()
+            normalized_state = state.strip()
+            # Filter payees by related `State` name or abbreviation (case-insensitive)
+            payees = PayeeDetails.objects.filter(
+                state__state__iexact=normalized_state
             ) | PayeeDetails.objects.filter(
-                address__state__state_code__iexact=state.strip()
+                state__state_code__iexact=normalized_state
             )
-            payee = payee.distinct()
-            if not payee.exists():
-                return ResponseHelper.error_response(f'No payee found for state "{state}"', status_code=status.HTTP_404_NOT_FOUND)
-            serializer = PayeeSerializer(payee, many=True)
+            payees = payees.distinct()
+            if not payees.exists():
+                return ResponseHelper.error_response(f'No payees found for state "{state}"', status_code=status.HTTP_404_NOT_FOUND)
+            serializer = PayeeSerializer(payees, many=True)
             return ResponseHelper.success_response(
-                f'payee for state "{state}" fetched successfully', serializer.data
+                f'Payees for state "{state}" fetched successfully', serializer.data
             )
         except Exception as e:
-            logger.exception("Unexpected error in GET method of SDUByStateAPIView")
+            logger.exception("Unexpected error in GET method of PayeeByStateAPIView")
             return ResponseHelper.error_response(
-                'Failed to fetch SDU data for state', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                'Failed to fetch payee data for state', str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
 class PayeeImportView(APIView):
     """
-    API view to handle the import (upsert) of payee from a file.
-    Updates existing payee by combination of case_id and state, or creates new ones.
+    API view to handle the import (upsert) of payees from a file.
+    Updates existing payees by combination of `case_id` and `payee` (and implicitly state), or creates new ones.
     """
     parser_classes = [MultiPartParser, FormParser]
 
@@ -223,33 +227,85 @@ class PayeeImportView(APIView):
                     message="Unsupported file format. Please upload a CSV or Excel file.",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+
+            # Convert dataframe to list of dicts once (faster than iterrows)
+            records = df.to_dict(orient="records")
+
+            # Pre-fetch all states into dictionaries for O(1) lookup (supports both name and code)
+            all_states = State.objects.all()
+            state_by_name = {state.state.lower(): state for state in all_states if state.state}
+            state_by_code = {state.state_code.lower(): state for state in all_states if state.state_code}
             
-            added_payee = []
-            updated_payee = []
+            def get_state(state_value):
+                """Helper to get State instance from name or code (case-insensitive)"""
+                if not state_value:
+                    return None
+                normalized = str(state_value).strip().lower()
+                return state_by_name.get(normalized) or state_by_code.get(normalized)
+
+            # Prefetch existing payees and orders in bulk to avoid per-row queries
+            payee_ids_in_file = {
+                (r.get("payee_id") or "").strip()
+                for r in records
+                if r.get("payee_id")
+            }
+            case_ids_in_file = {
+                (r.get("case_id") or "").strip()
+                for r in records
+                if r.get("case_id")
+            }
+
+            existing_payees_by_payee_id = {
+                p.payee_id: p
+                for p in PayeeDetails.objects.filter(payee_id__in=payee_ids_in_file).select_related('state')
+            }
+
+            orders_by_case_id = {
+                o.case_id: o
+                for o in GarnishmentOrder.objects.filter(case_id__in=case_ids_in_file).select_related("payee", "payee__state")
+            }
             
-            for _, row in df.iterrows():
+            # Process all records in memory first
+            payees_to_create = []
+            payees_to_update = []
+            addresses_to_create = []
+            addresses_to_update = []
+            added_payees = []
+            updated_payees = []
+            validation_errors = []
+            
+            for row_idx, row in enumerate(records, start=1):
                 try:
-                    # Extract address data if present (state is now part of address)
-                    address_data = None
-                    if any(row.get(field) for field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']):
-                        address_data = {
-                            "address_1": row.get("address_1"),
-                            "address_2": row.get("address_2"),
-                            "city": row.get("city"),
-                            "state": row.get("state"),  # State is now part of address (FK to State)
-                            "zip_code": row.get("zip_code"),
-                            "zip_plus_4": row.get("zip_plus_4"),
-                        }
-                        # Remove None values
-                        address_data = {k: v for k, v in address_data.items() if v is not None}
-                        if not address_data:
-                            address_data = None
+                    # Extract identifiers
+                    payee_id_val = (row.get("payee_id") or "").strip()
+                    raw_case_id = row.get("case_id")
+                    case_id = (raw_case_id or "").strip() if raw_case_id is not None else ""
+
+                    # Require at least one identifier
+                    if not payee_id_val and not case_id:
+                        continue
+                    
+                    # Find existing payee
+                    existing_payee = None
+                    if payee_id_val:
+                        existing_payee = existing_payees_by_payee_id.get(payee_id_val)
+                    else:
+                        order = orders_by_case_id.get(case_id)
+                        existing_payee = order.payee if order and order.payee else None
+                    
+                    sdu_identifier = f"{payee_id_val or case_id}_{row.get('payee', 'unknown')}"
+                    
+                    # Handle state lookup (supports both name and abbreviation)
+                    state_value = row.get("state")
+                    state_instance = get_state(state_value)
+                    if state_value and not state_instance:
+                        validation_errors.append(f"Row {row_idx}: State '{state_value}' not found (neither by name nor code)")
+                        continue
                     
                     # Handle last_used date conversion
                     last_used = row.get("last_used")
                     if last_used:
                         try:
-                            # Try to parse if it's a string
                             if isinstance(last_used, str):
                                 last_used = pd.to_datetime(last_used).date()
                             elif hasattr(last_used, 'date'):
@@ -257,94 +313,171 @@ class PayeeImportView(APIView):
                         except (ValueError, AttributeError):
                             last_used = None
                     
-                    sdu_data = {
-                        "payee_type": row.get("payee_type"),
-                        "payee": row.get("payee"),
-                        "case_id": row.get("case_id"),
-                        "routing_number": row.get("routing_number"),
-                        "bank_account": row.get("bank_account"),
-                        "case_number_required": row.get("case_number_required", False),
-                        "case_number_format": row.get("case_number_format"),
-                        "fips_required": row.get("fips_required", False),
-                        "fips_length": row.get("fips_length"),
-                        "last_used": last_used,
-                        "is_active": row.get("is_active", True),
-                    }
+                    # Handle fips_length
+                    raw_fips = row.get("fips_length")
+                    fips_length = None
+                    if raw_fips is not None and not pd.isna(raw_fips):
+                        if isinstance(raw_fips, (int, float)) and not isinstance(raw_fips, bool):
+                            fips_length = int(raw_fips)
+                        elif isinstance(raw_fips, str):
+                            s = raw_fips.strip()
+                            if s.isdigit():
+                                fips_length = int(s)
                     
-                    # Add address data if present
-                    if address_data:
-                        sdu_data["address"] = address_data
-                    
-                    # Remove None values from sdu_data (except for boolean fields)
-                    sdu_data = {k: v for k, v in sdu_data.items() if v is not None or k in ['case_number_required', 'fips_required', 'is_active']}
-                    
-                    # Check if case_id exists (required for unique identification)
-                    case_id = sdu_data.get("case_id")
-                    
-                    if not case_id:
-                        # Skip rows without required identifier
+                    # Validate required fields before processing
+                    if not payee_id_val and not case_id:
+                        continue
+                    if not row.get("payee"):
+                        validation_errors.append(f"Row {row_idx}: 'payee' field is required")
+                        continue
+                    if not state_instance:
+                        validation_errors.append(f"Row {row_idx}: Valid state is required")
                         continue
                     
-                    # Try to find existing SDU by case_id and payee (or other unique combination)
-                    # Since state is no longer on PayeeDetails, we'll use case_id and payee for lookup
-                    existing_sdu = PayeeDetails.objects.filter(
-                        case_id__case_id=case_id,
-                        payee=sdu_data.get("payee")
-                    ).first()
+                    # For new payees, payee_id is required
+                    if not existing_payee and not payee_id_val:
+                        validation_errors.append(f"Row {row_idx}: 'payee_id' is required for new payees")
+                        continue
                     
-                    sdu_identifier = f"{case_id}_{sdu_data.get('payee', 'unknown')}"
+                    # Prepare payee data
+                    payee_data = {
+                        "payee_id": payee_id_val,
+                        "payee_type": row.get("payee_type"),
+                        "payee": row.get("payee"),
+                        "routing_number": row.get("routing_number"),
+                        "bank_account": row.get("bank_account"),
+                        "case_number_required": bool(row.get("case_number_required", False)),
+                        "case_number_format": row.get("case_number_format"),
+                        "fips_required": bool(row.get("fips_required", False)),
+                        "fips_length": fips_length,
+                        "last_used": last_used,
+                        "status": row.get("status"),
+                        "state": state_instance,
+                    }
                     
-                    if existing_sdu:
-                        # Update existing SDU
-                        serializer = PayeeSerializer(
-                            existing_sdu, 
-                            data=sdu_data, 
-                            partial=True
-                        )
-                        if serializer.is_valid():
-                            serializer.save()
-                            updated_payee.append(sdu_identifier)
-                        else:
-                            return ResponseHelper.error_response(
-                                message=f"Validation error for SDU {sdu_identifier}",
-                                error=serializer.errors,
-                                status_code=status.HTTP_400_BAD_REQUEST
-                            )
+                    # Remove None values (except for boolean fields and required fields)
+                    payee_data = {k: v for k, v in payee_data.items() if v is not None or k in ['case_number_required', 'fips_required', 'payee_id', 'payee', 'state']}
+                    
+                    # Prepare address data if present
+                    address_data = None
+                    if any(row.get(field) for field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']):
+                        address_state = get_state(state_value)  # Use same state lookup
+                        if address_state:
+                            address_data = {
+                                "address_1": row.get("address_1"),
+                                "address_2": row.get("address_2"),
+                                "city": row.get("city"),
+                                "state": address_state,
+                                "zip_code": row.get("zip_code"),
+                                "zip_plus_4": row.get("zip_plus_4"),
+                            }
+                            # Remove None values
+                            address_data = {k: v for k, v in address_data.items() if v is not None}
+                            if not address_data:
+                                address_data = None
+                    
+                    if existing_payee:
+                        # Update existing payee
+                        for attr, value in payee_data.items():
+                            setattr(existing_payee, attr, value)
+                        payees_to_update.append(existing_payee)
+                        updated_payees.append(sdu_identifier)
+                        
+                        # Handle address update/create
+                        if address_data:
+                            address_data['payee'] = existing_payee
+                            addresses_to_update.append((existing_payee, address_data))
                     else:
-                        # Create new SDU
-                        serializer = PayeeSerializer(data=sdu_data)
-                        if serializer.is_valid():
-                            serializer.save()
-                            added_payee.append(sdu_identifier)
-                        else:
-                            return ResponseHelper.error_response(
-                                message=f"Validation error for SDU {sdu_identifier}",
-                                error=serializer.errors,
-                                status_code=status.HTTP_400_BAD_REQUEST
-                            )
+                        # Create new payee
+                        new_payee = PayeeDetails(**payee_data)
+                        payees_to_create.append(new_payee)
+                        added_payees.append(sdu_identifier)
+                        
+                        # Store address data for later creation
+                        if address_data:
+                            addresses_to_create.append((new_payee, address_data))
                             
                 except Exception as row_e:
-                    logger.exception(f"Error processing SDU row: {str(row_e)}")
-                    return ResponseHelper.error_response(
-                        message="Error processing row",
-                        error=str(row_e),
-                        status_code=status.HTTP_400_BAD_REQUEST
+                    logger.exception(f"Error processing payee row {row_idx}: {str(row_e)}")
+                    validation_errors.append(f"Row {row_idx}: {str(row_e)}")
+            
+            # Return validation errors if any
+            if validation_errors:
+                return ResponseHelper.error_response(
+                    message="Validation errors found",
+                    error=validation_errors[:10],  # Limit to first 10 errors
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Perform bulk operations in a transaction
+            with transaction.atomic():
+                # Bulk create new payees
+                if payees_to_create:
+                    PayeeDetails.objects.bulk_create(payees_to_create, ignore_conflicts=False)
+                    # After bulk_create, Django sets the IDs on the objects
+                    # Create addresses for new payees using bulk_create
+                    if addresses_to_create:
+                        address_objects = [
+                            PayeeAddress(payee=payee, **addr_data)
+                            for payee, addr_data in addresses_to_create
+                        ]
+                        PayeeAddress.objects.bulk_create(address_objects, ignore_conflicts=False)
+                
+                # Bulk update existing payees
+                if payees_to_update:
+                    PayeeDetails.objects.bulk_update(
+                        payees_to_update,
+                        ['payee_type', 'payee', 'routing_number', 'bank_account', 
+                         'case_number_required', 'case_number_format', 'fips_required', 
+                         'fips_length', 'last_used', 'status', 'state', 'updated_at']
                     )
+                    # For OneToOne relationships, we need to handle updates individually
+                    # but we can batch the lookups
+                    if addresses_to_update:
+                        payee_ids = [payee.id for payee, _ in addresses_to_update]
+                        existing_addresses = {
+                            addr.payee_id: addr
+                            for addr in PayeeAddress.objects.filter(payee_id__in=payee_ids)
+                        }
+                        
+                        addresses_to_bulk_create = []
+                        addresses_to_bulk_update = []
+                        
+                        for payee, addr_data in addresses_to_update:
+                            if payee.id in existing_addresses:
+                                # Update existing address
+                                addr = existing_addresses[payee.id]
+                                for attr, value in addr_data.items():
+                                    setattr(addr, attr, value)
+                                addresses_to_bulk_update.append(addr)
+                            else:
+                                # Create new address
+                                addresses_to_bulk_create.append(
+                                    PayeeAddress(payee=payee, **addr_data)
+                                )
+                        
+                        if addresses_to_bulk_create:
+                            PayeeAddress.objects.bulk_create(addresses_to_bulk_create, ignore_conflicts=False)
+                        if addresses_to_bulk_update:
+                            PayeeAddress.objects.bulk_update(
+                                addresses_to_bulk_update,
+                                ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']
+                            )
 
             # Build response data
             response_data = {}
             
-            if added_payee:
-                response_data["added_payee"] = added_payee
-                response_data["added_count"] = len(added_payee)
+            if added_payees:
+                response_data["added_payees"] = added_payees
+                response_data["added_count"] = len(added_payees)
             
-            if updated_payee:
-                response_data["updated_payee"] = updated_payee
-                response_data["updated_count"] = len(updated_payee)
+            if updated_payees:
+                response_data["updated_payees"] = updated_payees
+                response_data["updated_count"] = len(updated_payees)
             
-            if not added_payee and not updated_payee:
+            if not added_payees and not updated_payees:
                 return ResponseHelper.success_response(
-                    message="No valid data to process",
+                    message="No valid payee data to process",
                     data=response_data,
                     status_code=status.HTTP_200_OK
                 )
@@ -366,58 +499,57 @@ class PayeeImportView(APIView):
 
 class ExportPayeeDataView(APIView):
     """
-    API view to export SDU data as an Excel file.
+    API view to export payee data as an Excel file.
     Provides robust exception handling and clear response messages.
     """
     @swagger_auto_schema(
         responses={
             200: 'Excel file exported successfully',
-            404: 'No payee found',
+            404: 'No payees found',
             500: 'Internal server error'
         }
     )
     def get(self, request):
         """
-        Handles GET request to export all payee to an Excel file.
+        Handles GET request to export all payees to an Excel file.
         """
         try:
-            # Fetch all payee from the database
-            payee = PayeeDetails.objects.all()
-            if not payee.exists():
+            # Fetch all payees from the database
+            payees = PayeeDetails.objects.all()
+            if not payees.exists():
                 return ResponseHelper.error_response(
-                    message="No payee found",
+                    message="No payees found",
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-            serializer = PayeeSerializer(payee, many=True)
+            serializer = PayeeSerializer(payees, many=True)
 
             # Create Excel workbook and worksheet
             wb = Workbook()
             ws = wb.active
-            ws.title = "payee"
+            ws.title = "payees"
 
             # Define header fields - include all PayeeDetails fields and address fields
-            # Note: state is now part of address, not PayeeDetails
             header_fields = [
                 "id", "payee_id", "payee_type", "payee", "case_id",
                 "routing_number", "bank_account", "case_number_required",
                 "case_number_format", "fips_required", "fips_length",
-                "last_used", "is_active", "created_at", "updated_at",
-                "address_1", "address_2", "city", "state", "zip_code", "zip_plus_4"
+                "last_used", "status", "state", "created_at", "updated_at",
+                "address_1", "address_2", "city", "zip_code", "zip_plus_4"
             ]
 
             ws.append(header_fields)
 
             # Write data rows to the worksheet
-            for sdu in serializer.data:
+            for payee in serializer.data:
                 row_data = []
                 for field in header_fields:
-                    if field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']:
+                    if field in ['address_1', 'address_2', 'city', 'zip_code', 'zip_plus_4']:
                         # Extract from nested address object
-                        address = sdu.get('address', {}) or {}
+                        address = payee.get('address', {}) or {}
                         row_data.append(address.get(field, ''))
                     else:
-                        row_data.append(sdu.get(field, ''))
+                        row_data.append(payee.get(field, ''))
                 ws.append(row_data)
 
             # Save workbook to in-memory buffer
@@ -426,7 +558,7 @@ class ExportPayeeDataView(APIView):
             buffer.seek(0)
 
             # Prepare HTTP response with Excel content
-            filename = f'payee_{datetime.today().strftime("%m-%d-%y")}.xlsx'
+            filename = f'payees_{datetime.today().strftime("%m-%d-%y")}.xlsx'
             response = HttpResponse(
                 buffer,
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -435,9 +567,9 @@ class ExportPayeeDataView(APIView):
             return response
 
         except Exception as e:
-            logger.exception(f"Error exporting SDU data: {str(e)}")
+            logger.exception(f"Error exporting payee data: {str(e)}")
             return ResponseHelper.error_response(
-                message="Failed to export SDU data",
+                message="Failed to export payee data",
                 error=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
