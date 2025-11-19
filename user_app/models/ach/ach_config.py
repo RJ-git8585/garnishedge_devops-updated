@@ -25,10 +25,16 @@ class AchGarnishmentConfig(models.Model):
     ]
 
     TRANSACTION_CODE_CHOICES = [
-        ("22", "Credit"),
-        ("23", "Prenote Credit"),
-        ("27", "Debit"),
-        ("28", "Prenote Debit"),
+        # Checking account codes
+        ("22", "Credit"),  # Credit to checking account
+        ("23", "Prenote Credit"),  # Prenote credit to checking account
+        ("27", "Debit"),  # Debit to checking account
+        ("28", "Prenote Debit"),  # Prenote debit to checking account
+        # Savings account codes
+        ("32", "Credit"),  # Credit to savings account
+        ("33", "Prenote Credit"),  # Prenote credit to savings account
+        ("37", "Debit"),  # Debit to savings account
+        ("38", "Prenote Debit"),  # Prenote debit to savings account
     ]
 
     payment_type = models.CharField(
@@ -51,30 +57,6 @@ class AchGarnishmentConfig(models.Model):
         max_length=20
     )
 
-    originating_routing_number = models.CharField(
-        max_length=9,
-        help_text="Immediate receiving routing number"
-    )
-
-    originating_bank_name = models.CharField(
-        max_length=255,
-        default="Wells Fargo Garnishment"
-    )
-
-    originating_dfi_id=models.IntegerField()
-
-    file_id_modifier=models.CharField(
-        max_length=1
-    )
-    immediate_destination=models.CharField(
-        max_length=10
-    )
-    immediate_origin_name =models.CharField(
-        max_length=23
-    )
-    internal_reference_code=models.CharField(
-        max_length=8
-    )
 
     service_class_code = models.CharField(
         max_length=3,
@@ -94,12 +76,8 @@ class AchGarnishmentConfig(models.Model):
         null=True
     )
 
-    company_id = models.CharField(
-        max_length=20
-    )
-
     originating_routing_number = models.CharField(
-        max_length=9,
+        max_length=50,
         help_text="Immediate receiving routing number"
     )
 
@@ -112,4 +90,8 @@ class AchGarnishmentConfig(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.company_id} - {self.garnishment_type} ({self.pay_date})"
+        return f"{self.company_id} - {self.company_name} ({self.payment_type})"
+
+    class meta:
+        db_table= 'ach_config'
+

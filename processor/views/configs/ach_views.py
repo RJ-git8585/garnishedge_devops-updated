@@ -1154,7 +1154,29 @@ logger = logging.getLogger(__name__)
 
 
 class AchGarnishmentConfigListCreateAPIView(APIView):
+    """
+    API view for listing and creating ACH Garnishment Configurations.
+    """
 
+    @swagger_auto_schema(
+        operation_description="Retrieve all ACH Garnishment Configurations",
+        responses={
+            200: openapi.Response(
+                description="List of ACH Garnishment Configurations",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'data': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        ),
+                    }
+                )
+            ),
+            500: "Internal server error"
+        }
+    )
     def get(self, request):
         try:
             configs = AchGarnishmentConfig.objects.all().order_by("-created_at")
@@ -1173,6 +1195,78 @@ class AchGarnishmentConfigListCreateAPIView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Create a new ACH Garnishment Configuration",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['payment_type', 'company_name', 'company_id', 'account_type', 'originating_routing_number'],
+            properties={
+                'payment_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['CCD', 'CTX', 'PPD'],
+                    description='Payment type code'
+                ),
+                'medical_support_indicator': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Y', 'N'],
+                    description='Medical support indicator (default: N)'
+                ),
+                'company_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Company name'
+                ),
+                'company_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=20,
+                    description='Company identification number'
+                ),
+                'service_class_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['200', '220', '225'],
+                    description='Service class code (200=Credit & Debit, 220=Credits Only, 225=Debits Only)'
+                ),
+                'service_class_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit & Debit', 'Credits Only', 'Debits Only'],
+                    description='Service class type (alternative to service_class_code)'
+                ),
+                'account_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['checking', 'savings'],
+                    description='Account type'
+                ),
+                'transaction_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['22', '23', '27', '28'],
+                    description='Transaction code (required if account_type is checking)'
+                ),
+                'transaction_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit', 'Prenote Credit', 'Debit', 'Prenote Debit'],
+                    description='Transaction type (alternative to transaction_code, required if account_type is checking)'
+                ),
+                'originating_routing_number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=50,
+                    description='Originating routing number (immediate receiving routing number)'
+                ),
+                'originating_bank_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Originating bank name (default: Wells Fargo Garnishment)'
+                ),
+            }
+        ),
+        responses={
+            201: openapi.Response(
+                description="ACH Garnishment Configuration created successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            400: "Validation failed",
+            500: "Internal server error"
+        }
+    )
     def post(self, request):
         try:
             serializer = AchGarnishmentConfigSerializer(data=request.data)
@@ -1198,14 +1292,26 @@ class AchGarnishmentConfigListCreateAPIView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-from django.shortcuts import get_object_or_404
-
 
 class AchGarnishmentConfigDetailAPIView(APIView):
+    """
+    API view for retrieving, updating, and deleting a specific ACH Garnishment Configuration.
+    """
 
     def get_object(self, pk):
         return get_object_or_404(AchGarnishmentConfig, pk=pk)
 
+    @swagger_auto_schema(
+        operation_description="Retrieve a specific ACH Garnishment Configuration by ID",
+        responses={
+            200: openapi.Response(
+                description="ACH Garnishment Configuration details",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            404: "Configuration not found",
+            500: "Internal server error"
+        }
+    )
     def get(self, request, pk):
         try:
             config = self.get_object(pk)
@@ -1224,6 +1330,79 @@ class AchGarnishmentConfigDetailAPIView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Update an entire ACH Garnishment Configuration (PUT - all fields required)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['payment_type', 'company_name', 'company_id', 'account_type', 'originating_routing_number'],
+            properties={
+                'payment_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['CCD', 'CTX', 'PPD'],
+                    description='Payment type code'
+                ),
+                'medical_support_indicator': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Y', 'N'],
+                    description='Medical support indicator'
+                ),
+                'company_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Company name'
+                ),
+                'company_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=20,
+                    description='Company identification number'
+                ),
+                'service_class_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['200', '220', '225'],
+                    description='Service class code'
+                ),
+                'service_class_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit & Debit', 'Credits Only', 'Debits Only'],
+                    description='Service class type (alternative to service_class_code)'
+                ),
+                'account_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['checking', 'savings'],
+                    description='Account type'
+                ),
+                'transaction_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['22', '23', '27', '28'],
+                    description='Transaction code (required if account_type is checking)'
+                ),
+                'transaction_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit', 'Prenote Credit', 'Debit', 'Prenote Debit'],
+                    description='Transaction type (alternative to transaction_code)'
+                ),
+                'originating_routing_number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=50,
+                    description='Originating routing number'
+                ),
+                'originating_bank_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Originating bank name'
+                ),
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="ACH Garnishment Configuration updated successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            400: "Validation failed",
+            404: "Configuration not found",
+            500: "Internal server error"
+        }
+    )
     def put(self, request, pk):
         try:
             config = self.get_object(pk)
@@ -1250,6 +1429,78 @@ class AchGarnishmentConfigDetailAPIView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Partially update an ACH Garnishment Configuration (PATCH - only provided fields)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'payment_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['CCD', 'CTX', 'PPD'],
+                    description='Payment type code'
+                ),
+                'medical_support_indicator': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Y', 'N'],
+                    description='Medical support indicator'
+                ),
+                'company_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Company name'
+                ),
+                'company_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=20,
+                    description='Company identification number'
+                ),
+                'service_class_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['200', '220', '225'],
+                    description='Service class code'
+                ),
+                'service_class_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit & Debit', 'Credits Only', 'Debits Only'],
+                    description='Service class type (alternative to service_class_code)'
+                ),
+                'account_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['checking', 'savings'],
+                    description='Account type'
+                ),
+                'transaction_code': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['22', '23', '27', '28'],
+                    description='Transaction code'
+                ),
+                'transaction_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['Credit', 'Prenote Credit', 'Debit', 'Prenote Debit'],
+                    description='Transaction type (alternative to transaction_code)'
+                ),
+                'originating_routing_number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=50,
+                    description='Originating routing number'
+                ),
+                'originating_bank_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=255,
+                    description='Originating bank name'
+                ),
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="ACH Garnishment Configuration updated successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            400: "Validation failed",
+            404: "Configuration not found",
+            500: "Internal server error"
+        }
+    )
     def patch(self, request, pk):
         try:
             config = self.get_object(pk)
@@ -1276,6 +1527,22 @@ class AchGarnishmentConfigDetailAPIView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Delete an ACH Garnishment Configuration",
+        responses={
+            200: openapi.Response(
+                description="ACH Garnishment Configuration deleted successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            404: "Configuration not found",
+            500: "Internal server error"
+        }
+    )
     def delete(self, request, pk):
         try:
             config = self.get_object(pk)

@@ -10,25 +10,17 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
     service_class_code = serializers.CharField(required=False, allow_blank=True)
 
     # Output (readable labels)
-    transaction_type_display = serializers.SerializerMethodField(read_only=True)
-    service_class_type_display = serializers.SerializerMethodField(read_only=True)
+    transaction_code_type = serializers.SerializerMethodField(read_only=True)
+    service_class_code_type = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = AchGarnishmentConfig
         fields = "__all__"
+        read_only_fields = ["id", "created_at", "updated_at"]
         extra_kwargs = {
             "service_class_code": {"required": False},
+            "transaction_code": {"required": False, "allow_null": True, "allow_blank": True},
         }
-        # OR explicitly:
-        # fields = [
-        #     "id", "pay_date", "payment_type", "garnishment_type",
-        #     "medical_support_indicator", "service_class_code",
-        #     "service_class_type", "service_class_type_display",
-        #     "account_type", "transaction_code", "transaction_type",
-        #     "transaction_type_display", "company_id",
-        #     "originating_routing_number", "originating_bank_name",
-        #     "created_at", "updated_at"
-        # ]
 
     # Mapping label → code
     SERVICE_CLASS_MAP = {
@@ -37,11 +29,20 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
         "Debits Only": "225",
     }
 
-    TRANSACTION_TYPE_MAP = {
+    # Transaction type mappings for checking accounts
+    TRANSACTION_TYPE_MAP_CHECKING = {
         "Credit": "22",
         "Prenote Credit": "23",
         "Debit": "27",
         "Prenote Debit": "28",
+    }
+
+    # Transaction type mappings for savings accounts
+    TRANSACTION_TYPE_MAP_SAVINGS = {
+        "Credit": "32",
+        "Prenote Credit": "33",
+        "Debit": "37",
+        "Prenote Debit": "38",
     }
 
     def validate(self, attrs):
@@ -66,42 +67,76 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
                 "service_class_code": "Either service_class_type or service_class_code is required."
             })
 
-        # ----- Transaction Code (only if checking) -----
+        # ----- Transaction Code (automatically set based on account_type and transaction_type) -----
         transaction_type = attrs.pop("transaction_type", None)
+        
+        # Get existing transaction_code if not provided
+        existing_transaction_code = attrs.get("transaction_code") or (
+            self.instance and self.instance.transaction_code
+        )
 
         if account_type == "checking":
-            if not transaction_type and not attrs.get("transaction_code") and not (
-                self.instance and self.instance.transaction_code
-            ):
+            # For checking accounts, transaction_type is required
+            if not transaction_type and not existing_transaction_code:
                 raise serializers.ValidationError({
                     "transaction_type": "transaction_type is required when account_type is 'checking'."
                 })
 
+            # If transaction_type is provided, automatically set transaction_code
             if transaction_type:
-                tx_code = self.TRANSACTION_TYPE_MAP.get(transaction_type)
+                tx_code = self.TRANSACTION_TYPE_MAP_CHECKING.get(transaction_type)
                 if not tx_code:
                     raise serializers.ValidationError({
-                        "transaction_type": "Invalid transaction_type value."
+                        "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_CHECKING.keys())}"
                     })
                 attrs["transaction_code"] = tx_code
+            # If transaction_code is directly provided, validate it's a checking code
+            elif existing_transaction_code and existing_transaction_code not in ["22", "23", "27", "28"]:
+                raise serializers.ValidationError({
+                    "transaction_code": "Invalid transaction_code for checking account. Valid codes: 22, 23, 27, 28"
+                })
 
-        # Optional rule: if savings, don't allow transaction_code
-        if account_type == "savings" and (transaction_type or attrs.get("transaction_code")):
-            raise serializers.ValidationError({
-                "transaction_code": "Transaction code should be empty when account_type is 'savings'."
-            })
+        elif account_type == "savings":
+            # For savings accounts, transaction_type is required
+            if not transaction_type and not existing_transaction_code:
+                raise serializers.ValidationError({
+                    "transaction_type": "transaction_type is required when account_type is 'savings'."
+                })
+
+            # If transaction_type is provided, automatically set transaction_code
+            if transaction_type:
+                tx_code = self.TRANSACTION_TYPE_MAP_SAVINGS.get(transaction_type)
+                if not tx_code:
+                    raise serializers.ValidationError({
+                        "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_SAVINGS.keys())}"
+                    })
+                attrs["transaction_code"] = tx_code
+            # If transaction_code is directly provided, validate it's a savings code
+            elif existing_transaction_code and existing_transaction_code not in ["32", "33", "37", "38"]:
+                raise serializers.ValidationError({
+                    "transaction_code": "Invalid transaction_code for savings account. Valid codes: 32, 33, 37, 38"
+                })
 
         return attrs
 
     # ---------- Display fields for response ----------
 
-    def get_transaction_type_display(self, obj):
+    def get_transaction_code_type(self, obj):
         if not obj.transaction_code:
             return None
 
-        reverse_map = {v: k for k, v in self.TRANSACTION_TYPE_MAP.items()}
+        # Determine which mapping to use based on transaction_code
+        # Checking codes: 22, 23, 27, 28
+        # Savings codes: 32, 33, 37, 38
+        if obj.transaction_code in ["22", "23", "27", "28"]:
+            reverse_map = {v: k for k, v in self.TRANSACTION_TYPE_MAP_CHECKING.items()}
+        elif obj.transaction_code in ["32", "33", "37", "38"]:
+            reverse_map = {v: k for k, v in self.TRANSACTION_TYPE_MAP_SAVINGS.items()}
+        else:
+            return None
+
         return reverse_map.get(obj.transaction_code)
 
-    def get_service_class_type_display(self, obj):
+    def get_service_class_code_type(self, obj):
         reverse_map = {v: k for k, v in self.SERVICE_CLASS_MAP.items()}
         return reverse_map.get(obj.service_class_code)
