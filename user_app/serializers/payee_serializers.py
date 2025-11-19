@@ -25,13 +25,26 @@ class StateNameField(serializers.PrimaryKeyRelatedField):
         # Return the state name for output; handle PKOnlyObject or raw PKs
         if value is None:
             return None
-        # If we already have a State instance with 'state' attribute
-        if hasattr(value, 'state'):
+        
+        # Check if it's a State instance (from select_related) - this avoids N+1 queries
+        # This is the most common case when select_related is used
+        if isinstance(value, State):
             return value.state
-        # DRF may give a PKOnlyObject or a raw PK; resolve to name
+        
+        # If we have a State instance with 'state' attribute (check for loaded state)
+        # This handles cases where the state is already loaded via select_related
+        if hasattr(value, 'state') and hasattr(value, 'state_code'):
+            # This is a fully loaded State instance
+            return value.state
+        
+        # DRF may give a PKOnlyObject or a raw PK; only query if absolutely necessary
+        # This should rarely happen if select_related is used properly in the view
         pk_value = getattr(value, 'pk', value)
-        state = State.objects.filter(pk=pk_value).only('state').first()
-        return state.state if state else pk_value
+        if pk_value is not None:
+            # Last resort: query the database (should be avoided with proper select_related)
+            state = State.objects.filter(pk=pk_value).only('state').first()
+            return state.state if state else pk_value
+        return None
 
 
 class PayeeAddressSerializer(serializers.ModelSerializer):

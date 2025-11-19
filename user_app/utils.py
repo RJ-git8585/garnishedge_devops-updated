@@ -419,7 +419,7 @@ class DataProcessingUtils:
                 cleaned_row[normalized_key] = DataProcessingUtils.parse_date_field(value)
             elif any(int_field in normalized_key.lower() for int_field in ['number', 'count', 'amount', 'id']):
                 # Protect identifiers that must remain strings
-                if normalized_key in ['ee_id', 'client_id', 'case_id', 'ssn']:
+                if normalized_key in ['ee_id', 'client_id', 'case_id', 'payee_id', 'ssn']:
                     cleaned_row[normalized_key] = DataProcessingUtils.parse_string_field(value)
                 else:
                     cleaned_row[normalized_key] = DataProcessingUtils.parse_integer_field(value)
@@ -463,7 +463,7 @@ class DataProcessingUtils:
 
         # String fields (explicitly validated to avoid coercion to integers)
         string_fields = [
-            'ee_id', 'client_id', 'first_name', 'middle_name', 'last_name',
+            'ee_id', 'client_id','payee_id', 'first_name', 'middle_name', 'last_name',
             'marital_status', 'gender', 'home_state', 'work_state', 'ssn',
         ]
         

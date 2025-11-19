@@ -17,6 +17,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 import pandas as pd
 from django.db import transaction
+from django.core.paginator import Paginator, EmptyPage
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,12 @@ class PayeeByIDAPIView(APIView):
             if id:
                 try:
                     # Lookup by primary key `id`; response includes `payee_id` field
-                    payee = PayeeDetails.objects.get(id=id)
+                    # Optimize query with select_related to avoid N+1 queries
+                    payee = PayeeDetails.objects.select_related(
+                        'state',           # PayeeDetails.state ForeignKey
+                        'address',          # PayeeAddress OneToOne relationship
+                        'address__state'    # PayeeAddress.state ForeignKey
+                    ).get(id=id)
                     serializer = PayeeSerializer(payee)
                     return ResponseHelper.success_response(
                         f'Payee with id "{id}" fetched successfully', serializer.data
@@ -52,9 +58,57 @@ class PayeeByIDAPIView(APIView):
                         f'Payee with id "{id}" not found', status_code=status.HTTP_404_NOT_FOUND
                     )
             else:
-                payees = PayeeDetails.objects.all()
-                serializer = PayeeSerializer(payees, many=True)
-                return ResponseHelper.success_response('All payees fetched successfully', serializer.data)
+                # Optimized fetch: avoid N+1 by selecting related objects and limiting columns
+                # Similar to EmployeeDetailsAPIViews for consistent performance
+                queryset = (
+                    PayeeDetails.objects
+                    .select_related(
+                        'state',           # PayeeDetails.state ForeignKey
+                        'address',          # PayeeAddress OneToOne relationship
+                        'address__state'   # PayeeAddress.state ForeignKey
+                    )
+                    .only(
+                        'id', 'payee_id', 'payee_type', 'payee',
+                        'routing_number', 'bank_account',
+                        'case_number_required', 'case_number_format',
+                        'fips_required', 'fips_length',
+                        'last_used', 'status',
+                        'created_at', 'updated_at',
+                        # State fields
+                        'state__id', 'state__state', 'state__state_code',
+                        # Address fields
+                        'address__id', 'address__address_1', 'address__address_2',
+                        'address__city', 'address__zip_code', 'address__zip_plus_4',
+                        # Address state fields
+                        'address__state__id', 'address__state__state', 'address__state__state_code'
+                    )
+                    .order_by('id')
+                )
+
+                # Chunked pagination (defaults if not provided)
+                page = request.query_params.get('page') or 1
+                page_size = request.query_params.get('page_size') or 500
+                try:
+                    page = int(page)
+                    page_size = max(1, min(1000, int(page_size)))
+                    paginator = Paginator(queryset, page_size)
+                    page_obj = paginator.page(page)
+                    serializer = PayeeSerializer(page_obj.object_list, many=True)
+                    return ResponseHelper.success_response(
+                        'All payees fetched successfully',
+                        {
+                            'results': serializer.data,
+                            'page': page,
+                            'page_size': page_size,
+                            'total_pages': paginator.num_pages,
+                            'total_items': paginator.count,
+                        }
+                    )
+                except (ValueError, EmptyPage):
+                    return ResponseHelper.error_response(
+                        'Invalid page or page_size',
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
         except Exception as e:
             logger.exception("Unexpected error in GET method of PayeeByIDAPIView")
             return ResponseHelper.error_response(
@@ -164,9 +218,18 @@ class PayeeByStateAPIView(APIView):
         try:
             normalized_state = state.strip()
             # Filter payees by related `State` name or abbreviation (case-insensitive)
-            payees = PayeeDetails.objects.filter(
+            # Optimize query with select_related to avoid N+1 queries
+            payees = PayeeDetails.objects.select_related(
+                'state',           # PayeeDetails.state ForeignKey
+                'address',          # PayeeAddress OneToOne relationship
+                'address__state'    # PayeeAddress.state ForeignKey
+            ).filter(
                 state__state__iexact=normalized_state
-            ) | PayeeDetails.objects.filter(
+            ) | PayeeDetails.objects.select_related(
+                'state',
+                'address',
+                'address__state'
+            ).filter(
                 state__state_code__iexact=normalized_state
             )
             payees = payees.distinct()
@@ -218,15 +281,38 @@ class PayeeImportView(APIView):
             file_name = file.name
 
             # Read file based on extension
+            # Use converters/dtype to force payee_id and case_id as strings to preserve alphanumeric values
+            # Excel often converts "G3288" to 3288, so we need to read these columns as strings
             if file_name.endswith('.csv'):
-                df = pd.read_csv(file)
+                # For CSV, specify dtype for specific columns
+                df = pd.read_csv(file, dtype={'payee_id': str, 'case_id': str}, na_values=[''])
             elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
-                df = pd.read_excel(file)
+                # For Excel, use converters to force string conversion at read time
+                # This preserves alphanumeric values like "G3288" if stored as text in Excel
+                # Note: If Excel has already converted "G3288" to 3288 (stored as number), 
+                # we can't recover the "G" prefix - it will be read as "3288" (string)
+                # pandas will ignore converters for columns that don't exist, so it's safe to always include them
+                converters = {
+                    'payee_id': str,
+                    'case_id': str
+                }
+                # Read the full file with converters
+                df = pd.read_excel(file, converters=converters)
             else:
                 return ResponseHelper.error_response(
                     message="Unsupported file format. Please upload a CSV or Excel file.",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+
+            # Additional safety: Convert payee_id and case_id columns to string if they exist
+            # This handles edge cases and ensures consistent string type
+            if 'payee_id' in df.columns:
+                df['payee_id'] = df['payee_id'].astype(str)
+                # Replace pandas NaN string representations with empty string
+                df['payee_id'] = df['payee_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
+            if 'case_id' in df.columns:
+                df['case_id'] = df['case_id'].astype(str)
+                df['case_id'] = df['case_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
 
             # Convert dataframe to list of dicts once (faster than iterrows)
             records = df.to_dict(orient="records")
@@ -238,10 +324,51 @@ class PayeeImportView(APIView):
             
             def get_state(state_value):
                 """Helper to get State instance from name or code (case-insensitive)"""
-                if not state_value:
+                if not state_value or pd.isna(state_value):
                     return None
                 normalized = str(state_value).strip().lower()
+                # Also check for string 'nan' which can come from Excel/CSV
+                if normalized == 'nan' or normalized == '':
+                    return None
                 return state_by_name.get(normalized) or state_by_code.get(normalized)
+            
+            def clean_numeric_value(value):
+                """Helper to convert NaN values to None for numeric fields (BigIntegerField supports large numbers)"""
+                if value is None:
+                    return None
+                # Check for pandas NaN
+                try:
+                    if pd.isna(value):
+                        return None
+                except (TypeError, ValueError):
+                    pass
+                # Also check for string 'nan'
+                if isinstance(value, str):
+                    value = value.strip()
+                    if value == '' or value.lower() == 'nan':
+                        return None
+                    try:
+                        # Try to convert to int (remove decimal part if float string)
+                        if '.' in value:
+                            float_val = float(value)
+                            if pd.isna(float_val):
+                                return None
+                            return int(float_val)
+                        return int(value)
+                    except (ValueError, TypeError, OverflowError):
+                        return None
+                # If it's already a number, convert to int
+                if isinstance(value, (int, float)):
+                    try:
+                        if pd.isna(value):
+                            return None
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        return int(value)
+                    except (OverflowError, ValueError, TypeError):
+                        return None
+                return None
 
             # Prefetch existing payees and orders in bulk to avoid per-row queries
             payee_ids_in_file = {
@@ -297,6 +424,10 @@ class PayeeImportView(APIView):
                     
                     # Handle state lookup (supports both name and abbreviation)
                     state_value = row.get("state")
+                    # Check for NaN values
+                    if pd.isna(state_value) or (isinstance(state_value, str) and state_value.strip().lower() == 'nan'):
+                        validation_errors.append(f"Row {row_idx}: State is missing or invalid (NaN)")
+                        continue
                     state_instance = get_state(state_value)
                     if state_value and not state_instance:
                         validation_errors.append(f"Row {row_idx}: State '{state_value}' not found (neither by name nor code)")
@@ -313,16 +444,29 @@ class PayeeImportView(APIView):
                         except (ValueError, AttributeError):
                             last_used = None
                     
-                    # Handle fips_length
+                    # Handle fips_length with range validation
+                    MAX_INT = 2147483647
+                    MIN_INT = -2147483648
                     raw_fips = row.get("fips_length")
                     fips_length = None
                     if raw_fips is not None and not pd.isna(raw_fips):
-                        if isinstance(raw_fips, (int, float)) and not isinstance(raw_fips, bool):
-                            fips_length = int(raw_fips)
-                        elif isinstance(raw_fips, str):
-                            s = raw_fips.strip()
-                            if s.isdigit():
-                                fips_length = int(s)
+                        try:
+                            if isinstance(raw_fips, (int, float)) and not isinstance(raw_fips, bool):
+                                fips_int = int(raw_fips)
+                                if fips_int > MAX_INT or fips_int < MIN_INT:
+                                    validation_errors.append(f"Row {row_idx}: 'fips_length' value {raw_fips} is out of range (must be between {MIN_INT} and {MAX_INT})")
+                                    continue
+                                fips_length = fips_int
+                            elif isinstance(raw_fips, str):
+                                s = raw_fips.strip()
+                                if s and s.lower() != 'nan' and s.isdigit():
+                                    fips_int = int(s)
+                                    if fips_int > MAX_INT or fips_int < MIN_INT:
+                                        validation_errors.append(f"Row {row_idx}: 'fips_length' value {raw_fips} is out of range (must be between {MIN_INT} and {MAX_INT})")
+                                        continue
+                                    fips_length = fips_int
+                        except (ValueError, TypeError, OverflowError):
+                            pass  # Invalid value, will remain None
                     
                     # Validate required fields before processing
                     if not payee_id_val and not case_id:
@@ -344,8 +488,8 @@ class PayeeImportView(APIView):
                         "payee_id": payee_id_val,
                         "payee_type": row.get("payee_type"),
                         "payee": row.get("payee"),
-                        "routing_number": row.get("routing_number"),
-                        "bank_account": row.get("bank_account"),
+                        "routing_number": clean_numeric_value(row.get("routing_number")),
+                        "bank_account": clean_numeric_value(row.get("bank_account")),
                         "case_number_required": bool(row.get("case_number_required", False)),
                         "case_number_format": row.get("case_number_format"),
                         "fips_required": bool(row.get("fips_required", False)),
@@ -355,21 +499,26 @@ class PayeeImportView(APIView):
                         "state": state_instance,
                     }
                     
-                    # Remove None values (except for boolean fields and required fields)
-                    payee_data = {k: v for k, v in payee_data.items() if v is not None or k in ['case_number_required', 'fips_required', 'payee_id', 'payee', 'state']}
+                    # Remove None values (except for boolean fields, required fields, and nullable numeric fields)
+                    # Keep nullable numeric fields (routing_number, bank_account) even if None to allow explicit NULL setting
+                    payee_data = {k: v for k, v in payee_data.items() if v is not None or k in ['case_number_required', 'fips_required', 'payee_id', 'payee', 'state', 'routing_number', 'bank_account']}
                     
                     # Prepare address data if present
                     address_data = None
                     if any(row.get(field) for field in ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']):
                         address_state = get_state(state_value)  # Use same state lookup
                         if address_state:
+                            # Clean zip_code and zip_plus_4 to handle NaN values
+                            zip_code_val = clean_numeric_value(row.get("zip_code"))
+                            zip_plus_4_val = clean_numeric_value(row.get("zip_plus_4"))
+                            
                             address_data = {
                                 "address_1": row.get("address_1"),
                                 "address_2": row.get("address_2"),
                                 "city": row.get("city"),
                                 "state": address_state,
-                                "zip_code": row.get("zip_code"),
-                                "zip_plus_4": row.get("zip_plus_4"),
+                                "zip_code": zip_code_val,
+                                "zip_plus_4": zip_plus_4_val,
                             }
                             # Remove None values
                             address_data = {k: v for k, v in address_data.items() if v is not None}
@@ -400,37 +549,31 @@ class PayeeImportView(APIView):
                 except Exception as row_e:
                     logger.exception(f"Error processing payee row {row_idx}: {str(row_e)}")
                     validation_errors.append(f"Row {row_idx}: {str(row_e)}")
+                    continue  # Skip this row and continue processing other rows
             
-            # Return validation errors if any
-            if validation_errors:
-                return ResponseHelper.error_response(
-                    message="Validation errors found",
-                    error=validation_errors[:10],  # Limit to first 10 errors
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Perform bulk operations in a transaction
-            with transaction.atomic():
-                # Bulk create new payees
-                if payees_to_create:
-                    PayeeDetails.objects.bulk_create(payees_to_create, ignore_conflicts=False)
-                    # After bulk_create, Django sets the IDs on the objects
-                    # Create addresses for new payees using bulk_create
-                    if addresses_to_create:
-                        address_objects = [
-                            PayeeAddress(payee=payee, **addr_data)
-                            for payee, addr_data in addresses_to_create
-                        ]
-                        PayeeAddress.objects.bulk_create(address_objects, ignore_conflicts=False)
-                
-                # Bulk update existing payees
-                if payees_to_update:
-                    PayeeDetails.objects.bulk_update(
-                        payees_to_update,
-                        ['payee_type', 'payee', 'routing_number', 'bank_account', 
-                         'case_number_required', 'case_number_format', 'fips_required', 
-                         'fips_length', 'last_used', 'status', 'state', 'updated_at']
-                    )
+            # Perform bulk operations in a transaction (even if there are validation errors)
+            try:
+                with transaction.atomic():
+                    # Bulk create new payees
+                    if payees_to_create:
+                        PayeeDetails.objects.bulk_create(payees_to_create, ignore_conflicts=False)
+                        # After bulk_create, Django sets the IDs on the objects
+                        # Create addresses for new payees using bulk_create
+                        if addresses_to_create:
+                            address_objects = [
+                                PayeeAddress(payee=payee, **addr_data)
+                                for payee, addr_data in addresses_to_create
+                            ]
+                            PayeeAddress.objects.bulk_create(address_objects, ignore_conflicts=False)
+                    
+                    # Bulk update existing payees
+                    if payees_to_update:
+                        PayeeDetails.objects.bulk_update(
+                            payees_to_update,
+                            ['payee_type', 'payee', 'routing_number', 'bank_account', 
+                             'case_number_required', 'case_number_format', 'fips_required', 
+                             'fips_length', 'last_used', 'status', 'state', 'updated_at']
+                        )
                     # For OneToOne relationships, we need to handle updates individually
                     # but we can batch the lookups
                     if addresses_to_update:
@@ -463,6 +606,20 @@ class PayeeImportView(APIView):
                                 addresses_to_bulk_update,
                                 ['address_1', 'address_2', 'city', 'state', 'zip_code', 'zip_plus_4']
                             )
+            except Exception as db_error:
+                # Catch database errors and add to validation errors
+                error_msg = str(db_error)
+                if "integer out of range" in error_msg.lower() or "overflow" in error_msg.lower():
+                    # This could be fips_length or other integer fields
+                    validation_errors.append(f"Database error: Integer value out of range. Please check numeric fields (must be between -2147483648 and 2147483647)")
+                else:
+                    validation_errors.append(f"Database error: {error_msg}")
+                logger.exception(f"Error during bulk database operations: {str(db_error)}")
+                # Clear the lists since the operation failed
+                payees_to_create = []
+                payees_to_update = []
+                added_payees = []
+                updated_payees = []
 
             # Build response data
             response_data = {}
@@ -475,15 +632,35 @@ class PayeeImportView(APIView):
                 response_data["updated_payees"] = updated_payees
                 response_data["updated_count"] = len(updated_payees)
             
+            # Include validation errors in response if any
+            if validation_errors:
+                response_data["validation_errors"] = validation_errors
+                response_data["error_count"] = len(validation_errors)
+            
+            # Determine response message and status
             if not added_payees and not updated_payees:
-                return ResponseHelper.success_response(
-                    message="No valid payee data to process",
-                    data=response_data,
-                    status_code=status.HTTP_200_OK
-                )
-
+                if validation_errors:
+                    # All rows had errors
+                    return ResponseHelper.error_response(
+                        message="No valid payee data to process. All rows had validation errors.",
+                        error=validation_errors,
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return ResponseHelper.success_response(
+                        message="No valid payee data to process",
+                        data=response_data,
+                        status_code=status.HTTP_200_OK
+                    )
+            
+            # Some or all rows were processed successfully
+            if validation_errors:
+                message = f"File processed with {len(validation_errors)} validation error(s). {len(added_payees) + len(updated_payees)} row(s) processed successfully."
+            else:
+                message = "File processed successfully"
+            
             return ResponseHelper.success_response(
-                message="File processed successfully",
+                message=message,
                 data=response_data,
                 status_code=status.HTTP_201_CREATED
             )
@@ -515,7 +692,12 @@ class ExportPayeeDataView(APIView):
         """
         try:
             # Fetch all payees from the database
-            payees = PayeeDetails.objects.all()
+            # Optimize query with select_related to avoid N+1 queries
+            payees = PayeeDetails.objects.select_related(
+                'state',           # PayeeDetails.state ForeignKey
+                'address',          # PayeeAddress OneToOne relationship
+                'address__state'    # PayeeAddress.state ForeignKey
+            ).all()
             if not payees.exists():
                 return ResponseHelper.error_response(
                     message="No payees found",

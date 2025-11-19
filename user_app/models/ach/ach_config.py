@@ -31,21 +31,49 @@ class AchGarnishmentConfig(models.Model):
         ("28", "Prenote Debit"),
     ]
 
-    pay_date = models.DateField()
-
     payment_type = models.CharField(
         max_length=3,
         choices=PAYMENT_TYPE_CHOICES
     )
 
-    garnishment_type = models.CharField(
-        max_length=100
-    )
 
     medical_support_indicator = models.CharField(
         max_length=1,
         choices=MEDICAL_SUPPORT_CHOICES,
         default="N"
+    )
+
+    company_name=models.CharField(
+        max_length=255
+    )
+
+    company_id = models.CharField(
+        max_length=20
+    )
+
+    originating_routing_number = models.CharField(
+        max_length=9,
+        help_text="Immediate receiving routing number"
+    )
+
+    originating_bank_name = models.CharField(
+        max_length=255,
+        default="Wells Fargo Garnishment"
+    )
+
+    originating_dfi_id=models.IntegerField()
+
+    file_id_modifier=models.CharField(
+        max_length=1
+    )
+    immediate_destination=models.CharField(
+        max_length=10
+    )
+    immediate_origin_name =models.CharField(
+        max_length=23
+    )
+    internal_reference_code=models.CharField(
+        max_length=8
     )
 
     service_class_code = models.CharField(

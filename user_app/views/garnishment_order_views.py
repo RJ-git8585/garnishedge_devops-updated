@@ -67,17 +67,34 @@ class GarnishmentOrderImportView(APIView):
 
             file = request.FILES['file']
             file_name = file.name
-
             # Read file based on extension
+            # Use converters/dtype to force payee_id and case_id as strings to preserve alphanumeric values
+            # Excel often converts "G3288" to 3288, so we need to read these columns as strings
             if file_name.endswith('.csv'):
-                df = pd.read_csv(file)
+                # For CSV, specify dtype for specific columns
+                df = pd.read_csv(file, dtype={'payee_id': str, 'case_id': str}, na_values=[''])
             elif file_name.endswith(('.xlsx', '.xls', '.xlsm', '.xlsb', '.odf', '.ods', '.odt')):
-                df = pd.read_excel(file)
+                # For Excel, use converters to force string conversion at read time
+                # This preserves alphanumeric values like "G3288" if stored as text in Excel
+                converters = {
+                    'payee_id': str,
+                    'case_id': str
+                }
+                df = pd.read_excel(file, converters=converters)
             else:
                 return ResponseHelper.error_response(
                     message="Unsupported file format. Please upload a CSV or Excel file.",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # Additional safety: Convert payee_id and case_id columns to string if they exist
+            # This handles edge cases and ensures consistent string type
+            if 'payee_id' in df.columns:
+                df['payee_id'] = df['payee_id'].astype(str)
+                df['payee_id'] = df['payee_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
+            if 'case_id' in df.columns:
+                df['case_id'] = df['case_id'].astype(str)
+                df['case_id'] = df['case_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
             
             # Normalize column names
             df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
@@ -92,7 +109,7 @@ class GarnishmentOrderImportView(APIView):
             existing_case_ids = set(GarnishmentOrder.objects.values_list('case_id', flat=True))
             
             # Pre-fetch all foreign key mappings to avoid repeated queries
-            from user_app.models import EmployeeDetail
+            from user_app.models import EmployeeDetail, PayeeDetails
             from processor.models import State, GarnishmentType
             
             employee_mapping = {emp.ee_id: emp.id for emp in EmployeeDetail.objects.all()}
@@ -100,6 +117,8 @@ class GarnishmentOrderImportView(APIView):
             # Create case-insensitive mappings for state and garnishment type
             state_mapping = {(s.state or '').lower(): s.id for s in State.objects.all()}
             garnishment_type_mapping = {(gt.type or '').lower(): gt.id for gt in GarnishmentType.objects.all()}
+            # Create mapping for payee: payee_id (string like "G3288") -> PayeeDetails.id (database ID)
+            payee_mapping = {str(p.payee_id).strip(): p.id for p in PayeeDetails.objects.all()}
             
             # Process data in batches
             for batch_start in range(0, len(df), batch_size):
@@ -138,7 +157,7 @@ class GarnishmentOrderImportView(APIView):
                 
                 # Bulk create new orders
                 if batch_orders_to_create:
-                    created_case_ids, skip_reasons = self._bulk_create_orders(batch_orders_to_create, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping)
+                    created_case_ids, skip_reasons = self._bulk_create_orders(batch_orders_to_create, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping, payee_mapping)
                     added_orders.extend(created_case_ids)
                     validation_errors.extend(skip_reasons[:20])  # Add first 20 detailed skip reasons
                     # Update existing_case_ids set to include newly created orders
@@ -146,7 +165,7 @@ class GarnishmentOrderImportView(APIView):
                 
                 # Bulk update existing orders
                 if batch_orders_to_update:
-                    self._bulk_update_orders(batch_orders_to_update, employee_mapping, state_mapping, garnishment_type_mapping)
+                    self._bulk_update_orders(batch_orders_to_update, employee_mapping, state_mapping, garnishment_type_mapping, payee_mapping)
             
             # Build response data
             response_data = {
@@ -274,7 +293,7 @@ class GarnishmentOrderImportView(APIView):
         except Exception as e:
             raise Exception(f"Error processing row: {str(e)}")
     
-    def _bulk_create_orders(self, orders_data, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping):
+    def _bulk_create_orders(self, orders_data, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping, payee_mapping):
         """Bulk create orders using bulk_create for better performance. Returns tuple of (created_case_ids, skip_reasons)."""
         if not orders_data:
             return [], []
@@ -294,6 +313,7 @@ class GarnishmentOrderImportView(APIView):
                         issuing_state = order_data.get("issuing_state")
                         garnishment_type = order_data.get("garnishment_type")
                         case_id = order_data.get("case_id")
+                        payee_id_str = order_data.get("payee_id")
                         
                         # Find employee by SSN
                         employee_id = None
@@ -318,6 +338,14 @@ class GarnishmentOrderImportView(APIView):
                         garnishment_type_normalized = garnishment_type_variants.get(garnishment_type_lower, garnishment_type_lower)
                         garnishment_type_id = garnishment_type_mapping.get(garnishment_type_normalized)
                         
+                        # Look up payee by payee_id (string like "G3288") and get the database ID
+                        payee_id = None
+                        if payee_id_str:
+                            payee_id = payee_mapping.get(str(payee_id_str).strip())
+                            if not payee_id:
+                                skip_reasons.append(f"case_id={case_id}: No payee found for payee_id={payee_id_str}")
+                                continue  # Skip if payee not found
+                        
                         if not issuing_state_id:
                             skip_reasons.append(f"case_id={case_id}: Invalid issuing_state='{issuing_state or 'N/A'}'. Available: {list(state_mapping.keys())[:5]}")
                             continue  # Skip if issuing_state is missing or invalid
@@ -330,6 +358,7 @@ class GarnishmentOrderImportView(APIView):
                             employee_id=employee_id,
                             issuing_state_id=issuing_state_id,
                             garnishment_type_id=garnishment_type_id,
+                            payee_id=payee_id,
                             is_consumer_debt=order_data.get("is_consumer_debt", False),
                             issued_date=order_data.get("issued_date"),
                             received_date=order_data.get("received_date"),
@@ -339,7 +368,6 @@ class GarnishmentOrderImportView(APIView):
                             ordered_amount=order_data.get("ordered_amount", 0.00),
                             garnishment_fees=order_data.get("garnishment_fees", 0.00),
                             fips_code=order_data.get("fips_code"),
-                            payee_id=order_data.get("payee_id"),
                             override_amount=order_data.get("override_amount"),
                             override_start_date=order_data.get("override_start_date"),
                             override_stop_date=order_data.get("override_stop_date"),
@@ -382,7 +410,7 @@ class GarnishmentOrderImportView(APIView):
         except Exception as e:
             raise Exception(f"Bulk create failed: {str(e)}")
     
-    def _bulk_update_orders(self, orders_data, employee_mapping, state_mapping, garnishment_type_mapping):
+    def _bulk_update_orders(self, orders_data, employee_mapping, state_mapping, garnishment_type_mapping, payee_mapping):
         """Bulk update orders efficiently."""
         if not orders_data:
             return
@@ -481,6 +509,13 @@ class GarnishmentOrderImportView(APIView):
                             order.issuing_state_id = state_mapping[order_data.get("issuing_state")]
                         if order_data.get("garnishment_type") and order_data.get("garnishment_type") in garnishment_type_mapping:
                             order.garnishment_type_id = garnishment_type_mapping[order_data.get("garnishment_type")]
+                        
+                        # Update payee if provided - look up by payee_id string and get database ID
+                        payee_id_str = order_data.get("payee_id")
+                        if payee_id_str:
+                            payee_id = payee_mapping.get(str(payee_id_str).strip())
+                            if payee_id:
+                                order.payee_id = payee_id
                         
                         orders_to_update.append(order)
                 
@@ -711,12 +746,30 @@ class UpsertGarnishmentOrderView(APIView):
 
         try:
             # Read file based on extension
+            # Use converters/dtype to force payee_id and case_id as strings to preserve alphanumeric values
+            # Excel often converts "G3288" to 3288, so we need to read these columns as strings
             if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
+                # For CSV, specify dtype for specific columns
+                df = pd.read_csv(file, dtype={'payee_id': str, 'case_id': str}, na_values=[''])
             elif file.name.endswith(('.xls', '.xlsx')):
-                df = pd.read_excel(file)
+                # For Excel, use converters to force string conversion at read time
+                # This preserves alphanumeric values like "G3288" if stored as text in Excel
+                converters = {
+                    'payee_id': str,
+                    'case_id': str
+                }
+                df = pd.read_excel(file, converters=converters)
             else:
                 return Response({'error': 'Unsupported file format. Use CSV or Excel.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Additional safety: Convert payee_id and case_id columns to string if they exist
+            # This handles edge cases and ensures consistent string type
+            if 'payee_id' in df.columns:
+                df['payee_id'] = df['payee_id'].astype(str)
+                df['payee_id'] = df['payee_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
+            if 'case_id' in df.columns:
+                df['case_id'] = df['case_id'].astype(str)
+                df['case_id'] = df['case_id'].replace(['nan', 'None', 'NaN', 'NAT', 'NaT'], '')
 
             # Normalize column names
             df.rename(columns=lambda c: DataProcessingUtils.normalize_field_name(c), inplace=True)
@@ -731,7 +784,7 @@ class UpsertGarnishmentOrderView(APIView):
             existing_case_ids = set(GarnishmentOrder.objects.values_list('case_id', flat=True))
             
             # Pre-fetch all foreign key mappings to avoid repeated queries
-            from user_app.models import EmployeeDetail
+            from user_app.models import EmployeeDetail, PayeeDetails
             from processor.models import State, GarnishmentType
             
             employee_mapping = {emp.ee_id: emp.id for emp in EmployeeDetail.objects.all()}
@@ -739,6 +792,8 @@ class UpsertGarnishmentOrderView(APIView):
             # Create case-insensitive mappings for state and garnishment type
             state_mapping = {(s.state or '').lower(): s.id for s in State.objects.all()}
             garnishment_type_mapping = {(gt.type or '').lower(): gt.id for gt in GarnishmentType.objects.all()}
+            # Create mapping for payee: payee_id (string like "G3288") -> PayeeDetails.id (database ID)
+            payee_mapping = {str(p.payee_id).strip(): p.id for p in PayeeDetails.objects.all()}
             
             # Process data in batches
             for batch_start in range(0, len(df), batch_size):
@@ -777,7 +832,7 @@ class UpsertGarnishmentOrderView(APIView):
                 
                 # Bulk create new orders
                 if batch_orders_to_create:
-                    created_case_ids, skip_reasons = self._bulk_create_orders(batch_orders_to_create, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping)
+                    created_case_ids, skip_reasons = self._bulk_create_orders(batch_orders_to_create, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping, payee_mapping)
                     added_orders.extend(created_case_ids)
                     validation_errors.extend(skip_reasons[:20])  # Add first 20 detailed skip reasons
                     # Update existing_case_ids set to include newly created orders
@@ -785,7 +840,7 @@ class UpsertGarnishmentOrderView(APIView):
                 
                 # Bulk update existing orders
                 if batch_orders_to_update:
-                    self._bulk_update_orders(batch_orders_to_update, employee_mapping, state_mapping, garnishment_type_mapping)
+                    self._bulk_update_orders(batch_orders_to_update, employee_mapping, state_mapping, garnishment_type_mapping, payee_mapping)
             
             # Build response data
             response_data = {
@@ -883,12 +938,13 @@ class UpsertGarnishmentOrderView(APIView):
         except Exception as e:
             raise Exception(f"Error processing row: {str(e)}")
     
-    def _bulk_create_orders(self, orders_data, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping):
+    def _bulk_create_orders(self, orders_data, employee_mapping, employee_ssn_mapping, state_mapping, garnishment_type_mapping, payee_mapping):
         """Bulk create orders using bulk_create for better performance. Returns list of successfully created case_ids."""
         if not orders_data:
-            return []
+            return [], []
             
         created_case_ids = []
+        skip_reasons = []
         try:
             from django.db import transaction
             
@@ -903,6 +959,7 @@ class UpsertGarnishmentOrderView(APIView):
                         issuing_state = order_data.get("issuing_state")
                         garnishment_type = order_data.get("garnishment_type")
                         case_id = order_data.get("case_id")
+                        payee_id_str = order_data.get("payee_id")
                         
                         # Find employee by ee_id or ssn
                         employee_id = None
@@ -914,15 +971,26 @@ class UpsertGarnishmentOrderView(APIView):
                             employee_id = employee_ssn_mapping.get(key)
                         
                         if not employee_id:
+                            skip_reasons.append(f"case_id={case_id}: No employee found for ee_id={ee_id or 'N/A'} or ssn={ssn or 'N/A'}")
                             continue  # Skip if no valid employee found
                         
                         # Validate required foreign keys (case-insensitive)
                         issuing_state_id = state_mapping.get((issuing_state or '').lower())
                         garnishment_type_id = garnishment_type_mapping.get((garnishment_type or '').lower())
                         
+                        # Look up payee by payee_id (string like "G3288") and get the database ID
+                        payee_id = None
+                        if payee_id_str:
+                            payee_id = payee_mapping.get(str(payee_id_str).strip())
+                            if not payee_id:
+                                skip_reasons.append(f"case_id={case_id}: No payee found for payee_id={payee_id_str}")
+                                continue  # Skip if payee not found
+                        
                         if not issuing_state_id:
+                            skip_reasons.append(f"case_id={case_id}: Invalid issuing_state='{issuing_state or 'N/A'}'")
                             continue  # Skip if issuing_state is missing or invalid
                         if not garnishment_type_id:
+                            skip_reasons.append(f"case_id={case_id}: Invalid garnishment_type='{garnishment_type or 'N/A'}'")
                             continue  # Skip if garnishment_type is missing or invalid
                         
                         bulk_orders.append(GarnishmentOrder(
@@ -930,6 +998,7 @@ class UpsertGarnishmentOrderView(APIView):
                             employee_id=employee_id,
                             issuing_state_id=issuing_state_id,
                             garnishment_type_id=garnishment_type_id,
+                            payee_id=payee_id,
                             is_consumer_debt=order_data.get("is_consumer_debt", False),
                             issued_date=order_data.get("issued_date"),
                             received_date=order_data.get("received_date"),
@@ -939,7 +1008,6 @@ class UpsertGarnishmentOrderView(APIView):
                             ordered_amount=order_data.get("ordered_amount", 0.00),
                             garnishment_fees=order_data.get("garnishment_fees", 0.00),
                             fips_code=order_data.get("fips_code"),
-                            payee_id=order_data.get("payee_id"),
                             override_amount=order_data.get("override_amount"),
                             override_start_date=order_data.get("override_start_date"),
                             override_stop_date=order_data.get("override_stop_date"),
@@ -970,18 +1038,19 @@ class UpsertGarnishmentOrderView(APIView):
                         ))
                         created_case_ids.append(case_id)
                     except Exception as e:
+                        skip_reasons.append(f"case_id={case_id or 'N/A'}: Exception - {str(e)}")
                         continue  # Skip problematic records
                 
                 # Bulk create
                 if bulk_orders:
                     GarnishmentOrder.objects.bulk_create(bulk_orders, ignore_conflicts=True)
                 
-                return created_case_ids
+                return created_case_ids, skip_reasons
                     
         except Exception as e:
             raise Exception(f"Bulk create failed: {str(e)}")
     
-    def _bulk_update_orders(self, orders_data, employee_mapping, state_mapping, garnishment_type_mapping):
+    def _bulk_update_orders(self, orders_data, employee_mapping, state_mapping, garnishment_type_mapping, payee_mapping):
         """Bulk update orders efficiently."""
         if not orders_data:
             return
@@ -1050,6 +1119,13 @@ class UpsertGarnishmentOrderView(APIView):
                             order.issuing_state_id = state_mapping[order_data.get("issuing_state")]
                         if order_data.get("garnishment_type") and order_data.get("garnishment_type") in garnishment_type_mapping:
                             order.garnishment_type_id = garnishment_type_mapping[order_data.get("garnishment_type")]
+                        
+                        # Update payee if provided - look up by payee_id string and get database ID
+                        payee_id_str = order_data.get("payee_id")
+                        if payee_id_str:
+                            payee_id = payee_mapping.get(str(payee_id_str).strip())
+                            if payee_id:
+                                order.payee_id = payee_id
                         
                         orders_to_update.append(order)
                 

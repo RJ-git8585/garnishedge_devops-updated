@@ -7,8 +7,8 @@ class PayeeAddress(models.Model):
     address_2 = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     state = models.ForeignKey('processor.State', on_delete=models.CASCADE, related_name="payee_addresses")
-    zip_code = models.CharField(max_length=10, blank=True, null=True)
-    zip_plus_4 = models.CharField(max_length=4, blank=True, null=True)
+    zip_code = models.IntegerField(blank=True, null=True)
+    zip_plus_4 = models.IntegerField(blank=True, null=True)
 
     class Meta:
         db_table = 'payee_address'
