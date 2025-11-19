@@ -162,7 +162,7 @@ class EmployeeImportView(APIView):
                             continue
                         # Extract ee_id from the detected identifier column first
                         ee_id = row.get(ee_id_column)
-                        print("ee_id",ee_id)
+
                         if ee_id is None:
                             # Fallback to processed dict
                             ee_id = employee_data.get(EE.EMPLOYEE_ID)
@@ -187,7 +187,7 @@ class EmployeeImportView(APIView):
                         else:
                             # Prepare for creation - validate required FKs before queueing
                             client_id_val = employee_data.get(EE.CLIENT_ID)
-                            print("client_id_val",client_id_val)
+
 
                             home_state_val = employee_data.get(EE.HOME_STATE)
                             work_state_val = employee_data.get(EE.WORK_STATE)
@@ -211,7 +211,7 @@ class EmployeeImportView(APIView):
                                     f"Row {batch_start + row_idx + 1} (ee_id={ee_id}): missing required field(s): {', '.join(missing_fields)}"
                                 )
                                 continue
-                            print("missing_fields",missing_fields)
+
                             mapping_missing = []
                             if client_id_val not in client_mapping:
                                 mapping_missing.append(f"client_id '{client_id_val}' not found")
@@ -450,8 +450,7 @@ class EmployeeImportView(APIView):
                             # Ensure we don't accidentally mutate the original dict
                             addresses_by_ee_id[ee_id] = dict(address_data)
                     except Exception as e:
-                        import traceback as t
-                        print(t.print_exc())
+
                         continue  # Skip problematic records
                 
                 # Bulk create
@@ -486,8 +485,7 @@ class EmployeeImportView(APIView):
                 return created_ee_ids
                     
         except Exception as e:
-            import traceback as t
-            print(t.print_exc())
+
             raise Exception(f"Bulk create failed: {str(e)}")
     
     def _bulk_update_employees(self, employees_data, client_mapping, state_mapping, filing_status_mapping):
@@ -567,7 +565,7 @@ class EmployeeImportView(APIView):
                 # Upsert address records for updated employees
                 for emp, addr in addresses_to_upsert:
                     try:
-                        print("addresses_to_upsert",addresses_to_upsert)
+
                         address_obj, created = EmplopyeeAddress.objects.get_or_create(
                             ee=emp,
                             defaults=addr,
@@ -582,8 +580,6 @@ class EmployeeImportView(APIView):
             return [emp.ee_id for emp in employees_to_update]
 
         except Exception as e:
-            import traceback as t
-            print(t.print_exc())
             raise Exception(f"Bulk update failed: {str(e)}")
 
 

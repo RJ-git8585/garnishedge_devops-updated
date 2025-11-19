@@ -132,20 +132,20 @@ class CalculationDataView:
                 return resolved
 
             # Overwrite the garnishment_type_lower with the resolved type
-            garnishment_type_lower = resolved.get("payee_type")
+            garnishment_type = resolved.get("payee_type")
         else:
-            garnishment_type_lower = garnishment_type_lower
+            garnishment_type = garnishment_type_lower
 
         # Validate prerequisites
         validation_result = self.base_service.validate_calculation_prerequisites(
-            record, garnishment_type_lower
+            record, garnishment_type
         )
         
         if not validation_result['is_valid']:
             return {"error": f"Validation failed: {'; '.join(validation_result['errors'])}"}
         
         # Get calculation method
-        calculation_method = self.base_service.get_calculation_method_for_type(garnishment_type_lower)
+        calculation_method = self.base_service.get_calculation_method_for_type(garnishment_type)
         if not calculation_method:
             return {"error": f"Unsupported garnishment type: {garnishment_type}"}
         
@@ -175,7 +175,7 @@ class CalculationDataView:
             
             # Log calculation end
             success = not (isinstance(result, dict) and result.get(GRF.ERROR))
-            self.base_service.log_calculation_end(garnishment_type_lower, record.get(EE.EMPLOYEE_ID), success)
+            self.base_service.log_calculation_end(garnishment_type, record.get(EE.EMPLOYEE_ID), success)
             
             return result
             

@@ -70,18 +70,20 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
         # ----- Transaction Code (automatically set based on account_type and transaction_type) -----
         transaction_type = attrs.pop("transaction_type", None)
         
-        # Get existing transaction_code if not provided
-        existing_transaction_code = attrs.get("transaction_code") or (
-            self.instance and self.instance.transaction_code
-        )
+        # If transaction_type is provided, it takes precedence - remove any existing transaction_code from attrs
+        # to avoid conflicts, and we'll set it based on transaction_type
+        if transaction_type:
+            # Remove transaction_code from attrs if present, as we'll set it based on transaction_type
+            attrs.pop("transaction_code", None)
+        
+        # Get existing transaction_code only if transaction_type is not provided
+        existing_transaction_code = None
+        if not transaction_type:
+            existing_transaction_code = attrs.get("transaction_code") or (
+                self.instance and self.instance.transaction_code
+            )
 
         if account_type == "checking":
-            # For checking accounts, transaction_type is required
-            if not transaction_type and not existing_transaction_code:
-                raise serializers.ValidationError({
-                    "transaction_type": "transaction_type is required when account_type is 'checking'."
-                })
-
             # If transaction_type is provided, automatically set transaction_code
             if transaction_type:
                 tx_code = self.TRANSACTION_TYPE_MAP_CHECKING.get(transaction_type)
@@ -90,19 +92,19 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
                         "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_CHECKING.keys())}"
                     })
                 attrs["transaction_code"] = tx_code
-            # If transaction_code is directly provided, validate it's a checking code
+            # If transaction_type is not provided, check if we have existing_transaction_code
+            elif not existing_transaction_code:
+                # For checking accounts, transaction_type is required if no existing code
+                raise serializers.ValidationError({
+                    "transaction_type": "transaction_type is required when account_type is 'checking'."
+                })
+            # If transaction_code is directly provided (without transaction_type), validate it's a checking code
             elif existing_transaction_code and existing_transaction_code not in ["22", "23", "27", "28"]:
                 raise serializers.ValidationError({
                     "transaction_code": "Invalid transaction_code for checking account. Valid codes: 22, 23, 27, 28"
                 })
 
         elif account_type == "savings":
-            # For savings accounts, transaction_type is required
-            if not transaction_type and not existing_transaction_code:
-                raise serializers.ValidationError({
-                    "transaction_type": "transaction_type is required when account_type is 'savings'."
-                })
-
             # If transaction_type is provided, automatically set transaction_code
             if transaction_type:
                 tx_code = self.TRANSACTION_TYPE_MAP_SAVINGS.get(transaction_type)
@@ -111,7 +113,13 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
                         "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_SAVINGS.keys())}"
                     })
                 attrs["transaction_code"] = tx_code
-            # If transaction_code is directly provided, validate it's a savings code
+            # If transaction_type is not provided, check if we have existing_transaction_code
+            elif not existing_transaction_code:
+                # For savings accounts, transaction_type is required if no existing code
+                raise serializers.ValidationError({
+                    "transaction_type": "transaction_type is required when account_type is 'savings'."
+                })
+            # If transaction_code is directly provided (without transaction_type), validate it's a savings code
             elif existing_transaction_code and existing_transaction_code not in ["32", "33", "37", "38"]:
                 raise serializers.ValidationError({
                     "transaction_code": "Invalid transaction_code for savings account. Valid codes: 32, 33, 37, 38"

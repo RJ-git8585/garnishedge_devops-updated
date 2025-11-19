@@ -365,7 +365,6 @@ class StateTaxLevyCalculator(StateWiseStateTaxLevyFormulas):
             non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PT.PAYROLL_TAXES, {})
             override_amount=record.get('override_amount')
-            override_percent=record.get('override_percent')
             cs_helper = ChildSupportHelper(state)
             gross_pay = cs_helper.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
             mandatory_deductions = cs_helper.calculate_md(payroll_taxes)

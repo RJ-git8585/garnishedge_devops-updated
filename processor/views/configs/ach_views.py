@@ -157,22 +157,22 @@ class ACHFileGenerationView(APIView):
         Position 88-94: Trace Record Part 2 - Batch Number (7 digits)
         
         Args:
-            batch_number: Batch number (7 digits)
-            company_name: Company name (max 16 chars)
-            company_id: Company identification (10 digits)
-            effective_date: Effective entry date (date object)
+            batch_number: Batch number (7 digits) - System generated
+            company_name: Company Name - Immediate Origin name (max 16 chars) - from config
+            company_id: Company ID - Immediate origin (10 digits) - from config
+            pay_date: Pay Date - Effective Entry Date (date object) - from input
             company_discretionary_data: Company discretionary data (optional)
-            standard_entry_class: Standard Entry Class code (default: "CCD")
+            standard_entry_class: Payment Type - Standard Entry Class code (default: "CCD") - from config
             company_entry_description: Company entry description (default: "CHILD SUPP")
-            originating_dfi_id: Originating DFI identification (8 digits)
-            service_class_code: Service Class Code (default: "200")
+            originating_dfi_id: Originating DFI Id = PEOs bank's routing number (8 digits) - from config
+            service_class_code: Service Class Code (default: "200") - from config
         
         Returns:
             str: Formatted batch header record (94 characters + newline)
         """
-        if  pay_date is None:
+        if pay_date is None:
             pay_date = date.today()
-        # Ensure effective_date is a date object, not a string
+        # Ensure pay_date (Effective Entry Date) is a date object, not a string
         elif isinstance(pay_date, str):
             try:
                 pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
@@ -588,44 +588,62 @@ class ACHFileGenerationView(APIView):
     def _generate_ach_content(self, orders_data, file_params):
         """
         Generate ACH file content in CCD+ format.
+        All configuration fields are loaded from AchGarnishmentConfig table (single record).
         """
         ach_content = []
         
-        # Extract file parameters
-        immediate_destination = file_params.get('immediate_destination', '')
-        immediate_origin = file_params.get('immediate_origin', '')
+        # Load configuration from AchGarnishmentConfig table (always has exactly one row)
+        try:
+            config = AchGarnishmentConfig.objects.first()
+            if not config:
+                raise ValueError("AchGarnishmentConfig not found. Please create a configuration record first.")
+        except Exception as e:
+            logger.error(f"Error loading AchGarnishmentConfig: {str(e)}")
+            raise ValueError(f"Failed to load ACH configuration: {str(e)}")
+        
+        # Extract configuration values from database
+        # PEOs Bank Routing number (Immediate destination) - from config
+        peos_bank_routing_number = config.peos_bank_routing_number
+        # Company ID (Immediate origin) - from config
+        company_id = config.company_id
+        # Company Name (Immediate Origin name) - from config
+        company_name = config.company_name
+        # Payment Type (Standard entry class) - from config
+        payment_type = config.payment_type
+        # Service Class Code - from config
+        service_class_code = config.service_class_code
+        # Originating DFI Id = PEOs bank's routing number (same as immediate_destination)
+        originating_dfi_id = peos_bank_routing_number
+        
+        # Immediate destination name (optional, can still come from file_params if needed)
         immediate_destination_name = file_params.get('immediate_destination_name', '')
-        immediate_origin_name = file_params.get('immediate_origin_name', '')
-        company_name = file_params.get('company_name', '')
-        company_id = file_params.get('company_id', '')
-        originating_dfi_id = file_params.get('originating_dfi_id', '')
         
-        # Ensure effective_date is a date object
-        effective_date = file_params.get('effective_date', date.today())
-        if isinstance(effective_date, str):
+        # Pay Date (Effective Entry Date) - from input (not from config)
+        pay_date = file_params.get('pay_date', file_params.get('effective_date', date.today()))
+        if isinstance(pay_date, str):
             try:
-                effective_date = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
             except ValueError:
-                effective_date = date.today()
-        elif not isinstance(effective_date, date):
-            effective_date = date.today()
+                pay_date = date.today()
+        elif not isinstance(pay_date, date):
+            pay_date = date.today()
+        elif isinstance(pay_date, datetime):
+            pay_date = pay_date.date()
         
-        file_id_modifier = file_params.get('file_id_modifier', 'A')
-        batch_number = file_params.get('batch_number', 1)
-        service_class_code = file_params.get('service_class_code', '200')  # Default to "200" if not provided
-        standard_entry_class = file_params.get('standard_entry_class', 'CCD') 
-        pay_date=file_params.get('pay_date') 
+        # System generated fields (can be overridden from file_params if needed)
+        file_id_modifier = file_params.get('file_id_modifier', 'A')  # System generated (A-Z) or 0-9
+        batch_number = file_params.get('batch_number', 1)  # System generated 
         
         # File Header
         creation_time = datetime.now().time()
         file_header = self._generate_file_header(
-            immediate_destination=immediate_destination,
-            immediate_origin=immediate_origin,
+            immediate_destination=peos_bank_routing_number,  # PEOs Bank Routing number
+            immediate_origin=company_id,  # Company ID
             file_id_modifier=file_id_modifier,
-            creation_date=effective_date,
+            creation_date=pay_date,  # Pay Date (Effective Entry Date)
             creation_time=creation_time,
             immediate_destination_name=immediate_destination_name,
-            immediate_origin_name=immediate_origin_name,
+            immediate_origin_name=company_name,  # Company Name
             batch_number=batch_number
         )
         ach_content.append(file_header)
@@ -633,11 +651,11 @@ class ACHFileGenerationView(APIView):
         # Batch Header
         batch_header = self._generate_batch_header(
             batch_number=batch_number,
-            company_name=company_name,
-            company_id=company_id,
-            pay_date=pay_date,
-            standard_entry_class=standard_entry_class,
-            originating_dfi_id=originating_dfi_id,
+            company_name=company_name,  # Company Name
+            company_id=company_id,  # Company ID
+            pay_date=pay_date,  # Pay Date (Effective Entry Date)
+            standard_entry_class=payment_type,  # Payment Type (Standard entry class)
+            originating_dfi_id=originating_dfi_id,  # Originating DFI Id = PEOs bank's routing number
             service_class_code=service_class_code
         )
         ach_content.append(batch_header)
@@ -650,7 +668,8 @@ class ACHFileGenerationView(APIView):
         total_debit_amount = Decimal('0.00')
         
         # Trace number: Part 1 is originating DFI ID (8 digits), Part 2 is sequential entry number (7 digits)
-        trace_part1 = int(originating_dfi_id[:8]) if originating_dfi_id and len(originating_dfi_id) >= 8 else 98708076
+        # Originating DFI Id = PEOs bank's routing number
+        trace_part1 = int(originating_dfi_id[:8]) if originating_dfi_id and len(originating_dfi_id) >= 8 else (int(peos_bank_routing_number[:8]) if peos_bank_routing_number and len(peos_bank_routing_number) >= 8 else 98708076)
         trace_part2 = 1  # Start from 1 for first entry
         addenda_sequence = 1
 
@@ -913,24 +932,77 @@ class ACHFileGenerationView(APIView):
                 ),
                 'file_params': openapi.Schema(
                     type=openapi.TYPE_OBJECT,
+                    description='Optional file parameters. Most configuration fields are loaded from AchGarnishmentConfig table.',
                     properties={
-                        'immediate_destination': openapi.Schema(type=openapi.TYPE_STRING),
-                        'immediate_origin': openapi.Schema(type=openapi.TYPE_STRING),
-                        'immediate_destination_name': openapi.Schema(type=openapi.TYPE_STRING),
-                        'immediate_origin_name': openapi.Schema(type=openapi.TYPE_STRING),
-                        'company_name': openapi.Schema(type=openapi.TYPE_STRING),
-                        'company_id': openapi.Schema(type=openapi.TYPE_STRING),
-                        'originating_dfi_id': openapi.Schema(type=openapi.TYPE_STRING),
-                        'effective_date': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
-                        'file_id_modifier': openapi.Schema(type=openapi.TYPE_STRING),
-                        'batch_number': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'immediate_destination_name': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='Immediate destination name (optional)'
+                        ),
+                        'pay_date': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            format='date',
+                            description='Pay Date (Effective Entry Date) - YYYYMMDD format - REQUIRED from input (not from config)'
+                        ),
+                        'file_id_modifier': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='File ID Modifier - System generated (A-Z) or 0-9, optional override'
+                        ),
+                        'batch_number': openapi.Schema(
+                            type=openapi.TYPE_INTEGER,
+                            description='Batch number - System generated, optional override'
+                        ),
+                        # Note: The following fields are loaded from AchGarnishmentConfig table and do not need to be provided:
+                        # - peos_bank_routing_number (PEOs Bank Routing number - Immediate destination)
+                        # - company_id (Company ID - Immediate origin)
+                        # - company_name (Company Name - Immediate Origin name)
+                        # - payment_type (Payment Type - Standard entry class)
+                        # - service_class_code (Service Class Code)
+                        # - originating_dfi_id (Originating DFI Id = peos_bank_routing_number)
+                        # Legacy field names for backward compatibility (ignored, loaded from config)
+                        'peos_bank_routing_number': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[IGNORED - loaded from config] PEOs Bank Routing number - loaded from AchGarnishmentConfig table'
+                        ),
+                        'company_id': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[IGNORED - loaded from config] Company ID - loaded from AchGarnishmentConfig table'
+                        ),
+                        'company_name': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[IGNORED - loaded from config] Company Name - loaded from AchGarnishmentConfig table'
+                        ),
+                        'payment_type': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[IGNORED - loaded from config] Payment Type - loaded from AchGarnishmentConfig table'
+                        ),
                         'service_class_code': openapi.Schema(
                             type=openapi.TYPE_STRING, 
-                            description='Service Class Code (200 = Mixed, 220 = Credits only, 225 = Debits only). Default: 200'
+                            description='[IGNORED - loaded from config] Service Class Code - loaded from AchGarnishmentConfig table'
+                        ),
+                        'originating_dfi_id': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[IGNORED - loaded from config] Originating DFI Id - loaded from AchGarnishmentConfig table'
+                        ),
+                        'immediate_destination': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[DEPRECATED/IGNORED] Loaded from config'
+                        ),
+                        'immediate_origin': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[DEPRECATED/IGNORED] Loaded from config'
+                        ),
+                        'immediate_origin_name': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description='[DEPRECATED/IGNORED] Loaded from config'
                         ),
                         'standard_entry_class': openapi.Schema(
                             type=openapi.TYPE_STRING, 
-                            description='Standard Entry Class Code (e.g., CCD, PPD, CTX, etc.). Default: CCD'
+                            description='[DEPRECATED/IGNORED] Loaded from config'
+                        ),
+                        'effective_date': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            format='date',
+                            description='[DEPRECATED] Use pay_date instead'
                         ),
                     }
                 ),
@@ -978,16 +1050,24 @@ class ACHFileGenerationView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Parse pay_date
+            # Parse pay_date (Effective Entry Date) - from input
             if pay_date_str:
                 try:
                     pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date()
                 except ValueError:
                     pay_date = date.today()
             else:
-                pay_date = file_params.get('pay_date', date.today())
+                # Pay Date (Effective Entry Date) - from input
+                pay_date = file_params.get('pay_date', file_params.get('effective_date', date.today()))
                 if isinstance(pay_date, str):
-                    pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
+                    try:
+                        pay_date = datetime.strptime(pay_date, '%Y-%m-%d').date()
+                    except ValueError:
+                        pay_date = date.today()
+                elif not isinstance(pay_date, date):
+                    pay_date = date.today()
+                elif isinstance(pay_date, datetime):
+                    pay_date = pay_date.date()
             
             # Generate ACH content
             ach_content, file_stats = self._generate_ach_content(orders_data, file_params)
@@ -1032,7 +1112,14 @@ class ACHFileGenerationView(APIView):
             if store_file:
                 try:
                     case_ids = [order.get('case_id') for order in orders_data]
-                    trace_base = int(file_params.get('originating_dfi_id', '1000000')[:8]) * 100000 if file_params.get('originating_dfi_id') else 1000000
+                    # Load config to get originating_dfi_id (same as peos_bank_routing_number)
+                    config = AchGarnishmentConfig.objects.first()
+                    if config:
+                        peos_bank_routing_number = config.peos_bank_routing_number
+                        originating_dfi_id = peos_bank_routing_number
+                        trace_base = int(originating_dfi_id[:8]) * 100000 if originating_dfi_id and len(originating_dfi_id) >= 8 else 1000000
+                    else:
+                        trace_base = 1000000
                     transaction_refs = [f"Trace: {trace_base + i}" for i in range(len(orders_data))]
                     
                     ach_file_record = ACHFile.objects.create(
@@ -1199,7 +1286,7 @@ class AchGarnishmentConfigListCreateAPIView(APIView):
         operation_description="Create a new ACH Garnishment Configuration",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['payment_type', 'company_name', 'company_id', 'account_type', 'originating_routing_number'],
+            required=['payment_type', 'company_name', 'company_id', 'account_type', 'peos_bank_routing_number'],
             properties={
                 'payment_type': openapi.Schema(
                     type=openapi.TYPE_STRING,
@@ -1245,6 +1332,11 @@ class AchGarnishmentConfigListCreateAPIView(APIView):
                     type=openapi.TYPE_STRING,
                     enum=['Credit', 'Prenote Credit', 'Debit', 'Prenote Debit'],
                     description='Transaction type (alternative to transaction_code, required if account_type is checking)'
+                ),
+                'peos_bank_routing_number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=50,
+                    description='PEOs Bank Routing number (Wells Fargo) - Immediate destination - from config'
                 ),
                 'originating_routing_number': openapi.Schema(
                     type=openapi.TYPE_STRING,
@@ -1334,7 +1426,7 @@ class AchGarnishmentConfigDetailAPIView(APIView):
         operation_description="Update an entire ACH Garnishment Configuration (PUT - all fields required)",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['payment_type', 'company_name', 'company_id', 'account_type', 'originating_routing_number'],
+            required=['payment_type', 'company_name', 'company_id', 'account_type', 'peos_bank_routing_number'],
             properties={
                 'payment_type': openapi.Schema(
                     type=openapi.TYPE_STRING,
@@ -1380,6 +1472,11 @@ class AchGarnishmentConfigDetailAPIView(APIView):
                     type=openapi.TYPE_STRING,
                     enum=['Credit', 'Prenote Credit', 'Debit', 'Prenote Debit'],
                     description='Transaction type (alternative to transaction_code)'
+                ),
+                'peos_bank_routing_number': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    maxLength=50,
+                    description='PEOs Bank Routing number (Wells Fargo) - Immediate destination - from config'
                 ),
                 'originating_routing_number': openapi.Schema(
                     type=openapi.TYPE_STRING,

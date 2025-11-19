@@ -67,7 +67,7 @@ class MultipleGarnishmentPriorityOrder:
         GT.FRANCHISE_TAX_BOARD : lambda record, config_data=None: FTB().calculate(record, config_data[GT.FRANCHISE_TAX_BOARD]),
         GT.BANKRUPTCY: lambda record, config_data=None: Bankruptcy().calculate(record, config_data=config_data.get(GT.BANKRUPTCY)),
         GT.STUDENT_DEFAULT_LOAN: lambda record, config_data=None: StudentLoanCalculator().calculate(record),
-        GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY)),
+        GT.STATE_TAX_LEVY: lambda record, config_data=None: StateTaxLevyCalculator().calculate(record, config_data=config_data.get(GT.STATE_TAX_LEVY),override_percent=record.get('override_percent')),
         GT.CREDITOR_DEBT: lambda record, config_data=None: CreditorDebtCalculator().calculate(record, config_data=config_data.get(GT.CREDITOR_DEBT)),
     }
 

@@ -76,6 +76,12 @@ class AchGarnishmentConfig(models.Model):
         null=True
     )
 
+    # PEOs Bank Routing number (Wells Fargo) - Immediate destination
+    peos_bank_routing_number = models.CharField(
+        max_length=50,
+        help_text="PEOs Bank Routing number (Wells Fargo) - Immediate destination"
+    )
+
     originating_routing_number = models.CharField(
         max_length=50,
         help_text="Immediate receiving routing number"
@@ -94,4 +100,6 @@ class AchGarnishmentConfig(models.Model):
 
     class meta:
         db_table= 'ach_config'
+
+
 
