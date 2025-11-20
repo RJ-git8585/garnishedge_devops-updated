@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 from processor.garnishment_library.utils import AllocationMethodResolver,StateAbbreviations,WLIdentifier
 from user_app.constants import (
-    EmployeeFields, CalculationFields , PayrollTaxesFields,
+    EmployeeFields, CalculationFields  as CF, PayrollTaxesFields,
     JSONPath, AllocationMethods
 )
 import traceback as t
@@ -124,7 +124,7 @@ class ChildSupportHelper:
         try:
             rule_obj = WLIdentifier().get_state_rule(self.work_state)
             rule_number = rule_obj.rule
-            ordered_amounts = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)
+            ordered_amounts = self._support_amount(garnishment_data, CF.ARREAR_AMOUNT)
             order_count = len(ordered_amounts)
 
             if int(rule_number) == 6:
@@ -247,6 +247,9 @@ class SingleChild(ChildSupportHelper):
             supports_2nd_family = record.get(EmployeeFields.SUPPORT_SECOND_FAMILY)
             arrears_12ws = record.get(EmployeeFields.ARREARS_GREATER_THAN_12_WEEKS)
             garnishment_data = record.get('garnishment_data', [])
+            gross_pay = self.calculate_gross_pay(wages, commission_and_bonus, non_accountable_allowances)
+            mandatory_deductions = self.calculate_md(payroll_taxes) if payroll_taxes else 0
+            de=self.calculate_de(gross_pay, mandatory_deductions)
             
             # Check if override values are provided - if so, skip calculation and return them directly
             # Check record first, then fall back to parameters
@@ -284,7 +287,7 @@ class SingleChild(ChildSupportHelper):
                 de = self.calculate_de(gross_pay, mandatory_deductions)
                 ade = self.calculate_ade(withholding_limit, de)
                 
-                child_amt = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)[0]
+                child_amt = self._support_amount(garnishment_data, CF.ORDERED_AMOUNT)[0]
                 withholding = min(ade, child_amt)
                 ar_amount = float(override_arrear)
                 
@@ -321,8 +324,8 @@ class SingleChild(ChildSupportHelper):
             ade = self.calculate_ade(withholding_limit, de)
             
             # Get support amounts
-            child_amt = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)[0]
-            arrear_amt = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)[0]
+            child_amt = self._support_amount(garnishment_data, CF.ORDERED_AMOUNT)[0]
+            arrear_amt = self._support_amount(garnishment_data, CF.ARREAR_AMOUNT)[0]
             
             withholding = min(ade, child_amt)
             remaining = max(0, ade - child_amt)
@@ -348,9 +351,9 @@ class MultipleChild(ChildSupportHelper):
     def calculate(self, record,override_amount,override_arrear,override_limit):
         try:
             # Extract required values from record
-            wages = record.get(CalculationFields.WAGES, 0)
-            commission_and_bonus = record.get(CalculationFields.COMMISSION_AND_BONUS, 0)
-            non_accountable_allowances = record.get(CalculationFields.NON_ACCOUNTABLE_ALLOWANCES, 0)
+            wages = record.get(CF.WAGES, 0)
+            commission_and_bonus = record.get(CF.COMMISSION_AND_BONUS, 0)
+            non_accountable_allowances = record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
             payroll_taxes = record.get(PayrollTaxesFields.PAYROLL_TAXES)
             employee_id = record.get(EmployeeFields.EMPLOYEE_ID)
             supports_2nd_family = record.get(EmployeeFields.SUPPORT_SECOND_FAMILY)
@@ -368,8 +371,8 @@ class MultipleChild(ChildSupportHelper):
             ade = self.calculate_ade(withholding_limit, de)
 
             # Get support amounts ONCE - avoid redundant calculations
-            tcsa = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)
-            taa = self._support_amount(garnishment_data, CalculationFields.ARREAR_AMOUNT)
+            tcsa = self._support_amount(garnishment_data, CF.ORDERED_AMOUNT)
+            taa = self._support_amount(garnishment_data, CF.ARREAR_AMOUNT)
             
             # Calculate TWA and WA using already extracted amounts
             twa = self.calculate_twa(tcsa, taa)
@@ -435,11 +438,13 @@ class ChildSupport(SingleChild, MultipleChild):
     def calculate(self, record,override_amount,override_arrear,override_limit):
         try:
             garnishment_data = record.get('garnishment_data', [])
-            ordered_amounts = self._support_amount(garnishment_data, CalculationFields.ORDERED_AMOUNT)
+            ordered_amounts = self._support_amount(garnishment_data, CF.ORDERED_AMOUNT)
             if len(ordered_amounts) == 1:
                 return SingleChild(self.work_state).calculate(record,override_amount,override_arrear,override_limit)
             else:
                 return MultipleChild(self.work_state).calculate(record,override_amount,override_arrear,override_limit)
         except Exception as e:
+            import traceback as t
+            t.print_exc()
            
             raise ValueError(f"Error in ChildSupport calculation: {str(e)}")

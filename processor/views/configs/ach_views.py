@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 from user_app.models import GarnishmentOrder, PayeeDetails
 from user_app.models.ach import ACHFile
 from user_app.models.employee.employee_details import EmployeeDetail
+from user_app.models.payroll.payroll import Payroll
 from processor.models.garnishment_result.result import GarnishmentResult
 from processor.models.shared_model.garnishment_type import GarnishmentType
 from processor.garnishment_library import ResponseHelper
@@ -79,7 +80,30 @@ class ACHFileGenerationView(APIView):
         
         return next_batch
     
-    def _fetch_orders_from_database(self, case_ids=None, employee_ids=None, pay_date=None):
+    def _fetch_employee_ids_from_payroll(self, ach_generate_date=None):
+        """
+        Fetch employee IDs from Payroll table where pay_date > ACH generate date.
+        
+        Args:
+            ach_generate_date: Date to compare against (defaults to today if None)
+        
+        Returns:
+            List of employee IDs (ee_id strings)
+        """
+        if ach_generate_date is None:
+            ach_generate_date = date.today()
+        
+        # Get employees from Payroll where pay_date > ACH generate date
+        payroll_records = Payroll.objects.filter(
+            pay_date__isnull=False,
+            pay_date__gt=ach_generate_date
+        ).select_related('ee_id').values_list('ee_id__ee_id', flat=True).distinct()
+        
+        employee_ids = list(payroll_records)
+        logger.info(f"Found {len(employee_ids)} employees from Payroll with pay_date > {ach_generate_date}")
+        return employee_ids
+    
+    def _fetch_orders_from_database(self, case_ids=None, employee_ids=None, pay_date=None, use_payroll_filter=False, ach_generate_date=None):
         """
         Fetch order data from database for ACH file generation.
         
@@ -87,11 +111,26 @@ class ACHFileGenerationView(APIView):
             case_ids: List of case_ids to filter by (optional)
             employee_ids: List of employee_ids to filter by (optional)
             pay_date: Pay date to filter GarnishmentResult by (optional)
+            use_payroll_filter: If True, fetch employee_ids from Payroll table where pay_date > ach_generate_date
+            ach_generate_date: Date to compare against Payroll pay_date (defaults to today)
         
         Returns:
             List of order data dictionaries ready for ACH file generation
         """
         try:
+            # If use_payroll_filter is True, get employee_ids from Payroll table
+            if use_payroll_filter:
+                payroll_employee_ids = self._fetch_employee_ids_from_payroll(ach_generate_date)
+                if employee_ids:
+                    # Merge with provided employee_ids (intersection)
+                    employee_ids = list(set(employee_ids) & set(payroll_employee_ids))
+                else:
+                    employee_ids = payroll_employee_ids
+                
+                if not employee_ids:
+                    logger.warning(f"No employees found in Payroll with pay_date > {ach_generate_date or date.today()}")
+                    return []
+            
             # Filter by garnishment_type: 'child_support' or 'ftb_ewot'
             garnishment_types = GarnishmentType.objects.filter(
                 type__in=['child_support', 'ftb_ewot']
@@ -1122,7 +1161,7 @@ class ACHFileGenerationView(APIView):
                 type=openapi.TYPE_ARRAY,
                 items=openapi.Items(type=openapi.TYPE_STRING),
                 required=False,
-                description='Comma-separated list of case_ids to fetch from database. Only garnishment_type "child_support" and "ftb_ewot" will be included.'
+                description='[OPTIONAL] Comma-separated list of case_ids to filter. If not provided, automatically fetches from Payroll table where pay_date > today.'
             ),
             openapi.Parameter(
                 'employee_ids',
@@ -1130,7 +1169,15 @@ class ACHFileGenerationView(APIView):
                 type=openapi.TYPE_ARRAY,
                 items=openapi.Items(type=openapi.TYPE_STRING),
                 required=False,
-                description='Comma-separated list of employee_ids to fetch from database. Only garnishment_type "child_support" and "ftb_ewot" will be included.'
+                description='[OPTIONAL] Comma-separated list of employee_ids to filter. If not provided, automatically fetches from Payroll table where pay_date > today.'
+            ),
+            openapi.Parameter(
+                'ach_generate_date',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                format='date',
+                required=False,
+                description='ACH generate date to compare against Payroll pay_date (defaults to today). Only employees with pay_date > ach_generate_date will be included.'
             ),
             openapi.Parameter(
                 'pay_date',
@@ -1197,13 +1244,6 @@ class ACHFileGenerationView(APIView):
             
             orders_data = []
             
-            # Fetch orders from database
-            if not case_ids and not employee_ids:
-                return ResponseHelper.error_response(
-                    "Either 'case_ids' or 'employee_ids' query parameter is required",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
             # Parse pay_date for filtering results
             pay_date_for_query = None
             if pay_date_str:
@@ -1215,11 +1255,28 @@ class ACHFileGenerationView(APIView):
                         status_code=status.HTTP_400_BAD_REQUEST
                     )
             
+            # ACH generate date (can be provided as query parameter, defaults to today)
+            ach_generate_date_str = request.query_params.get('ach_generate_date')
+            if ach_generate_date_str:
+                try:
+                    ach_generate_date = datetime.strptime(ach_generate_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return ResponseHelper.error_response(
+                        f"Invalid ach_generate_date format: {ach_generate_date_str}. Expected format: YYYY-MM-DD",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                ach_generate_date = date.today()
+            
             # Fetch orders from database
+            # Primary logic: Use Payroll table to find employees where pay_date > ACH generate date
+            # Then check if they have orders with garnishment_type "child_support" or "ftb_ewot"
             orders_data = self._fetch_orders_from_database(
-                case_ids=case_ids,
-                employee_ids=employee_ids,
-                pay_date=pay_date_for_query
+                case_ids=case_ids if case_ids else None,
+                employee_ids=employee_ids if employee_ids else None,
+                pay_date=pay_date_for_query,
+                use_payroll_filter=True,  # Enable Payroll-based filtering
+                ach_generate_date=ach_generate_date
             )
             
             if not orders_data:
