@@ -269,38 +269,6 @@ class LetterTemplateVariablesAPI(APIView):
     def get(self, request):
         """
         Get available template variables for an employee.
-        
-        Request Body (JSON):
-        {
-            "employee_id": "DA0001",  // required
-            "order_id": "CSE001"      // optional
-        }
-        
-        Returns:
-        {
-            "success": true,
-            "message": "Template variables fetched successfully",
-            "data": {
-                "employee_details": {
-                    "employee_id": "DA0001",
-                    "first_name": "John",
-                    "last_name": "Doe",
-                    "full_name": "John Doe",
-                    ...
-                },
-                "order_data": {
-                    "case_id": "CSE001",
-                    "ordered_amount": "500.00",
-                    "withholding_amount": "450.00",
-                    ...
-                },
-                "sdu_data": {
-                    "sdu_payee": "State Disbursement Unit",
-                    "sdu_address": "123 Main St",
-                    ...
-                }
-            }
-        }
         """
         try:
             serializer = LetterTemplateVariableValuesSerializer(data=request.data)
@@ -378,41 +346,6 @@ class LetterTemplateAvailableVariablesAPI(APIView):
         Get available template variable names organized by category.
         This endpoint returns only the variable names and descriptions,
         not actual data values. Used for drag-and-drop in template editor.
-        
-        Returns:
-        {
-            "success": true,
-            "message": "Available template variables fetched successfully",
-            "data": {
-                "employee_details": {
-                    "employee_id": "Employee ID (ee_id)",
-                    "first_name": "First Name",
-                    "last_name": "Last Name",
-                    ...
-                },
-                "employee_address": {
-                    "employee_address_address_1": "Employee Address Line 1",
-                    "employee_address_city": "Employee City",
-                    ...
-                },
-                "order_data": {
-                    "case_id": "Case ID",
-                    "ordered_amount": "Ordered Amount",
-                    "withholding_amount": "Withholding Amount",
-                    ...
-                },
-                "sdu_data": {
-                    "sdu_payee": "SDU Payee",
-                    "sdu_address": "SDU Address",
-                    ...
-                },
-                "payee_address": {
-                    "payee_address_address_1": "Payee Address Line 1",
-                    "payee_address_city": "Payee City",
-                    ...
-                }
-            }
-        }
         """
         try:
             available_variables = LetterTemplateDataService.get_available_variables()
@@ -482,29 +415,6 @@ class LetterTemplateFillAPI(APIView):
     def post(self, request):
         """
         Fill template variables and export in specified format.
-        
-        Two modes supported:
-        1. Automatic mode (recommended):
-        {
-            "template_id": 1,
-            "employee_id": "EMP001",  // or employee primary key
-            "order_id": "CASE001",     // optional: order case_id or primary key
-            "format": "pdf"            // optional: pdf, doc, docx, or txt (default: pdf)
-        }
-        
-        2. Manual mode (backward compatible):
-        {
-            "template_id": 1,
-            "variable_values": {
-                "name": "John Doe",
-                "date": "2024-01-01",
-                ...
-            },
-            "format": "pdf"
-        }
-        
-        If both employee_id and variable_values are provided, variable_values will override
-        the auto-fetched values for those specific keys.
         """
         try:
             serializer = LetterTemplateFillSerializer(data=request.data)
@@ -726,30 +636,6 @@ class LetterTemplateOrderFilterAPI(APIView):
     def post(self, request):
         """
         Filter orders by employee_id for letter management.
-        
-        Request Body (JSON):
-        {
-            "employee_id": "DA0001"  // required: Employee ID (ee_id) or primary key
-        }
-        
-        Returns:
-        {
-            "success": true,
-            "message": "Orders fetched successfully",
-            "data": [
-                {
-                    "id": 1,
-                    "case_id": "CSE001",
-                    "ssn": "...",
-                    "issuing_state": "California",
-                    "garnishment_type": "Child Support",
-                    "ordered_amount": "500.00",
-                    "withholding_amount": "450.00",
-                    ...
-                },
-                ...
-            ]
-        }
         """
         try:
             employee_id = request.data.get('employee_id')
@@ -814,18 +700,6 @@ class LetterTemplateExportCSVAPI(APIView):
         """
         Export employee details, order, payee, and GarnishmentResult withholding_amount and withholding_limit to CSV or TXT.
         Only exports data for employees present in GarnishmentResult.
-        
-        Request Body (JSON):
-        {
-            "format": "csv"  // optional: csv or txt (default: csv)
-        }
-        
-        Returns:
-        CSV or TXT file with columns:
-        - Employee Details: ee_id, first_name, last_name, ssn, home_state, work_state, etc.
-        - Order Details: case_id, ordered_amount, withholding_amount (from order), issued_date, etc.
-        - Payee Details: payee, payee_type, routing_number, bank_account, etc.
-        - GarnishmentResult: withholding_amount and withholding_limit (from GarnishmentResult)
         """
         try:
             # Validate request data
@@ -854,7 +728,7 @@ class LetterTemplateExportCSVAPI(APIView):
             
             if not results.exists():
                 return ResponseHelper.error_response(
-                    'No garnishment results found',
+                    'No export data found',
                     status_code=status.HTTP_404_NOT_FOUND
                 )
             
