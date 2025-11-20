@@ -56,6 +56,7 @@ class DatabaseManager:
 
 
                 # # Store payroll data
+                self.store_payroll_data(case_info,batch_id)
                 # self._store_payroll_data(case_info, ee_id)
 
                 self._store_garnishment_results(case_info, ee_id, batch_id, result)
@@ -421,82 +422,41 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error updating calculation results for case {case_id}: {e}", exc_info=True)
 
-    def _store_payroll_batch_data(self, case_id: int) -> Dict:
-        """Store payroll batch data by case ID."""
-        try:
-            payroll = PayrollBatchData.objects.get(case_id=case_id)
-            return {
-                'case_id': payroll.case_id,
-                'ee_id': payroll.ee_id,
-                'wages': payroll.wages,
-                'commission_and_bonus': payroll.commission_and_bonus,
-                'non_accountable_allowances': payroll.non_accountable_allowances,
-                'gross_pay': payroll.gross_pay,
-                'debt': payroll.debt,
-                'exemption_amount': payroll.exemption_amount,
-                'net_pay': payroll.net_pay,
-                'federal_income_tax': payroll.federal_income_tax,
-                'social_security_tax': payroll.social_security_tax,
-                'medicare_tax': payroll.medicare_tax,
-                'state_tax': payroll.state_tax,
-                'local_tax': payroll.local_tax,
-                'union_dues': payroll.union_dues,
-                'medical_insurance_pretax': payroll.medical_insurance_pretax,
-                'industrial_insurance': payroll.industrial_insurance,
-                'life_insurance': payroll.life_insurance,
-                'california_sdi': payroll.california_sdi,
-            }
-        except PayrollBatchData.DoesNotExist:
-            return {}
-        except Exception as e:
-            self.logger.error(f"Error getting payroll batch data for case {case_id}: {e}")
-            return {}
 
-    def store_payroll_data(self, payroll_json: Dict) -> Dict:
+
+    def store_payroll_data(self, payroll_payload: Dict, batch_id: str = None) -> Dict:
         """
-        Store payroll data from JSON structure to Payroll database table.
+        Store payroll data from JSON structure to the Payroll database table.
         
         Args:
-            payroll_json: Dictionary containing batch_id and payroll_data array
-                Example:
+            payroll_payload: Either a single payroll item dictionary (the most common case)
+                or a dictionary containing a "payroll_data" list / a list of payroll items.
+                Example single payload:
                 {
-                    "batch_id": "BLUR449",
-                    "payroll_data": [
-                        {
-                            "client_id": "CLT10009",
-                            "ee_id": "DA0075",
-                            "pay_period": "Weekly",
-                            "payroll_date": "2025-10-31T00:00:00",
-                            "wages": 400,
-                            "commission_and_bonus": 0,
-                            "non_accountable_allowances": 100,
-                            "gross_pay": 500,
-                            "payroll_taxes": {
-                                "federal_income_tax": 100,
-                                "state_tax": 0,
-                                "local_tax": 0,
-                                "medicare_tax": 0,
-                                "social_security_tax": 0,
-                                "wilmington_tax": 0,
-                                "california_sdi": 0,
-                                "medical_insurance_pretax": 0,
-                                "life_insurance": 0,
-                                "retirement_401k": 0,
-                                "industrial_insurance": 0,
-                                "union_dues": 0
-                            },
-                            "net_pay": 400,
-                            "pay_date": "2025-11-20"
-                        }
-                    ]
+                    "client_id": "CLT10009",
+                    "ee_id": "DA0075",
+                    "pay_period": "Weekly",
+                    "payroll_date": "2025-10-31T00:00:00",
+                    "wages": 400,
+                    ...
                 }
+            batch_id: Batch identifier string (e.g., "BLUR449")
         
         Returns:
             Dict with status and details of stored records
         """
         try:
-            batch_id = payroll_json.get("batch_id")
-            payroll_data_list = payroll_json.get("payroll_data", [])
+            # Handle both dict with payroll_data key and direct list
+            if isinstance(payroll_payload, list):
+                payroll_data_list = payroll_payload
+            elif isinstance(payroll_payload, dict):
+                payroll_data_list = payroll_payload.get("payroll_data", [])
+                # If payroll_data key doesn't exist or is empty, treat payload as single item
+                if not payroll_data_list:
+                    # Guard against empty dict
+                    payroll_data_list = [payroll_payload] if payroll_payload else []
+            else:
+                return {"status": "error", "message": "payroll_payload must be a dict or list"}
             
             if not payroll_data_list:
                 return {"status": "error", "message": "No payroll_data found in JSON"}

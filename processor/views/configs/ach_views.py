@@ -133,7 +133,7 @@ class ACHFileGenerationView(APIView):
             
             # Filter by garnishment_type: 'child_support' or 'ftb_ewot'
             garnishment_types = GarnishmentType.objects.filter(
-                type__in=['child_support', 'ftb_ewot']
+                type__in=['child_support', 'ftb_ewot','Child_Support']
             )
             
             if not garnishment_types.exists():
