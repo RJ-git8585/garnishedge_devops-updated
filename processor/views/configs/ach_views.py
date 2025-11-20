@@ -3,7 +3,7 @@ from rest_framework import status
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.http import HttpResponse, FileResponse
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Max
 from django.db import transaction
 from datetime import datetime, date
 from decimal import Decimal
@@ -15,7 +15,9 @@ from user_app.models import AchGarnishmentConfig
 from django.shortcuts import get_object_or_404
 from user_app.models import GarnishmentOrder, PayeeDetails
 from user_app.models.ach import ACHFile
+from user_app.models.employee.employee_details import EmployeeDetail
 from processor.models.garnishment_result.result import GarnishmentResult
+from processor.models.shared_model.garnishment_type import GarnishmentType
 from processor.garnishment_library import ResponseHelper
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,207 @@ class ACHFileGenerationView(APIView):
     API view for generating ACH files in CCD+ format (NACHA compliant) for Child Support and FTB payments.
     Supports generating ACH files with Addenda Records and multiple export formats.
     """
+
+    def _generate_file_id_modifier(self, pay_date):
+        """
+        Auto-generate file ID modifier (A-Z, 0-9) for files created on the same date.
+        Checks existing ACH files for the same pay_date and returns the next available modifier.
+        """
+        # Valid modifiers: A-Z (26) then 0-9 (10) = 36 total
+        valid_modifiers = [chr(i) for i in range(ord('A'), ord('Z') + 1)] + [str(i) for i in range(10)]
+        
+        # Get existing file_id_modifiers for the same pay_date
+        existing_modifiers = set(
+            ACHFile.objects.filter(
+                pay_date=pay_date,
+                file_id_modifier__isnull=False
+            ).exclude(file_id_modifier='').values_list('file_id_modifier', flat=True)
+        )
+        
+        # Find the first available modifier
+        for modifier in valid_modifiers:
+            if modifier not in existing_modifiers:
+                return modifier
+        
+        # If all modifiers are used (shouldn't happen in practice), default to 'A'
+        logger.warning(f"All file ID modifiers used for pay_date {pay_date}, defaulting to 'A'")
+        return 'A'
+    
+    def _generate_batch_number(self, pay_date):
+        """
+        Auto-generate batch number for files created on the same date.
+        Returns the next sequential batch number starting from 1.
+        """
+        # Get the maximum batch number for the same pay_date
+        max_batch = ACHFile.objects.filter(
+            pay_date=pay_date,
+            batch_id__isnull=False
+        ).exclude(batch_id='').aggregate(
+            max_batch=Max('batch_id')
+        )['max_batch']
+        
+        if max_batch:
+            try:
+                # Try to parse as integer and increment
+                next_batch = int(max_batch) + 1
+            except (ValueError, TypeError):
+                # If not a valid integer, start from 1
+                next_batch = 1
+        else:
+            # No existing batches for this date, start from 1
+            next_batch = 1
+        
+        return next_batch
+    
+    def _fetch_orders_from_database(self, case_ids=None, employee_ids=None, pay_date=None):
+        """
+        Fetch order data from database for ACH file generation.
+        
+        Args:
+            case_ids: List of case_ids to filter by (optional)
+            employee_ids: List of employee_ids to filter by (optional)
+            pay_date: Pay date to filter GarnishmentResult by (optional)
+        
+        Returns:
+            List of order data dictionaries ready for ACH file generation
+        """
+        try:
+            # Filter by garnishment_type: 'child_support' or 'ftb_ewot'
+            garnishment_types = GarnishmentType.objects.filter(
+                type__in=['child_support', 'ftb_ewot']
+            )
+            
+            if not garnishment_types.exists():
+                logger.warning("No garnishment types found for 'child_support' or 'ftb_ewot'")
+                return []
+            
+            # Build query for GarnishmentOrder
+            orders_query = GarnishmentOrder.objects.select_related(
+                'employee',
+                'payee',
+                'garnishment_type'
+            ).filter(
+                garnishment_type__in=garnishment_types
+            )
+            
+            # Apply filters
+            if case_ids:
+                orders_query = orders_query.filter(case_id__in=case_ids)
+            if employee_ids:
+                orders_query = orders_query.filter(employee__ee_id__in=employee_ids)
+            
+            orders = orders_query.all()
+            
+            if not orders:
+                logger.warning(f"No garnishment orders found for case_ids={case_ids}, employee_ids={employee_ids}")
+                return []
+            
+            # Get case_ids from orders to fetch GarnishmentResult
+            order_case_ids = [order.case_id for order in orders]
+            order_employee_ids = [order.employee.ee_id for order in orders]
+            
+            # Fetch latest GarnishmentResult for each case
+            results_query = GarnishmentResult.objects.select_related(
+                'case',
+                'ee',
+                'garnishment_type'
+            ).filter(
+                case__case_id__in=order_case_ids,
+                ee__ee_id__in=order_employee_ids
+            )
+            
+            if pay_date:
+                results_query = results_query.filter(processed_at__date=pay_date)
+            
+            # Get the latest result for each case (manual grouping for database compatibility)
+            results = {}
+            seen_cases = set()
+            for result in results_query.order_by('-processed_at', '-created_at'):
+                case_id = result.case.case_id
+                if case_id not in seen_cases:
+                    results[case_id] = result
+                    seen_cases.add(case_id)
+            
+            # Build orders_data list
+            orders_data = []
+            for order in orders:
+                # Get corresponding result
+                result = results.get(order.case_id)
+                
+                if not result or not result.withholding_amount:
+                    logger.warning(f"No withholding amount found for case_id={order.case_id}, skipping")
+                    continue
+                
+                # Build employee name from first_name, middle_name, last_name
+                employee_name_parts = [order.employee.first_name]
+                if order.employee.middle_name:
+                    employee_name_parts.append(order.employee.middle_name)
+                if order.employee.last_name:
+                    employee_name_parts.append(order.employee.last_name)
+                employee_name = ' '.join(employee_name_parts)
+                
+                # Determine segment and application identifiers based on garnishment_type
+                garnishment_type_str = order.garnishment_type.type
+                if garnishment_type_str == 'child_support':
+                    segment_identifier = 'DED'
+                    application_identifier = 'CS'
+                elif garnishment_type_str == 'ftb_ewot':
+                    segment_identifier = 'TXP'
+                    application_identifier = '52'  # Default FTB application identifier
+                else:
+                    segment_identifier = 'DED'
+                    application_identifier = 'CS'
+                
+                # Get medical support indicator from AchGarnishmentConfig
+                try:
+                    config = AchGarnishmentConfig.objects.first()
+                    medical_support_indicator = config.medical_support_indicator if config else 'N'
+                except Exception:
+                    medical_support_indicator = 'N'
+                
+                # Extract SSN (handle both hashed 64-char and regular 9-digit formats)
+                employee_ssn = order.employee.ssn or ''
+                if len(employee_ssn) >= 9:
+                    # If hashed (64 chars), we can't extract original - use first 9 chars or handle differently
+                    # For now, use first 9 characters (may need adjustment based on your hashing)
+                    ssn_digits = ''.join(filter(str.isdigit, employee_ssn))[:9]
+                    if len(ssn_digits) < 9:
+                        # If not enough digits, pad or use as-is
+                        ssn_digits = ssn_digits.ljust(9, '0')[:9]
+                else:
+                    ssn_digits = employee_ssn[:9] if employee_ssn else ''
+                
+                # Build order data
+                order_data = {
+                    'case_id': order.case_id,
+                    'employee_id': order.employee.ee_id,
+                    'employee_ssn': ssn_digits,
+                    'individual_name': employee_name,
+                    'routing_number': str(order.payee.routing_number) if order.payee.routing_number else '',
+                    'account_number': str(order.payee.bank_account) if order.payee.bank_account else '',
+                    'amount': float(result.withholding_amount),
+                    'fips_code': order.fips_code or '',
+                    'garnishment_type': garnishment_type_str,
+                    'payee_id': order.payee.payee_id,
+                    'payee_name': order.payee.payee,
+                    # Addenda fields
+                    'segment_identifier': segment_identifier,
+                    'application_identifier': application_identifier,
+                    'case_identifier': order.case_id[:20],  # Max 20 chars
+                    'absent_parent_ssn': ssn_digits,  # Use employee SSN
+                    'medical_support_indicator': medical_support_indicator,
+                    'absent_parent_name': employee_name,
+                    'employment_termination_indicator': '  ',  # Default as per user's change
+                }
+                
+                orders_data.append(order_data)
+            
+            logger.info(f"Fetched {len(orders_data)} orders from database for ACH file generation")
+            return orders_data
+            
+        except Exception as e:
+            logger.exception(f"Error fetching orders from database: {str(e)}")
+            raise ValueError(f"Failed to fetch orders from database: {str(e)}")
 
     def _pad_string(self, value, length, align='left', fill_char=' '):
         """Pad string to specified length."""
@@ -616,7 +819,7 @@ class ACHFileGenerationView(APIView):
         originating_dfi_id = peos_bank_routing_number
         
         # Immediate destination name (optional, can still come from file_params if needed)
-        immediate_destination_name = file_params.get('immediate_destination_name', '')
+        immediate_destination_name = config.peos_bank_routing_number
         
         # Pay Date (Effective Entry Date) - from input (not from config)
         pay_date = file_params.get('pay_date', file_params.get('effective_date', date.today()))
@@ -630,9 +833,11 @@ class ACHFileGenerationView(APIView):
         elif isinstance(pay_date, datetime):
             pay_date = pay_date.date()
         
-        # System generated fields (can be overridden from file_params if needed)
-        file_id_modifier = file_params.get('file_id_modifier', 'A')  # System generated (A-Z) or 0-9
-        batch_number = file_params.get('batch_number', 1)  # System generated 
+        # Auto-generate system fields
+        # File ID Modifier: A letter or number (A-Z, 0-9) used to uniquely identify multiple files created on the same date
+        file_id_modifier = file_params.get('file_id_modifier') or self._generate_file_id_modifier(pay_date)
+        # Batch Number: System generated sequential number
+        batch_number = file_params.get('batch_number') or self._generate_batch_number(pay_date) 
         
         # File Header
         creation_time = datetime.now().time()
@@ -681,7 +886,6 @@ class ACHFileGenerationView(APIView):
                 individual_id = str(order_data.get('case_id', ''))[:15]
                 individual_name = order_data.get('individual_name', '')
                 case_id = order_data.get('case_id', '')
-                employee_id = order_data.get('employee_id', '')
                 employee_ssn = order_data.get('employee_ssn', '')
                 
                 # Transaction code: 22 = checking credit (per CSV), 27 = checking credit (alternative)
@@ -702,7 +906,7 @@ class ACHFileGenerationView(APIView):
                         absent_parent_name = f"{name_parts[-1]},{' '.join(name_parts[:-1])}"
                 absent_parent_name = str(absent_parent_name).upper()[:10]  # Convert to uppercase and ensure max 10 chars
                 fips_code = order_data.get('fips_code', '')[:7]  # FIPS code is 7 chars total (including padding)
-                employment_termination_indicator = str(order_data.get('employment_termination_indicator', 'N')).upper()
+                employment_termination_indicator = str(order_data.get('employment_termination_indicator', '  ')).upper()
                 
                 # Generate Entry Detail Record
                 entry_detail = self._generate_entry_detail(
@@ -902,140 +1106,126 @@ class ACHFileGenerationView(APIView):
         return '\n'.join(xml_lines)
 
     @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['orders_data', 'file_params'],
-            properties={
-                'orders_data': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'case_id': openapi.Schema(type=openapi.TYPE_STRING),
-                            'routing_number': openapi.Schema(type=openapi.TYPE_STRING),
-                            'account_number': openapi.Schema(type=openapi.TYPE_STRING),
-                            'amount': openapi.Schema(type=openapi.TYPE_NUMBER),
-                            'individual_name': openapi.Schema(type=openapi.TYPE_STRING),
-                            'employee_id': openapi.Schema(type=openapi.TYPE_STRING),
-                            'transaction_code': openapi.Schema(type=openapi.TYPE_INTEGER, description='Transaction code (22 = checking credit, 27 = alternative)'),
-                            'employee_ssn': openapi.Schema(type=openapi.TYPE_STRING, description='Employee SSN (9 digits)'),
-                            'segment_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Segment Identifier (DED for child support, TXP for FTB)'),
-                            'application_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Application Identifier (CS for child support, 52/53/55/56/61/62 for FTB)'),
-                            'case_identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Case Identifier (20 chars)'),
-                            'absent_parent_ssn': openapi.Schema(type=openapi.TYPE_STRING, description='Absent Parent SSN (9 digits)'),
-                            'medical_support_indicator': openapi.Schema(type=openapi.TYPE_STRING, description='Medical Support Indicator (Y or N)'),
-                            'absent_parent_name': openapi.Schema(type=openapi.TYPE_STRING, description='Absent Parent Name (format: Last,First, max 20 chars)'),
-                            'fips_code': openapi.Schema(type=openapi.TYPE_STRING, description='FIPS Code (6 chars)'),
-                            'employment_termination_indicator': openapi.Schema(type=openapi.TYPE_STRING, description='Employment Termination Indicator (Y or N)'),
-                        }
-                    )
-                ),
-                'file_params': openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    description='Optional file parameters. Most configuration fields are loaded from AchGarnishmentConfig table.',
-                    properties={
-                        'immediate_destination_name': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='Immediate destination name (optional)'
-                        ),
-                        'pay_date': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            format='date',
-                            description='Pay Date (Effective Entry Date) - YYYYMMDD format - REQUIRED from input (not from config)'
-                        ),
-                        'file_id_modifier': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='File ID Modifier - System generated (A-Z) or 0-9, optional override'
-                        ),
-                        'batch_number': openapi.Schema(
-                            type=openapi.TYPE_INTEGER,
-                            description='Batch number - System generated, optional override'
-                        ),
-                        # Note: The following fields are loaded from AchGarnishmentConfig table and do not need to be provided:
-                        # - peos_bank_routing_number (PEOs Bank Routing number - Immediate destination)
-                        # - company_id (Company ID - Immediate origin)
-                        # - company_name (Company Name - Immediate Origin name)
-                        # - payment_type (Payment Type - Standard entry class)
-                        # - service_class_code (Service Class Code)
-                        # - originating_dfi_id (Originating DFI Id = peos_bank_routing_number)
-                        # Legacy field names for backward compatibility (ignored, loaded from config)
-                        'peos_bank_routing_number': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[IGNORED - loaded from config] PEOs Bank Routing number - loaded from AchGarnishmentConfig table'
-                        ),
-                        'company_id': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[IGNORED - loaded from config] Company ID - loaded from AchGarnishmentConfig table'
-                        ),
-                        'company_name': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[IGNORED - loaded from config] Company Name - loaded from AchGarnishmentConfig table'
-                        ),
-                        'payment_type': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[IGNORED - loaded from config] Payment Type - loaded from AchGarnishmentConfig table'
-                        ),
-                        'service_class_code': openapi.Schema(
-                            type=openapi.TYPE_STRING, 
-                            description='[IGNORED - loaded from config] Service Class Code - loaded from AchGarnishmentConfig table'
-                        ),
-                        'originating_dfi_id': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[IGNORED - loaded from config] Originating DFI Id - loaded from AchGarnishmentConfig table'
-                        ),
-                        'immediate_destination': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[DEPRECATED/IGNORED] Loaded from config'
-                        ),
-                        'immediate_origin': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[DEPRECATED/IGNORED] Loaded from config'
-                        ),
-                        'immediate_origin_name': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description='[DEPRECATED/IGNORED] Loaded from config'
-                        ),
-                        'standard_entry_class': openapi.Schema(
-                            type=openapi.TYPE_STRING, 
-                            description='[DEPRECATED/IGNORED] Loaded from config'
-                        ),
-                        'effective_date': openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            format='date',
-                            description='[DEPRECATED] Use pay_date instead'
-                        ),
-                    }
-                ),
-                'export_format': openapi.Schema(type=openapi.TYPE_STRING, enum=['txt', 'pdf', 'xml']),
-                'pay_date': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
-                'agency_payee': openapi.Schema(type=openapi.TYPE_STRING),
-                'store_file': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Store metadata in database (file returned in response, not stored in blob)'),
-            }
-        ),
+        operation_description="Generate ACH file in CCD+ format. Data is automatically fetched from database for garnishment_type 'child_support' and 'ftb_ewot'.",
+        manual_parameters=[
+            openapi.Parameter(
+                'file_type',
+                openapi.IN_PATH,
+                type=openapi.TYPE_STRING,
+                enum=['txt', 'pdf', 'xml'],
+                required=True,
+                description='File format type: txt, pdf, or xml'
+            ),
+            openapi.Parameter(
+                'case_ids',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Items(type=openapi.TYPE_STRING),
+                required=False,
+                description='Comma-separated list of case_ids to fetch from database. Only garnishment_type "child_support" and "ftb_ewot" will be included.'
+            ),
+            openapi.Parameter(
+                'employee_ids',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Items(type=openapi.TYPE_STRING),
+                required=False,
+                description='Comma-separated list of employee_ids to fetch from database. Only garnishment_type "child_support" and "ftb_ewot" will be included.'
+            ),
+            openapi.Parameter(
+                'pay_date',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                format='date',
+                required=False,
+                description='Pay Date (Effective Entry Date) - YYYY-MM-DD format. If not provided, uses today\'s date.'
+            ),
+            openapi.Parameter(
+                'agency_payee',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description='Agency payee name (optional)'
+            ),
+            openapi.Parameter(
+                'store_file',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_BOOLEAN,
+                required=False,
+                description='Store metadata in database (default: false)'
+            ),
+        ],
         responses={
             200: 'ACH file generated successfully',
             400: 'Invalid parameters or validation failed',
+            404: 'No orders found matching the criteria',
             500: 'Internal server error'
         }
     )
-    def post(self, request):
+    def get(self, request, file_type):
         """
-        Generate ACH file in CCD+ format from provided data.
+        Generate ACH file in CCD+ format. Data is automatically fetched from database.
         
+        Args:
+            file_type: File format type (txt, pdf, or xml) - from URL path
         """
         try:
-            data = request.data
-            orders_data = data.get('orders_data', [])
-            file_params = data.get('file_params', {})
-            export_format = data.get('export_format', 'txt').lower()
-            pay_date_str = data.get('pay_date')
-            agency_payee = data.get('agency_payee', '')
-            store_file = data.get('store_file', False)  # Default to False - return file directly
+            # Get file_type from URL path parameter
+            export_format = file_type.lower() if file_type else 'txt'
+            if export_format not in ['txt', 'pdf', 'xml']:
+                return ResponseHelper.error_response(
+                    f"Invalid file_type: {file_type}. Must be one of: txt, pdf, xml",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get parameters from query string
+            case_ids_param = request.query_params.get('case_ids', '')
+            employee_ids_param = request.query_params.get('employee_ids', '')
+            pay_date_str = request.query_params.get('pay_date')
+            agency_payee = request.query_params.get('agency_payee', '')
+            store_file_param = request.query_params.get('store_file', 'false').lower()
+            store_file = store_file_param in ['true', '1', 'yes']
+            
+            # Parse case_ids and employee_ids from comma-separated strings
+            case_ids = [cid.strip() for cid in case_ids_param.split(',') if cid.strip()] if case_ids_param else []
+            employee_ids = [eid.strip() for eid in employee_ids_param.split(',') if eid.strip()] if employee_ids_param else []
+            
+            # Initialize file_params
+            file_params = {}
+            if pay_date_str:
+                file_params['pay_date'] = pay_date_str
+            
+            orders_data = []
+            
+            # Fetch orders from database
+            if not case_ids and not employee_ids:
+                return ResponseHelper.error_response(
+                    "Either 'case_ids' or 'employee_ids' query parameter is required",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Parse pay_date for filtering results
+            pay_date_for_query = None
+            if pay_date_str:
+                try:
+                    pay_date_for_query = datetime.strptime(pay_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return ResponseHelper.error_response(
+                        f"Invalid pay_date format: {pay_date_str}. Expected format: YYYY-MM-DD",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Fetch orders from database
+            orders_data = self._fetch_orders_from_database(
+                case_ids=case_ids,
+                employee_ids=employee_ids,
+                pay_date=pay_date_for_query
+            )
             
             if not orders_data:
                 return ResponseHelper.error_response(
-                    "orders_data is required",
-                    status_code=status.HTTP_400_BAD_REQUEST
+                    "No orders found matching the criteria",
+                    status_code=status.HTTP_404_NOT_FOUND
                 )
             
             # Validate data
@@ -1069,6 +1259,14 @@ class ACHFileGenerationView(APIView):
                 elif isinstance(pay_date, datetime):
                     pay_date = pay_date.date()
             
+            # Auto-generate system fields before generating ACH content to ensure consistency
+            # File ID Modifier: A letter or number (A-Z, 0-9) used to uniquely identify multiple files created on the same date
+            if 'file_id_modifier' not in file_params or not file_params.get('file_id_modifier'):
+                file_params['file_id_modifier'] = self._generate_file_id_modifier(pay_date)
+            # Batch Number: System generated sequential number
+            if 'batch_number' not in file_params or not file_params.get('batch_number'):
+                file_params['batch_number'] = self._generate_batch_number(pay_date)
+            
             # Generate ACH content
             ach_content, file_stats = self._generate_ach_content(orders_data, file_params)
             
@@ -1100,7 +1298,7 @@ class ACHFileGenerationView(APIView):
                 content_type = 'text/plain'
                 file_extension = 'txt'
             
-            # Generate filename
+            # Generate filename using the file_id_modifier that was set in file_params
             file_id_modifier = file_params.get('file_id_modifier', 'A')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             file_name = f"ACH_{pay_date.strftime('%Y%m%d')}_{file_id_modifier}_{timestamp}.{file_extension}"
@@ -1122,6 +1320,9 @@ class ACHFileGenerationView(APIView):
                         trace_base = 1000000
                     transaction_refs = [f"Trace: {trace_base + i}" for i in range(len(orders_data))]
                     
+                    # Use the batch_number that was set in file_params
+                    batch_number = file_params.get('batch_number', 1)
+                    
                     ach_file_record = ACHFile.objects.create(
                         file_name=file_name,
                         file_format=export_format,
@@ -1132,7 +1333,7 @@ class ACHFileGenerationView(APIView):
                         agency_payee=agency_payee,
                         total_payment_count=file_stats['entry_count'],
                         total_payment_amount=file_stats['total_credit_amount'],
-                        batch_id=str(file_params.get('batch_number', 1)),
+                        batch_id=str(batch_number),
                         file_id_modifier=file_id_modifier,
                         associated_case_ids=json.dumps(case_ids),
                         transaction_references=json.dumps(transaction_refs)

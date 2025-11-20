@@ -9,6 +9,7 @@ from processor.garnishment_library.calculations import (
     CreditorDebtCalculator, Bankruptcy, FTB, WithholdingProcessor,
     MultipleGarnishmentPriorityOrder
 )
+from processor.garnishment_library.calculations.child_support import ChildSupportHelper
 from processor.garnishment_library.utils.response import UtilityClass, CalculationResponse
 from user_app.constants import (
     EmployeeFields as EE,
@@ -36,7 +37,6 @@ class GarnishmentCalculator:
     def __init__(self, fee_calculator):
         self.fee_calculator = FeeCalculator()
         self.logger = logger
-        self.child_support_helper = ChildSupportHelper()
 
 
     def calculate_de(self,record: Dict) -> float:
@@ -47,7 +47,7 @@ class GarnishmentCalculator:
             wages=record.get(CF.WAGES, 0)
             commission_and_bonus=record.get(CF.COMMISSION_AND_BONUS, 0)
             non_accountable_allowances=record.get(CF.NON_ACCOUNTABLE_ALLOWANCES, 0)
-            return self.child_support_helper.calculate_de(wages, commission_and_bonus, non_accountable_allowances)
+            return ChildSupportHelper(record.get(EE.WORK_STATE)).calculate_de(wages, commission_and_bonus, non_accountable_allowances)
         except Exception as e:
             logger.error(f"Error calculating disposable earnings: {e}")
             return 0
@@ -120,8 +120,10 @@ class GarnishmentCalculator:
             garnishment_data = record.get(EE.GARNISHMENT_DATA)
             pay_period = record.get(EE.PAY_PERIOD, "")
             garnishment_type = garnishment_data[0].get(EE.GARNISHMENT_TYPE, "")
-
-            calculation_result = ChildSupport(work_state).calculate(record)
+            override_amount = record.get('override_amount', None)
+            override_arrear = record.get('override_arrear', None)
+            override_limit = record.get('override_limit', 0)
+            calculation_result = ChildSupport(work_state).calculate(record,override_amount,override_arrear,override_limit)
             # Use parameter value if provided, otherwise get from record
             if garn_fees is None:
                 garn_fees = record.get(EE.GARNISHMENT_FEES, 0)

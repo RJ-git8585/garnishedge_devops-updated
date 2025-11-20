@@ -6,17 +6,21 @@ Handles all database-related operations including storing calculation results.
 import logging
 from django.db import transaction
 from typing import Dict, Any, List
+from datetime import datetime
 from processor.models import (
     StateTaxLevyAppliedRule, StateTaxLevyConfig, CreditorDebtAppliedRule
 )
 from processor.models.garnishment_result.result import GarnishmentResult
 from processor.models.shared_model.garnishment_type import GarnishmentType
+from processor.models.shared_model.state import State
 from processor.serializers import StateTaxLevyConfigSerializers
 from user_app.models import (
     EmployeeBatchData, GarnishmentBatchData, PayrollBatchData
 )
 from user_app.models.employee.employee_details import EmployeeDetail
 from user_app.models.garnishment_order.garnishment_orders import GarnishmentOrder
+from user_app.models.payroll.payroll import Payroll
+from user_app.models.client.client_models import Client
 from user_app.constants import (
     EmployeeFields as EE,
     GarnishmentTypeFields as GT,
@@ -447,5 +451,193 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error getting payroll batch data for case {case_id}: {e}")
             return {}
+
+    def store_payroll_data(self, payroll_json: Dict) -> Dict:
+        """
+        Store payroll data from JSON structure to Payroll database table.
+        
+        Args:
+            payroll_json: Dictionary containing batch_id and payroll_data array
+                Example:
+                {
+                    "batch_id": "BLUR449",
+                    "payroll_data": [
+                        {
+                            "client_id": "CLT10009",
+                            "ee_id": "DA0075",
+                            "pay_period": "Weekly",
+                            "payroll_date": "2025-10-31T00:00:00",
+                            "wages": 400,
+                            "commission_and_bonus": 0,
+                            "non_accountable_allowances": 100,
+                            "gross_pay": 500,
+                            "payroll_taxes": {
+                                "federal_income_tax": 100,
+                                "state_tax": 0,
+                                "local_tax": 0,
+                                "medicare_tax": 0,
+                                "social_security_tax": 0,
+                                "wilmington_tax": 0,
+                                "california_sdi": 0,
+                                "medical_insurance_pretax": 0,
+                                "life_insurance": 0,
+                                "retirement_401k": 0,
+                                "industrial_insurance": 0,
+                                "union_dues": 0
+                            },
+                            "net_pay": 400,
+                            "pay_date": "2025-11-20"
+                        }
+                    ]
+                }
+        
+        Returns:
+            Dict with status and details of stored records
+        """
+        try:
+            batch_id = payroll_json.get("batch_id")
+            payroll_data_list = payroll_json.get("payroll_data", [])
+            
+            if not payroll_data_list:
+                return {"status": "error", "message": "No payroll_data found in JSON"}
+            
+            stored_records = []
+            errors = []
+            
+            with transaction.atomic():
+                for payroll_item in payroll_data_list:
+                    try:
+                        # Extract basic fields
+                        client_id = payroll_item.get("client_id")
+                        ee_id = payroll_item.get("ee_id")
+                        pay_period = payroll_item.get("pay_period")
+                        payroll_date_str = payroll_item.get("payroll_date")
+                        pay_date_str = payroll_item.get("pay_date")
+                        
+                        # Validate required fields
+                        if not client_id or not ee_id:
+                            errors.append(f"Missing required fields (client_id or ee_id) for payroll item")
+                            continue
+                        
+                        if not payroll_date_str:
+                            errors.append(f"Missing required field payroll_date for ee_id {ee_id}")
+                            continue
+                        
+                        # Get Client
+                        try:
+                            client = Client.objects.get(client_id=client_id)
+                        except Client.DoesNotExist:
+                            errors.append(f"Client with client_id '{client_id}' not found")
+                            continue
+                        except Client.MultipleObjectsReturned:
+                            self.logger.warning(f"Multiple clients found for client_id '{client_id}', using first")
+                            client = Client.objects.filter(client_id=client_id).first()
+                        
+                        # Get EmployeeDetail
+                        try:
+                            employee = EmployeeDetail.objects.get(ee_id=ee_id)
+                        except EmployeeDetail.DoesNotExist:
+                            errors.append(f"Employee with ee_id '{ee_id}' not found")
+                            continue
+                        except EmployeeDetail.MultipleObjectsReturned:
+                            self.logger.warning(f"Multiple employees found for ee_id '{ee_id}', using first")
+                            employee = EmployeeDetail.objects.filter(ee_id=ee_id).first()
+                        
+                        # Get State from employee's work_state
+                        state = employee.work_state
+                        if not state:
+                            errors.append(f"Employee {ee_id} does not have a work_state")
+                            continue
+                        
+                        # Parse dates
+                        payroll_date = None
+                        if payroll_date_str:
+                            try:
+                                # Handle ISO format with time (2025-10-31T00:00:00)
+                                if 'T' in payroll_date_str:
+                                    payroll_date = datetime.fromisoformat(payroll_date_str.replace('Z', '+00:00')).date()
+                                else:
+                                    payroll_date = datetime.strptime(payroll_date_str, "%Y-%m-%d").date()
+                            except (ValueError, AttributeError) as e:
+                                self.logger.error(f"Error parsing payroll_date '{payroll_date_str}': {e}")
+                                errors.append(f"Invalid payroll_date format: {payroll_date_str}")
+                                continue
+                        
+                        pay_date = None
+                        if pay_date_str:
+                            try:
+                                # Handle ISO format with time or simple date
+                                if 'T' in pay_date_str:
+                                    pay_date = datetime.fromisoformat(pay_date_str.replace('Z', '+00:00')).date()
+                                else:
+                                    pay_date = datetime.strptime(pay_date_str, "%Y-%m-%d").date()
+                            except (ValueError, AttributeError) as e:
+                                self.logger.error(f"Error parsing pay_date '{pay_date_str}': {e}")
+                                # pay_date is optional, so we'll just log and continue
+                        
+                        # Extract payroll_taxes
+                        payroll_taxes = payroll_item.get("payroll_taxes", {})
+                        
+                        # Prepare payroll data
+                        payroll_defaults = {
+                            'state': state,
+                            'ee_id': employee,
+                            'client_id': client,
+                            'batch_id': batch_id,
+                            'pay_period': pay_period,
+                            'payroll_date': payroll_date,
+                            'pay_date': pay_date,
+                            'wages': payroll_item.get("wages"),
+                            'commission_and_bonus': payroll_item.get("commission_and_bonus"),
+                            'non_accountable_allowances': payroll_item.get("non_accountable_allowances"),
+                            'gross_pay': payroll_item.get("gross_pay"),
+                            'net_pay': payroll_item.get("net_pay"),
+                            'federal_income_tax': payroll_taxes.get("federal_income_tax"),
+                            'state_tax': payroll_taxes.get("state_tax"),
+                            'local_tax': payroll_taxes.get("local_tax"),
+                            'medicare_tax': payroll_taxes.get("medicare_tax"),
+                            'social_security_tax': payroll_taxes.get("social_security_tax"),
+                            'wilmington_tax': payroll_taxes.get("wilmington_tax"),
+                            'california_sdi': payroll_taxes.get("california_sdi"),
+                            'medical_insurance_pretax': payroll_taxes.get("medical_insurance_pretax"),
+                            'life_insurance': payroll_taxes.get("life_insurance"),
+                            'retirement_401k': payroll_taxes.get("retirement_401k"),
+                            'industrial_insurance': payroll_taxes.get("industrial_insurance"),
+                            'union_dues': payroll_taxes.get("union_dues"),
+                        }
+                        
+                        # Create Payroll record
+                        payroll_record = Payroll.objects.create(**payroll_defaults)
+                        stored_records.append({
+                            'id': payroll_record.id,
+                            'ee_id': ee_id,
+                            'client_id': client_id,
+                            'batch_id': batch_id
+                        })
+                        
+                        self.logger.info(f"Successfully stored payroll data for ee_id: {ee_id}, client_id: {client_id}")
+                        
+                    except Exception as e:
+                        error_msg = f"Error storing payroll data for ee_id {payroll_item.get('ee_id')}: {str(e)}"
+                        self.logger.error(error_msg, exc_info=True)
+                        errors.append(error_msg)
+                        continue
+            
+            result = {
+                "status": "success" if stored_records else "error",
+                "stored_count": len(stored_records),
+                "stored_records": stored_records
+            }
+            
+            if errors:
+                result["errors"] = errors
+                result["status"] = "partial_success" if stored_records else "error"
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error in store_payroll_data: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return {"status": "error", "message": error_msg}
 
 

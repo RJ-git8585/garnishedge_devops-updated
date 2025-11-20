@@ -9,8 +9,8 @@ from processor.views.configs.ach_views import (
 app_name = 'ach'
 
 urlpatterns = [
-    # Generate ACH file - POST
-    path("generate/", ACHFileGenerationView.as_view(), name="ach-generate"),
+    # Generate ACH file - GET with file_type in URL
+    path("generate/<str:file_type>/", ACHFileGenerationView.as_view(), name="ach-generate"),
     
     # List generated ACH files - GET
     path("files/", ACHFileListView.as_view(), name="ach-files-list"),
