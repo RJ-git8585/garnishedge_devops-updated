@@ -201,32 +201,30 @@ class ACHFileGenerationView(APIView):
             if pay_date:
                 results_query = results_query.filter(processed_at__date=pay_date)
             
-            # Get the latest result for each case (manual grouping for database compatibility)
-            results = {}
-            seen_cases = set()
+            # Get ALL results for each case (not just the latest)
+            # Group results by case_id to include all entries for the same case
+            results_by_case = {}
             for result in results_query.order_by('-processed_at', '-created_at'):
                 case_id = result.case.case_id
-                if case_id not in seen_cases:
-                    results[case_id] = result
-                    seen_cases.add(case_id)
+                if case_id not in results_by_case:
+                    results_by_case[case_id] = []
+                results_by_case[case_id].append(result)
             
-            # Build orders_data list - process ALL cases found
+            logger.info(f"Found {sum(len(results) for results in results_by_case.values())} total GarnishmentResult records across {len(results_by_case)} unique case_ids")
+            
+            # Build orders_data list - process ALL results for ALL cases found
             orders_data = []
             logger.info(f"Processing {len(orders)} garnishment orders for ACH file generation")
             
             for order in orders:
-                # Get corresponding result
-                result = results.get(order.case_id)
+                # Get ALL corresponding results for this case_id
+                case_results = results_by_case.get(order.case_id, [])
                 
-                if not result:
+                if not case_results:
                     logger.warning(f"No GarnishmentResult found for case_id={order.case_id}, employee_id={order.employee.ee_id}, skipping")
                     continue
                 
-                if not result.withholding_amount or result.withholding_amount <= 0:
-                    logger.warning(f"No withholding amount or zero amount for case_id={order.case_id}, employee_id={order.employee.ee_id}, skipping")
-                    continue
-                
-                # Build employee name from first_name, middle_name, last_name
+                # Build employee name from first_name, middle_name, last_name (shared for all results of this order)
                 employee_name_parts = [order.employee.first_name]
                 if order.employee.middle_name:
                     employee_name_parts.append(order.employee.middle_name)
@@ -234,7 +232,7 @@ class ACHFileGenerationView(APIView):
                     employee_name_parts.append(order.employee.last_name)
                 employee_name = ' '.join(employee_name_parts)
                 
-                # Determine segment and application identifiers based on garnishment_type
+                # Determine segment and application identifiers based on garnishment_type (shared for all results)
                 garnishment_type_str = order.garnishment_type.type.lower()  # Normalize to lowercase for comparison
                 if garnishment_type_str in ['child_support', 'child support']:
                     segment_identifier = 'DED'
@@ -246,14 +244,14 @@ class ACHFileGenerationView(APIView):
                     segment_identifier = 'DED'
                     application_identifier = 'CS'
                 
-                # Get medical support indicator from AchGarnishmentConfig
+                # Get medical support indicator from AchGarnishmentConfig (shared for all results)
                 try:
                     config = AchGarnishmentConfig.objects.first()
                     medical_support_indicator = config.medical_support_indicator if config else 'N'
                 except Exception:
                     medical_support_indicator = 'N'
                 
-                # Extract SSN (handle both hashed 64-char and regular 9-digit formats)
+                # Extract SSN (handle both hashed 64-char and regular 9-digit formats) (shared for all results)
                 employee_ssn = order.employee.ssn or ''
                 if len(employee_ssn) >= 9:
                     # If hashed (64 chars), we can't extract original - use first 9 chars or handle differently
@@ -265,42 +263,49 @@ class ACHFileGenerationView(APIView):
                 else:
                     ssn_digits = employee_ssn[:9] if employee_ssn else ''
                 
-                # Determine pay_date for this order (prefer order.pay_date, then result.processed_at.date(), then default_pay_date param)
-                order_pay_date = None
-                if order.pay_date:
-                    order_pay_date = order.pay_date
-                elif result.processed_at:
-                    order_pay_date = result.processed_at.date()
-                elif default_pay_date:
-                    order_pay_date = default_pay_date
-                else:
-                    order_pay_date = date.today()
-                
-                # Build order data
-                order_data = {
-                    'case_id': order.case_id,
-                    'employee_id': order.employee.ee_id,
-                    'employee_ssn': ssn_digits,
-                    'individual_name': employee_name,
-                    'routing_number': str(order.payee.routing_number) if order.payee.routing_number else '',
-                    'account_number': str(order.payee.bank_account) if order.payee.bank_account else '',
-                    'amount': float(result.withholding_amount),
-                    'fips_code': order.fips_code or '',
-                    'garnishment_type': garnishment_type_str,
-                    'payee_id': order.payee.payee_id,
-                    'payee_name': order.payee.payee,
-                    'pay_date': order_pay_date,  # Add pay_date to order_data for grouping
-                    # Addenda fields
-                    'segment_identifier': segment_identifier,
-                    'application_identifier': application_identifier,
-                    'case_identifier': order.case_id[:20],  # Max 20 chars
-                    'absent_parent_ssn': ssn_digits,  # Use employee SSN
-                    'medical_support_indicator': medical_support_indicator,
-                    'absent_parent_name': employee_name,
-                    'employment_termination_indicator': '  ',  # Default as per user's change
-                }
-                
-                orders_data.append(order_data)
+                # Process ALL results for this case_id (not just one)
+                for result in case_results:
+                    if not result.withholding_amount or result.withholding_amount <= 0:
+                        logger.warning(f"No withholding amount or zero amount for case_id={order.case_id}, result_id={result.id}, skipping this result")
+                        continue
+                    
+                    # Determine pay_date for this result (prefer order.pay_date, then result.processed_at.date(), then default_pay_date param)
+                    order_pay_date = None
+                    if order.pay_date:
+                        order_pay_date = order.pay_date
+                    elif result.processed_at:
+                        order_pay_date = result.processed_at.date()
+                    elif default_pay_date:
+                        order_pay_date = default_pay_date
+                    else:
+                        order_pay_date = date.today()
+                    
+                    # Build order data for THIS result
+                    order_data = {
+                        'case_id': order.case_id,
+                        'employee_id': order.employee.ee_id,
+                        'employee_ssn': ssn_digits,
+                        'individual_name': employee_name,
+                        'routing_number': str(order.payee.routing_number) if order.payee.routing_number else '',
+                        'account_number': str(order.payee.bank_account) if order.payee.bank_account else '',
+                        'amount': float(result.withholding_amount),
+                        'fips_code': order.fips_code or '',
+                        'garnishment_type': garnishment_type_str,
+                        'payee_id': order.payee.payee_id,
+                        'payee_name': order.payee.payee,
+                        'pay_date': order_pay_date,  # Add pay_date to order_data for grouping
+                        # Addenda fields
+                        'segment_identifier': segment_identifier,
+                        'application_identifier': application_identifier,
+                        'case_identifier': order.case_id[:20],  # Max 20 chars
+                        'absent_parent_ssn': ssn_digits,  # Use employee SSN
+                        'medical_support_indicator': medical_support_indicator,
+                        'absent_parent_name': employee_name,
+                        'employment_termination_indicator': '  ',  # Default as per user's change
+                    }
+                    
+                    orders_data.append(order_data)
+                    logger.debug(f"Added ACH entry for case_id={order.case_id}, result_id={result.id}, amount={result.withholding_amount}")
             
             logger.info(f"Successfully processed {len(orders_data)} orders out of {len(orders)} total orders for ACH file generation")
             if len(orders_data) < len(orders):
@@ -909,6 +914,8 @@ class ACHFileGenerationView(APIView):
         # Extract configuration values from database
         # PEOs Bank Routing number (Immediate destination) - from config
         peos_bank_routing_number = config.peos_bank_routing_number
+
+        peos_bank_name=config.peos_bank_name
         # Company ID (Immediate origin) - from config
         company_id = config.company_id
         # Company Name (Immediate Origin name) - from config
@@ -921,7 +928,7 @@ class ACHFileGenerationView(APIView):
         originating_dfi_id = peos_bank_routing_number
         
         # Immediate destination name (optional, can still come from file_params if needed)
-        immediate_destination_name = config.peos_bank_routing_number
+        immediate_destination_name = config.peos_bank_name
         
         # Pay Date (Effective Entry Date) - from input (not from config)
         pay_date = file_params.get('pay_date', file_params.get('effective_date', date.today()))
