@@ -178,6 +178,30 @@ DATABASES = {
 #     }
 # }
 
+# -----------------------------------------------------------------------------
+# Change Data Capture (CDC) sources
+# -----------------------------------------------------------------------------
+# The API that surfaces CDC logs (see `user_app.views.change_log_views`) looks
+# up the allowed capture instances from this mapping to prevent SQL injection.
+# Provide a JSON blob via the `CDC_CAPTURE_INSTANCES` environment variable to
+# configure the capture instances that exist in your Azure SQL Database.  For
+# example:
+# {
+#   "garnishment_order": {
+#     "capture_instance": "dbo_GarnishmentOrder",
+#     "table_name": "dbo.GarnishmentOrder",
+#     "user_column": "modified_by",
+#     "select_columns": ["order_number", "employee_id", "status"]
+#   }
+# }
+#
+# Each key becomes the `source` query parameter accepted by the API.
+try:
+    CDC_CAPTURE_INSTANCES = env.json('CDC_CAPTURE_INSTANCES', default={})
+except AttributeError:
+    import json
+    CDC_CAPTURE_INSTANCES = json.loads(env('CDC_CAPTURE_INSTANCES', default='{}'))
+
 FILE_UPLOAD_HANDLERS = [
     'django.core.files.uploadhandler.MemoryFileUploadHandler',
     'django.core.files.uploadhandler.TemporaryFileUploadHandler',

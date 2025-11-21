@@ -62,6 +62,7 @@ urlpatterns = [
     path('employer/', include('user_app.urls.employer_urls', namespace='employer')),
     path('client/', include('user_app.urls.client_urls', namespace='client')),
     path('order/', include('user_app.urls.garnishment_order_urls', namespace='garnishment_order')),
+    path('log/', include('user_app.urls.log_urls', namespace='logs')),
     path('payee/', include('user_app.urls.payee_urls', namespace='payee')),
     path('state/', include('processor.urls.garnishment_types.state_urls', namespace='state')),
     path('garnishment/', include('processor.urls.garnishment_types.calculation_urls', namespace='garnishment_calculation')),

@@ -9,5 +9,6 @@ from .payee_views import *
 from .client_views import *
 from .peo_views import *
 from .letter_template_views import *
+from .change_log_views import *
  
 # try:

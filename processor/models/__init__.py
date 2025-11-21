@@ -6,3 +6,4 @@ from .shared_model import *
 from .garnishment_fees import *
 from .exempt import *
 from .garnishment_result import *
+from .deduction_history import *

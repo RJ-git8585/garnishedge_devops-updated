@@ -54,11 +54,17 @@ class ACHFileGenerationView(APIView):
         logger.warning(f"All file ID modifiers used for pay_date {pay_date}, defaulting to 'A'")
         return 'A'
     
-    def _generate_batch_number(self, pay_date):
+    def _generate_batch_number(self, pay_date, exclude_batch_numbers=None):
         """
         Auto-generate batch number for files created on the same date.
         Returns the next sequential batch number starting from 1.
+        
+        Args:
+            pay_date: Date to generate batch number for
+            exclude_batch_numbers: List of batch numbers to exclude (used when generating multiple batches in same file)
         """
+        exclude_batch_numbers = exclude_batch_numbers or []
+        
         # Get the maximum batch number for the same pay_date
         max_batch = ACHFile.objects.filter(
             pay_date=pay_date,
@@ -78,6 +84,10 @@ class ACHFileGenerationView(APIView):
             # No existing batches for this date, start from 1
             next_batch = 1
         
+        # If the generated batch number is in the exclude list, increment until we find one that's not
+        while next_batch in exclude_batch_numbers:
+            next_batch += 1
+        
         return next_batch
     
     def _fetch_employee_ids_from_payroll(self, ach_generate_date=None):
@@ -94,16 +104,24 @@ class ACHFileGenerationView(APIView):
             ach_generate_date = date.today()
         
         # Get employees from Payroll where pay_date > ACH generate date
+        # Get ALL payroll records (not just distinct employees) to ensure we process all cases
         payroll_records = Payroll.objects.filter(
             pay_date__isnull=False,
             pay_date__gt=ach_generate_date
-        ).select_related('ee_id').values_list('ee_id__ee_id', flat=True).distinct()
+        ).select_related('ee_id')
         
-        employee_ids = list(payroll_records)
-        logger.info(f"Found {len(employee_ids)} employees from Payroll with pay_date > {ach_generate_date}")
+        # Get distinct employee IDs from payroll
+        employee_ids = list(payroll_records.values_list('ee_id__ee_id', flat=True).distinct())
+        print("employee_ids",employee_ids)
+        
+        # Log detailed information
+        total_payroll_records = payroll_records.count()
+        logger.info(f"Found {total_payroll_records} payroll records with pay_date > {ach_generate_date}")
+        logger.info(f"Found {len(employee_ids)} unique employees from Payroll table")
+        
         return employee_ids
     
-    def _fetch_orders_from_database(self, case_ids=None, employee_ids=None, pay_date=None, use_payroll_filter=False, ach_generate_date=None):
+    def _fetch_orders_from_database(self, case_ids=None, employee_ids=None, pay_date=None, use_payroll_filter=False, ach_generate_date=None, default_pay_date=None):
         """
         Fetch order data from database for ACH file generation.
         
@@ -131,9 +149,12 @@ class ACHFileGenerationView(APIView):
                     logger.warning(f"No employees found in Payroll with pay_date > {ach_generate_date or date.today()}")
                     return []
             
-            # Filter by garnishment_type: 'child_support' or 'ftb_ewot'
+            # Filter by garnishment_type: 'child_support' or 'ftb_ewot' (case-insensitive)
+            # Use Q objects for case-insensitive matching to catch variations
             garnishment_types = GarnishmentType.objects.filter(
-                type__in=['child_support', 'ftb_ewot','Child_Support']
+                Q(type__iexact='child_support') | 
+                Q(type__iexact='ftb_ewot') |
+                Q(type__iexact='Child_Support')
             )
             
             if not garnishment_types.exists():
@@ -155,11 +176,13 @@ class ACHFileGenerationView(APIView):
             if employee_ids:
                 orders_query = orders_query.filter(employee__ee_id__in=employee_ids)
             
-            orders = orders_query.all()
-            
+            orders = list(orders_query.all())  # Convert to list to ensure we get all records
+            print("orders",orders)
             if not orders:
                 logger.warning(f"No garnishment orders found for case_ids={case_ids}, employee_ids={employee_ids}")
                 return []
+            
+            logger.info(f"Found {len(orders)} garnishment orders matching criteria (garnishment_type: child_support/ftb_ewot)")
             
             # Get case_ids from orders to fetch GarnishmentResult
             order_case_ids = [order.case_id for order in orders]
@@ -187,14 +210,20 @@ class ACHFileGenerationView(APIView):
                     results[case_id] = result
                     seen_cases.add(case_id)
             
-            # Build orders_data list
+            # Build orders_data list - process ALL cases found
             orders_data = []
+            logger.info(f"Processing {len(orders)} garnishment orders for ACH file generation")
+            
             for order in orders:
                 # Get corresponding result
                 result = results.get(order.case_id)
                 
-                if not result or not result.withholding_amount:
-                    logger.warning(f"No withholding amount found for case_id={order.case_id}, skipping")
+                if not result:
+                    logger.warning(f"No GarnishmentResult found for case_id={order.case_id}, employee_id={order.employee.ee_id}, skipping")
+                    continue
+                
+                if not result.withholding_amount or result.withholding_amount <= 0:
+                    logger.warning(f"No withholding amount or zero amount for case_id={order.case_id}, employee_id={order.employee.ee_id}, skipping")
                     continue
                 
                 # Build employee name from first_name, middle_name, last_name
@@ -206,8 +235,8 @@ class ACHFileGenerationView(APIView):
                 employee_name = ' '.join(employee_name_parts)
                 
                 # Determine segment and application identifiers based on garnishment_type
-                garnishment_type_str = order.garnishment_type.type
-                if garnishment_type_str == 'child_support':
+                garnishment_type_str = order.garnishment_type.type.lower()  # Normalize to lowercase for comparison
+                if garnishment_type_str in ['child_support', 'child support']:
                     segment_identifier = 'DED'
                     application_identifier = 'CS'
                 elif garnishment_type_str == 'ftb_ewot':
@@ -236,6 +265,17 @@ class ACHFileGenerationView(APIView):
                 else:
                     ssn_digits = employee_ssn[:9] if employee_ssn else ''
                 
+                # Determine pay_date for this order (prefer order.pay_date, then result.processed_at.date(), then default_pay_date param)
+                order_pay_date = None
+                if order.pay_date:
+                    order_pay_date = order.pay_date
+                elif result.processed_at:
+                    order_pay_date = result.processed_at.date()
+                elif default_pay_date:
+                    order_pay_date = default_pay_date
+                else:
+                    order_pay_date = date.today()
+                
                 # Build order data
                 order_data = {
                     'case_id': order.case_id,
@@ -249,6 +289,7 @@ class ACHFileGenerationView(APIView):
                     'garnishment_type': garnishment_type_str,
                     'payee_id': order.payee.payee_id,
                     'payee_name': order.payee.payee,
+                    'pay_date': order_pay_date,  # Add pay_date to order_data for grouping
                     # Addenda fields
                     'segment_identifier': segment_identifier,
                     'application_identifier': application_identifier,
@@ -261,7 +302,11 @@ class ACHFileGenerationView(APIView):
                 
                 orders_data.append(order_data)
             
-            logger.info(f"Fetched {len(orders_data)} orders from database for ACH file generation")
+            logger.info(f"Successfully processed {len(orders_data)} orders out of {len(orders)} total orders for ACH file generation")
+            if len(orders_data) < len(orders):
+                skipped_count = len(orders) - len(orders_data)
+                logger.warning(f"Skipped {skipped_count} orders due to missing GarnishmentResult or zero withholding_amount")
+            
             return orders_data
             
         except Exception as e:
@@ -699,29 +744,28 @@ class ACHFileGenerationView(APIView):
                                 originating_dfi_id="", service_class_code="200"):
         """
         Generate Batch Control Record (Type 8) per CSV specification.
-        Position 1: Record Type Code (8)
-        Position 2-4: Service Class Code (200, 220, 225, etc.)
-          * Must match the Service Class Code from Batch Header (Type 5)
-        Position 5-10: Entry/Addenda Count (6 digits)
-        Position 11-20: Entry Hash (10 digits)
-        Position 21-32: Total Debit Entry Dollar Amount (12 digits)
-        Position 33-44: Total Credit Entry Dollar Amount (12 digits)
-        Position 45-54: Company Identification (10 digits)
-        Position 55-73: Message Authentication Code (19 chars, blank)
-        Position 74-79: Reserved (6 chars, blank)
-        Position 80-87: Originating DFI Identification (8 digits)
-        Position 88-94: Batch Number (7 digits)
+        Position 1: Record Type Code (8) - Identifies batch control
+        Position 2-4: Service Class Code (200, 220, 225, etc.) - Same as in Batch Header record
+        Position 5-10: Entry/Addenda Count (6 digits) - Total Entry Detail + Addenda records in this batch
+        Position 11-20: Entry Hash (10 digits) - Sum of all RDFI routing numbers (positions 4-11 of Entry Detail records), truncated to 10 digits
+        Position 21-32: Total Debit Entry Dollar Amount (12 digits) - Total debits in the batch (CCD+ for child support = 0)
+        Position 33-44: Total Credit Entry Dollar Amount (12 digits) - Total credits in the batch = total outgoing payments
+        Position 45-54: Company Identification (10 digits) - Same value as Batch Header (your Origin ID)
+        Position 55-73: Message Authentication Code (19 chars, blank) - Not used for most PEO/CCD files (Keep blank)
+        Position 74-79: Reserved (6 chars, blank) - NACHA reserved
+        Position 80-87: Originating DFI Identification (8 digits) - First 8 digits of Originating Bank routing (Wells Fargo)
+        Position 88-94: Batch Number (7 digits) - Same batch number used in Batch Header
         
         Args:
-            batch_number: Batch number (7 digits)
-            entry_count: Number of entry detail records
-            addenda_count: Number of addenda records
-            entry_hash: Entry hash (sum of first 8 digits of routing numbers)
-            total_debit_amount: Total debit entry dollar amount (Decimal)
-            total_credit_amount: Total credit entry dollar amount (Decimal)
-            company_id: Company identification (10 digits)
-            message_auth_code: Message authentication code (19 chars, optional)
-            originating_dfi_id: Originating DFI identification (8 digits)
+            batch_number: Batch number (7 digits) - Same batch number used in Batch Header
+            entry_count: Number of entry detail records (Type 6)
+            addenda_count: Number of addenda records (Type 7)
+            entry_hash: Entry hash (sum of first 8 digits of routing numbers from positions 4-11 of Entry Detail records)
+            total_debit_amount: Total debit entry dollar amount (Decimal) - For CCD+ child support, typically 0
+            total_credit_amount: Total credit entry dollar amount (Decimal) - Total outgoing payments
+            company_id: Company identification (10 digits) - Same as Batch Header Company ID
+            message_auth_code: Message authentication code (19 chars, optional) - Keep blank for PEO/CCD files
+            originating_dfi_id: Originating DFI identification (8 digits) - First 8 digits of Originating Bank routing
             service_class_code: Service Class Code (default: "200", must match Batch Header)
         
         Returns:
@@ -761,17 +805,36 @@ class ACHFileGenerationView(APIView):
     def _generate_file_control(self, batch_count, block_count, entry_count, addenda_count, entry_hash,
                                total_debit_amount, total_credit_amount):
         """
-        Generate File Control Record (Type 9).
-        Entry count includes both entry detail and addenda records.
+        Generate File Control Record (Type 9) per CSV specification.
+        Position 1: Record Type Code (9)
+        Position 2-7: Batch Count (6 digits) - Number of batch control records in file
+        Position 8-13: Block Count (6 digits) - Total number of physical 10-record blocks
+        Position 14-21: Entry/Addenda Count (8 digits) - Total Entry + Addenda records in entire file
+        Position 22-31: Entry Hash (10 digits) - Sum of all batch entry hashes, truncated to 10 digits
+        Position 32-43: Total Debit Entry Dollar Amount (12 digits)
+        Position 44-55: Total Credit Entry Dollar Amount (12 digits)
+        Position 56-94: Reserved (39 chars, always spaces)
+        
+        Args:
+            batch_count: Number of batch control records in file (6 digits)
+            block_count: Total number of physical 10-record blocks (6 digits)
+            entry_count: Number of entry detail records
+            addenda_count: Number of addenda records
+            entry_hash: Entry hash (sum of first 8 digits of routing numbers from all Entry Detail records)
+            total_debit_amount: Total debit entry dollar amount (Decimal)
+            total_credit_amount: Total credit entry dollar amount (Decimal)
+        
+        Returns:
+            str: Formatted file control record (94 characters + newline)
         """
-        record = "9"  # Record Type Code
-        record += self._pad_number(batch_count, 6)  # Batch Count (6 digits)
-        record += self._pad_number(block_count, 6)  # Block Count (6 digits)
-        record += self._pad_number(entry_count + addenda_count, 8)  # Entry/Addenda Count (8 digits)
-        record += self._pad_number(entry_hash % 10000000000, 10)  # Entry Hash (10 digits)
-        record += self._format_amount(total_debit_amount, 12)  # Total Debit Entry Dollar Amount (12 digits)
-        record += self._format_amount(total_credit_amount, 12)  # Total Credit Entry Dollar Amount (12 digits)
-        record += self._pad_string("", 39, 'right', ' ')  # Reserved (39 chars)
+        record = "9"  # Position 1: Record Type Code
+        record += self._pad_number(batch_count, 6)  # Position 2-7: Batch Count (6 digits)
+        record += self._pad_number(block_count, 6)  # Position 8-13: Block Count (6 digits)
+        record += self._pad_number(entry_count + addenda_count, 8)  # Position 14-21: Entry/Addenda Count (8 digits)
+        record += self._pad_number(entry_hash % 10000000000, 10)  # Position 22-31: Entry Hash (10 digits)
+        record += self._format_amount(total_debit_amount, 12)  # Position 32-43: Total Debit Entry Dollar Amount (12 digits)
+        record += self._format_amount(total_credit_amount, 12)  # Position 44-55: Total Credit Entry Dollar Amount (12 digits)
+        record += self._pad_string("", 39, 'right', ' ')  # Position 56-94: Reserved (39 chars, always spaces)
         
         # Ensure record is exactly 94 characters (excluding newline)
         if len(record) != 94:
@@ -878,13 +941,20 @@ class ACHFileGenerationView(APIView):
         # Batch Number: System generated sequential number
         batch_number = file_params.get('batch_number') or self._generate_batch_number(pay_date) 
         
-        # File Header
+        # File Header (Type 1) - generated once per file
         creation_time = datetime.now().time()
+        # Use the earliest pay_date from orders for file header, or fallback to pay_date from params
+        file_creation_date = pay_date
+        if orders_data:
+            order_pay_dates = [order.get('pay_date') for order in orders_data if order.get('pay_date')]
+            if order_pay_dates:
+                file_creation_date = min(order_pay_dates)
+        
         file_header = self._generate_file_header(
             immediate_destination=peos_bank_routing_number,  # PEOs Bank Routing number
             immediate_origin=company_id,  # Company ID
             file_id_modifier=file_id_modifier,
-            creation_date=pay_date,  # Pay Date (Effective Entry Date)
+            creation_date=file_creation_date,  # Pay Date (Effective Entry Date)
             creation_time=creation_time,
             immediate_destination_name=immediate_destination_name,
             immediate_origin_name=company_name,  # Company Name
@@ -892,122 +962,168 @@ class ACHFileGenerationView(APIView):
         )
         ach_content.append(file_header)
 
-        # Batch Header
-        batch_header = self._generate_batch_header(
-            batch_number=batch_number,
-            company_name=company_name,  # Company Name
-            company_id=company_id,  # Company ID
-            pay_date=pay_date,  # Pay Date (Effective Entry Date)
-            standard_entry_class=payment_type,  # Payment Type (Standard entry class)
-            originating_dfi_id=originating_dfi_id,  # Originating DFI Id = PEOs bank's routing number
-            service_class_code=service_class_code
-        )
-        ach_content.append(batch_header)
-
-        # Process entries
-        entry_count = 0
-        addenda_count = 0
-        entry_hash = 0
-        total_credit_amount = Decimal('0.00')
-        total_debit_amount = Decimal('0.00')
+        # Group orders by pay_date
+        from collections import defaultdict
+        orders_by_pay_date = defaultdict(list)
+        for order_data in orders_data:
+            order_pay_date = order_data.get('pay_date', pay_date)
+            if isinstance(order_pay_date, str):
+                try:
+                    order_pay_date = datetime.strptime(order_pay_date, '%Y-%m-%d').date()
+                except ValueError:
+                    order_pay_date = pay_date
+            elif not isinstance(order_pay_date, date):
+                order_pay_date = pay_date
+            orders_by_pay_date[order_pay_date].append(order_data)
+        
+        logger.info(f"Grouped {len(orders_data)} orders into {len(orders_by_pay_date)} pay_date groups")
+        
+        # File-level counters (accumulated across all batches)
+        total_entry_count = 0
+        total_addenda_count = 0
+        total_entry_hash = 0
+        total_file_credit_amount = Decimal('0.00')
+        total_file_debit_amount = Decimal('0.00')
+        batch_count = 0
         
         # Trace number: Part 1 is originating DFI ID (8 digits), Part 2 is sequential entry number (7 digits)
         # Originating DFI Id = PEOs bank's routing number
         trace_part1 = int(originating_dfi_id[:8]) if originating_dfi_id and len(originating_dfi_id) >= 8 else (int(peos_bank_routing_number[:8]) if peos_bank_routing_number and len(peos_bank_routing_number) >= 8 else 98708076)
-        trace_part2 = 1  # Start from 1 for first entry
-        addenda_sequence = 1
-
-        for order_data in orders_data:
-            try:
-                routing_number = order_data.get('routing_number', '')
-                account_number = order_data.get('account_number', '')
-                amount = Decimal(str(order_data.get('amount', 0)))
-                individual_id = str(order_data.get('case_id', ''))[:15]
-                individual_name = order_data.get('individual_name', '')
-                case_id = order_data.get('case_id', '')
-                employee_ssn = order_data.get('employee_ssn', '')
-                
-                # Transaction code: 22 = checking credit (per CSV), 27 = checking credit (alternative)
-                transaction_code = order_data.get('transaction_code', 22)
-                
-                # Extract addenda fields from order_data - convert to uppercase
-                segment_identifier = str(order_data.get('segment_identifier', 'DED')).upper()  # DED for child support, TXP for FTB
-                application_identifier = str(order_data.get('application_identifier', 'CS')).upper()  # CS for child support
-                case_identifier = str(order_data.get('case_identifier', case_id[:20])).upper()
-                pay_date_str = self._format_date(pay_date)  # YYMMDD format (6 chars)
-                absent_parent_ssn = order_data.get('absent_parent_ssn', employee_ssn)[:9]
-                medical_support_indicator = str(order_data.get('medical_support_indicator', 'N')).upper()
-                absent_parent_name = order_data.get('absent_parent_name', individual_name)
-                # Format name as "Last,First" if not already formatted (max 10 chars)
-                if ',' not in absent_parent_name and ' ' in absent_parent_name:
-                    name_parts = absent_parent_name.split()
-                    if len(name_parts) >= 2:
-                        absent_parent_name = f"{name_parts[-1]},{' '.join(name_parts[:-1])}"
-                absent_parent_name = str(absent_parent_name).upper()[:10]  # Convert to uppercase and ensure max 10 chars
-                fips_code = order_data.get('fips_code', '')[:7]  # FIPS code is 7 chars total (including padding)
-                employment_termination_indicator = str(order_data.get('employment_termination_indicator', '  ')).upper()
-                
-                # Generate Entry Detail Record
-                entry_detail = self._generate_entry_detail(
-                    transaction_code=transaction_code,
-                    routing_number=routing_number,
-                    account_number=account_number,
-                    amount=amount,
-                    individual_id=individual_id,
-                    individual_name=individual_name,
-                    trace_number_part1=trace_part1,
-                    trace_number_part2=trace_part2,
-                    addenda_indicator="1"  # CCD+ requires addenda
-                )
-                ach_content.append(entry_detail)
-                entry_count += 1
-                
-                # Generate Addenda Record (Type 7) for CCD+
-                addenda_record = self._generate_addenda_record(
-                    addenda_type_code=5,  # 05 for CCD+
-                    segment_identifier=segment_identifier,
-                    application_identifier=application_identifier,
-                    case_identifier=case_identifier,
-                    pay_date=pay_date_str,
-                    payment_amount=amount,
-                    absent_parent_ssn=absent_parent_ssn,
-                    medical_support_indicator=medical_support_indicator,
-                    absent_parent_name=absent_parent_name,
-                    fips_code=fips_code,
-                    employment_termination_indicator=employment_termination_indicator,
-                    addenda_sequence_number=addenda_sequence,
-                    entry_detail_sequence_number=trace_part2
-                )
-                ach_content.append(addenda_record)
-                addenda_count += 1
-                addenda_sequence += 1
-                
-                # Update counters
-                trace_part2 += 1  # Increment trace part 2 for next entry
-                total_credit_amount += amount
-                
-                # Add routing number to hash (first 8 digits)
-                routing_clean = ''.join(filter(str.isdigit, str(routing_number)))[:8]
-                if routing_clean:
-                    entry_hash += int(routing_clean[:8])
+        trace_part2 = 1  # Start from 1 for first entry (resets per batch)
+        
+        # Process each pay_date group as a separate batch
+        for group_pay_date, group_orders in sorted(orders_by_pay_date.items()):
+            batch_count += 1
+            logger.info(f"Processing batch {batch_count} for pay_date {group_pay_date} with {len(group_orders)} orders")
+            
+            # Generate batch number for this pay_date group
+            # Use the base batch_number and increment for each additional batch
+            current_batch_number = batch_number if batch_count == 1 else self._generate_batch_number(group_pay_date, exclude_batch_numbers=[batch_number])
+            
+            # Batch Header (Type 5) - one per pay_date group
+            batch_header = self._generate_batch_header(
+                batch_number=current_batch_number,
+                company_name=company_name,  # Company Name
+                company_id=company_id,  # Company ID
+                pay_date=group_pay_date,  # Pay Date (Effective Entry Date) for this batch
+                standard_entry_class=payment_type,  # Payment Type (Standard entry class)
+                originating_dfi_id=originating_dfi_id,  # Originating DFI Id = PEOs bank's routing number
+                service_class_code=service_class_code
+            )
+            ach_content.append(batch_header)
+            
+            # Batch-level counters (reset for each batch)
+            batch_entry_count = 0
+            batch_addenda_count = 0
+            batch_entry_hash = 0
+            batch_credit_amount = Decimal('0.00')
+            batch_debit_amount = Decimal('0.00')
+            addenda_sequence = 1  # Reset for each batch
+            
+            # Process each order in this pay_date group
+            for order_data in group_orders:
+                try:
+                    routing_number = order_data.get('routing_number', '')
+                    account_number = order_data.get('account_number', '')
+                    amount = Decimal(str(order_data.get('amount', 0)))
+                    individual_id = str(order_data.get('case_id', ''))[:15]
+                    individual_name = order_data.get('individual_name', '')
+                    case_id = order_data.get('case_id', '')
+                    employee_ssn = order_data.get('employee_ssn', '')
                     
-            except Exception as e:
-                logger.error(f"Error processing order data: {str(e)}")
-                continue
-
-        # Batch Control
-        batch_control = self._generate_batch_control(
-            batch_number=batch_number,
-            entry_count=entry_count,
-            addenda_count=addenda_count,
-            entry_hash=entry_hash,
-            total_debit_amount=total_debit_amount,
-            total_credit_amount=total_credit_amount,
-            company_id=company_id,
-            originating_dfi_id=originating_dfi_id,
-            service_class_code=service_class_code  # Must match Batch Header
-        )
-        ach_content.append(batch_control)
+                    # Transaction code: 22 = checking credit (per CSV), 27 = checking credit (alternative)
+                    transaction_code = order_data.get('transaction_code', 22)
+                    
+                    # Extract addenda fields from order_data - convert to uppercase
+                    segment_identifier = str(order_data.get('segment_identifier', 'DED')).upper()  # DED for child support, TXP for FTB
+                    application_identifier = str(order_data.get('application_identifier', 'CS')).upper()  # CS for child support
+                    case_identifier = str(order_data.get('case_identifier', case_id[:20])).upper()
+                    pay_date_str = self._format_date(group_pay_date)  # YYMMDD format (6 chars) - use batch pay_date
+                    absent_parent_ssn = order_data.get('absent_parent_ssn', employee_ssn)[:9]
+                    medical_support_indicator = str(order_data.get('medical_support_indicator', 'N')).upper()
+                    absent_parent_name = order_data.get('absent_parent_name', individual_name)
+                    # Format name as "Last,First" if not already formatted (max 10 chars)
+                    if ',' not in absent_parent_name and ' ' in absent_parent_name:
+                        name_parts = absent_parent_name.split()
+                        if len(name_parts) >= 2:
+                            absent_parent_name = f"{name_parts[-1]},{' '.join(name_parts[:-1])}"
+                    absent_parent_name = str(absent_parent_name).upper()[:10]  # Convert to uppercase and ensure max 10 chars
+                    fips_code = order_data.get('fips_code', '')[:7]  # FIPS code is 7 chars total (including padding)
+                    employment_termination_indicator = str(order_data.get('employment_termination_indicator', '  ')).upper()
+                    
+                    # Generate Entry Detail Record
+                    entry_detail = self._generate_entry_detail(
+                        transaction_code=transaction_code,
+                        routing_number=routing_number,
+                        account_number=account_number,
+                        amount=amount,
+                        individual_id=individual_id,
+                        individual_name=individual_name,
+                        trace_number_part1=trace_part1,
+                        trace_number_part2=trace_part2,
+                        addenda_indicator="1"  # CCD+ requires addenda
+                    )
+                    ach_content.append(entry_detail)
+                    batch_entry_count += 1
+                    
+                    # Generate Addenda Record (Type 7) for CCD+ - one per case_id
+                    addenda_record = self._generate_addenda_record(
+                        addenda_type_code=5,  # 05 for CCD+
+                        segment_identifier=segment_identifier,
+                        application_identifier=application_identifier,
+                        case_identifier=case_identifier,
+                        pay_date=pay_date_str,
+                        payment_amount=amount,
+                        absent_parent_ssn=absent_parent_ssn,
+                        medical_support_indicator=medical_support_indicator,
+                        absent_parent_name=absent_parent_name,
+                        fips_code=fips_code,
+                        employment_termination_indicator=employment_termination_indicator,
+                        addenda_sequence_number=addenda_sequence,
+                        entry_detail_sequence_number=trace_part2
+                    )
+                    ach_content.append(addenda_record)
+                    batch_addenda_count += 1
+                    addenda_sequence += 1
+                    
+                    # Update batch-level counters
+                    trace_part2 += 1  # Increment trace part 2 for next entry
+                    batch_credit_amount += amount
+                    
+                    # Add routing number to hash (first 8 digits)
+                    routing_clean = ''.join(filter(str.isdigit, str(routing_number)))[:8]
+                    if routing_clean:
+                        batch_entry_hash += int(routing_clean[:8])
+                        
+                except Exception as e:
+                    logger.error(f"Error processing order data for case_id {order_data.get('case_id', 'unknown')}: {str(e)}")
+                    continue
+            
+            # Batch Control (Type 8) - one per pay_date group
+            batch_control = self._generate_batch_control(
+                batch_number=current_batch_number,
+                entry_count=batch_entry_count,
+                addenda_count=batch_addenda_count,
+                entry_hash=batch_entry_hash,
+                total_debit_amount=batch_debit_amount,
+                total_credit_amount=batch_credit_amount,
+                company_id=company_id,
+                originating_dfi_id=originating_dfi_id,
+                service_class_code=service_class_code  # Must match Batch Header
+            )
+            ach_content.append(batch_control)
+            
+            # Accumulate batch totals into file totals
+            total_entry_count += batch_entry_count
+            total_addenda_count += batch_addenda_count
+            total_entry_hash += batch_entry_hash
+            total_file_credit_amount += batch_credit_amount
+            total_file_debit_amount += batch_debit_amount
+            
+            logger.info(f"Completed batch {batch_count} for pay_date {group_pay_date}: {batch_entry_count} entries, {batch_addenda_count} addenda")
+            
+            # Reset trace_part2 for next batch (starts from 1 for each new batch)
+            trace_part2 = 1
 
         # Calculate block count (each block is 10 records)
         total_records = len(ach_content) + 1  # +1 for file control
@@ -1017,24 +1133,27 @@ class ACHFileGenerationView(APIView):
         while len(ach_content) < (block_count * 10) - 1:  # -1 for file control
             ach_content.append(" " * 94 + "\n")
 
-        # File Control
+        # File Control (Type 9) - one per file
         file_control = self._generate_file_control(
-            batch_count=1,
+            batch_count=batch_count,  # Number of batches (one per pay_date)
             block_count=block_count,
-            entry_count=entry_count,
-            addenda_count=addenda_count,
-            entry_hash=entry_hash,
-            total_debit_amount=total_debit_amount,
-            total_credit_amount=total_credit_amount
+            entry_count=total_entry_count,  # Total entries across all batches
+            addenda_count=total_addenda_count,  # Total addenda across all batches
+            entry_hash=total_entry_hash,  # Total hash across all batches
+            total_debit_amount=total_file_debit_amount,
+            total_credit_amount=total_file_credit_amount
         )
         ach_content.append(file_control)
 
+        logger.info(f"Generated ACH file with {batch_count} batches, {total_entry_count} entries, {total_addenda_count} addenda")
+
         return ''.join(ach_content), {
-            'entry_count': entry_count,
-            'addenda_count': addenda_count,
-            'total_credit_amount': total_credit_amount,
-            'total_debit_amount': total_debit_amount,
-            'block_count': block_count
+            'entry_count': total_entry_count,
+            'addenda_count': total_addenda_count,
+            'total_credit_amount': total_file_credit_amount,
+            'total_debit_amount': total_file_debit_amount,
+            'block_count': block_count,
+            'batch_count': batch_count
         }
 
     # Files are returned directly in HTTP response, not stored in blob storage

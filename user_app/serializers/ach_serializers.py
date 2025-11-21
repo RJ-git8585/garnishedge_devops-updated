@@ -5,12 +5,14 @@ from user_app.models import AchGarnishmentConfig
 class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
     # Input from user (labels)
     transaction_type = serializers.CharField(write_only=True, required=False, allow_null=True)
+    transaction_code_type = serializers.CharField(write_only=True, required=False, allow_null=True, 
+                                                   help_text="Alternative to transaction_type. Accepts: Credit, Prenote Credit, Debit, Prenote Debit")
     service_class_type = serializers.CharField(write_only=True, required=False)
     # Allow omitting raw code when using service_class_type
     service_class_code = serializers.CharField(required=False, allow_blank=True)
 
-    # Output (readable labels)
-    transaction_code_type = serializers.SerializerMethodField(read_only=True)
+    # Output (readable labels) - Note: transaction_code_type is also used as input above
+    transaction_code_type_display = serializers.SerializerMethodField(read_only=True)
     service_class_code_type = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -69,6 +71,19 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
 
         # ----- Transaction Code (automatically set based on account_type and transaction_type) -----
         transaction_type = attrs.pop("transaction_type", None)
+        transaction_code_type = attrs.pop("transaction_code_type", None)
+        
+        # If transaction_code_type is provided but transaction_type is not, use transaction_code_type as transaction_type
+        if transaction_code_type and not transaction_type:
+            transaction_type = transaction_code_type
+        
+        # Get the old account_type from instance to detect account_type changes
+        old_account_type = None
+        if self.instance:
+            old_account_type = getattr(self.instance, "account_type", None)
+        
+        # Check if account_type is being changed
+        account_type_changed = old_account_type and old_account_type != account_type
         
         # If transaction_type is provided, it takes precedence - remove any existing transaction_code from attrs
         # to avoid conflicts, and we'll set it based on transaction_type
@@ -92,16 +107,21 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
                         "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_CHECKING.keys())}"
                     })
                 attrs["transaction_code"] = tx_code
-            # If transaction_type is not provided, check if we have existing_transaction_code
+            # If transaction_type is not provided
             elif not existing_transaction_code:
                 # For checking accounts, transaction_type is required if no existing code
                 raise serializers.ValidationError({
                     "transaction_type": "transaction_type is required when account_type is 'checking'."
                 })
-            # If transaction_code is directly provided (without transaction_type), validate it's a checking code
-            elif existing_transaction_code and existing_transaction_code not in ["22", "23", "27", "28"]:
+            # If account_type changed, require transaction_type to set correct code
+            elif account_type_changed:
                 raise serializers.ValidationError({
-                    "transaction_code": "Invalid transaction_code for checking account. Valid codes: 22, 23, 27, 28"
+                    "transaction_type": "transaction_type is required when changing account_type to 'checking'."
+                })
+            # If transaction_code exists and account_type didn't change, validate it's a checking code
+            elif existing_transaction_code not in ["22", "23", "27", "28"]:
+                raise serializers.ValidationError({
+                    "transaction_type": "transaction_type is required when account_type is 'checking'. The existing transaction_code is not valid for checking accounts."
                 })
 
         elif account_type == "savings":
@@ -113,23 +133,28 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
                         "transaction_type": f"Invalid transaction_type value. Valid values: {list(self.TRANSACTION_TYPE_MAP_SAVINGS.keys())}"
                     })
                 attrs["transaction_code"] = tx_code
-            # If transaction_type is not provided, check if we have existing_transaction_code
+            # If transaction_type is not provided
             elif not existing_transaction_code:
                 # For savings accounts, transaction_type is required if no existing code
                 raise serializers.ValidationError({
                     "transaction_type": "transaction_type is required when account_type is 'savings'."
                 })
-            # If transaction_code is directly provided (without transaction_type), validate it's a savings code
-            elif existing_transaction_code and existing_transaction_code not in ["32", "33", "37", "38"]:
+            # If account_type changed, require transaction_type to set correct code
+            elif account_type_changed:
                 raise serializers.ValidationError({
-                    "transaction_code": "Invalid transaction_code for savings account. Valid codes: 32, 33, 37, 38"
+                    "transaction_type": "transaction_type is required when changing account_type to 'savings'."
+                })
+            # If transaction_code exists and account_type didn't change, validate it's a savings code
+            elif existing_transaction_code not in ["32", "33", "37", "38"]:
+                raise serializers.ValidationError({
+                    "transaction_type": "transaction_type is required when account_type is 'savings'. The existing transaction_code is not valid for savings accounts."
                 })
 
         return attrs
 
     # ---------- Display fields for response ----------
 
-    def get_transaction_code_type(self, obj):
+    def get_transaction_code_type_display(self, obj):
         if not obj.transaction_code:
             return None
 
@@ -144,6 +169,13 @@ class AchGarnishmentConfigSerializer(serializers.ModelSerializer):
             return None
 
         return reverse_map.get(obj.transaction_code)
+    
+    def to_representation(self, instance):
+        """Override to add transaction_code_type to output for backward compatibility"""
+        representation = super().to_representation(instance)
+        # Add transaction_code_type as read-only output (same as transaction_code_type_display)
+        representation['transaction_code_type'] = self.get_transaction_code_type_display(instance)
+        return representation
 
     def get_service_class_code_type(self, obj):
         reverse_map = {v: k for k, v in self.SERVICE_CLASS_MAP.items()}

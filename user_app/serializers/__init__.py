@@ -10,3 +10,4 @@ from .peo_serializers import *
 from .payee_serializers import *
 from .letter_template_serializers import *
 from .ach_serializers import *
+from .change_log_serializers import *
